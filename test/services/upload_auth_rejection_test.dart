@@ -82,18 +82,70 @@ void main() {
     int statusOf(String statusLine) =>
         int.parse(statusLine.split(' ')[1]);
 
-    test('upload without a valid encryption session is rejected (401)',
+    /// Sends a raw HTTP POST and returns the full response (status line +
+    /// headers + body), for tests that need to assert on the response body.
+    Future<String> rawPostFull(
+        String path, Map<String, String> headers, String body) async {
+      final socket = await Socket.connect('127.0.0.1', port);
+      final req = StringBuffer()
+        ..write('POST $path HTTP/1.1\r\n')
+        ..write('Host: 127.0.0.1:$port\r\n')
+        ..write('Content-Length: ${utf8.encode(body).length}\r\n')
+        ..write('Connection: close\r\n');
+      headers.forEach((k, v) => req.write('$k: $v\r\n'));
+      req
+        ..write('\r\n')
+        ..write(body);
+      socket.write(req.toString());
+      final response =
+          await socket.cast<List<int>>().transform(utf8.decoder).join();
+      await socket.close();
+      return response;
+    }
+
+    test('upload for an unapproved transfer is rejected (never 200)',
         () async {
-      // No x-device-id header → no encryption session → blocked at the route
-      // gate before any handler runs.
+      // With the per-handler authorization model there is no blanket route
+      // gate: the upload handler itself rejects the request. A missing sender
+      // token is a bad request (400); the invariant that matters is that an
+      // unauthorized upload is NEVER accepted.
       final status = await rawPost('/transfer/upload', {
         'x-transfer-id': 'no-such-transfer',
         'x-file-name': 'evil.txt',
         'x-sender-id': 'attacker',
-        // deliberately no x-device-id / x-sender-token
+        // deliberately no x-sender-token
       }, 'malicious');
 
-      expect(statusOf(status), 401);
+      expect(statusOf(status), isNot(200));
+      expect(statusOf(status), 400);
+    });
+
+    test('transfer initiate is NOT blocked by a session gate (200, handshake)',
+        () async {
+      // Regression: a blanket "encryption session must already exist" route
+      // gate used to 401 /transfer/initiate — the very request that ESTABLISHES
+      // the session — deadlocking first contact so devices could never connect.
+      // A fresh sender's initiate must be accepted into the pending-approval
+      // handshake, not rejected.
+      final response = await rawPostFull('/transfer/initiate', {
+        'Content-Type': 'application/json',
+        'x-device-id': 'brand-new-sender',
+      }, jsonEncode({
+        'id': 'handshake-transfer-1',
+        'senderId': 'brand-new-sender',
+        'senderName': 'Test Sender',
+        'senderToken': 'first-contact-token',
+        'receiverId': 'this-device',
+        'items': [
+          {'name': 'hello.txt', 'size': 5}
+        ],
+      }));
+
+      final statusLine = response.split('\r\n').first.trim();
+      expect(statusOf(statusLine), 200);
+      // The receiver queues it for approval rather than auto-accepting an
+      // unknown sender.
+      expect(response, contains('pending_approval'));
     });
 
     test('upload with a forged session/token for an unapproved transfer is rejected (401)',

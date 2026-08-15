@@ -935,16 +935,15 @@ class TransferService {
         return;
       }
 
-      // SECURITY: Require encryption session for all transfer endpoints
-      // (key-exchange is already handled above - no session needed)
-      final deviceId = request.headers.value('x-device-id');
-      if (deviceId == null || !_encryptionSessions.containsKey(deviceId)) {
-        request.response.statusCode = HttpStatus.unauthorized;
-        request.response.write('Unauthorized: Valid encryption session required');
-        await request.response.close();
-        if (kDebugMode) AppLogger.warn('⚠️ Unauthorized transfer attempt from ${request.connectionInfo?.remoteAddress}');
-        return;
-      }
+      // SECURITY: Authorization is enforced per-handler, not by a blanket route
+      // gate. Each data-bearing endpoint verifies a transfer-scoped token
+      // (`_isTransferAuthorized` / `_verifyDeviceToken`) or binds the caller to
+      // the approved sender of the session. A blanket "an encryption session
+      // must already exist" gate cannot be used here: `/transfer/initiate` (and
+      // `/transfer/parallel/initiate`) are the handshake that *establishes* the
+      // session, so gating them on a pre-existing session deadlocks the very
+      // first contact between two peers. The per-handler checks below are
+      // strictly stronger than "some session exists".
 
       if (method == 'POST' && path == '/transfer/parallel/initiate') {
         await _handleParallelInitiate(request);
