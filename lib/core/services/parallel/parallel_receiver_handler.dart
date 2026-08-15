@@ -9,6 +9,7 @@ import 'chunk_writer_service.dart';
 import '../streaming_hash_service.dart';
 import '../file_service.dart';
 import '../encryption_service.dart';
+import '../../utils/app_logger.dart';
 import '../../utils/byte_formatter.dart';
 import '../../utils/synchronized.dart';
 
@@ -55,8 +56,8 @@ class ParallelReceiverHandler {
       return {'success': false, 'error': 'Missing required fields'};
     }
 
-    debugPrint('📥 Parallel transfer initiated: $fileName');
-    debugPrint('   Size: ${ByteFormatter.format(fileSize)}, Chunks: $totalChunks');
+    AppLogger.info('📥 Parallel transfer initiated: $fileName');
+    AppLogger.info('   Size: ${ByteFormatter.format(fileSize)}, Chunks: $totalChunks');
 
     try {
       final downloadDir = await _fileService.getDownloadDirectory();
@@ -105,7 +106,7 @@ class ParallelReceiverHandler {
         'message': 'Ready to receive chunks',
       };
     } catch (e) {
-      debugPrint('Error initiating parallel receive: $e');
+      AppLogger.error('Error initiating parallel receive: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -144,7 +145,7 @@ class ParallelReceiverHandler {
       }
 
       if (originalSize > 0 && dataToWrite.length != originalSize) {
-        debugPrint(
+        AppLogger.warn(
             '⚠️ Chunk size mismatch: expected $originalSize, got ${dataToWrite.length}');
       }
 
@@ -161,7 +162,7 @@ class ParallelReceiverHandler {
         'totalChunks': session!.totalChunks,
       };
     } catch (e) {
-      debugPrint('Error receiving chunk $chunkIndex: $e');
+      AppLogger.error('Error receiving chunk $chunkIndex: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -196,16 +197,16 @@ class ParallelReceiverHandler {
 
       final file = await session!.writer.finalize();
 
-      debugPrint('📝 Verifying file hash...');
+      AppLogger.info('📝 Verifying file hash...');
       final calculatedHash = await StreamingHashService.calculateFileHash(file);
 
       if (calculatedHash != fileHash) {
-        debugPrint('❌ Hash mismatch! Deleting corrupted file.');
+        AppLogger.error('❌ Hash mismatch! Deleting corrupted file.');
 
         try {
           await file.delete();
         } catch (e) {
-          debugPrint('Error deleting corrupted file: $e');
+          AppLogger.error('Error deleting corrupted file: $e');
         }
 
         await _cleanupSession(transferId);
@@ -218,7 +219,7 @@ class ParallelReceiverHandler {
         };
       }
 
-      debugPrint('✅ File verified and saved: ${session!.filePath}');
+      AppLogger.info('✅ File verified and saved: ${session!.filePath}');
 
       final filePath = session!.filePath;
       final fileSize = session!.fileSize;
@@ -234,7 +235,7 @@ class ParallelReceiverHandler {
         'verified': true,
       };
     } catch (e) {
-      debugPrint('Error completing transfer: $e');
+      AppLogger.error('Error completing transfer: $e');
 
       await _cleanupSessionOnError(transferId);
 
@@ -260,17 +261,17 @@ class ParallelReceiverHandler {
       try {
         await session!.writer.abort();
       } catch (e) {
-        debugPrint('Error aborting writer: $e');
+        AppLogger.error('Error aborting writer: $e');
       }
 
       try {
         final tempFile = File('${session!.filePath}.tmp');
         if (await tempFile.exists()) {
           await tempFile.delete();
-          debugPrint('🧹 Deleted temp file: ${tempFile.path}');
+          AppLogger.info('🧹 Deleted temp file: ${tempFile.path}');
         }
       } catch (e) {
-        debugPrint('Error deleting temp file: $e');
+        AppLogger.error('Error deleting temp file: $e');
       }
     }
 

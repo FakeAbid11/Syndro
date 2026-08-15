@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 import '../../../utils/app_logger.dart';
@@ -159,7 +158,7 @@ class ShareServer {
       confirmation.confirmed = true;
       // Activate the connection after confirmation
       _activateConnection(ipAddress, confirmation.userAgent);
-      debugPrint('✅ Connection confirmed for ${AppLogger.sanitize(ipAddress)}');
+      AppLogger.info('✅ Connection confirmed for ${AppLogger.sanitize(ipAddress)}');
       return true;
     }
     return false;
@@ -170,7 +169,7 @@ class ShareServer {
     final confirmation = _pendingConfirmations[ipAddress];
     if (confirmation != null && confirmation.isPending) {
       confirmation.denied = true;
-      debugPrint('❌ Connection denied for ${AppLogger.sanitize(ipAddress)}');
+      AppLogger.error('❌ Connection denied for ${AppLogger.sanitize(ipAddress)}');
       return true;
     }
     return false;
@@ -179,11 +178,14 @@ class ShareServer {
   /// Check if an IP address is allowed to download
   bool isConnectionAllowed(String ipAddress) {
     if (!_requireConfirmation) return true;
-    
+
     final confirmation = _pendingConfirmations[ipAddress];
     if (confirmation == null) {
-      // No confirmation request - treat as allowed for backward compatibility
-      return true;
+      // Fail closed: when confirmation is required but none has been created
+      // for this IP, the client is NOT allowed. (Previously this returned true
+      // "for backward compatibility", letting a client that skipped the index
+      // page and hit /api/files or /download/* directly bypass confirmation.)
+      return false;
     }
     return confirmation.confirmed;
   }
@@ -202,7 +204,7 @@ class ShareServer {
     
     // Check if over limit
     if (timestamps.length >= _maxRequestsPerMinute) {
-      debugPrint('⚠️ Rate limit exceeded for ${AppLogger.sanitize(ipAddress)}: ${timestamps.length} requests in last minute');
+      AppLogger.warn('⚠️ Rate limit exceeded for ${AppLogger.sanitize(ipAddress)}: ${timestamps.length} requests in last minute');
       _requestTimestamps[ipAddress] = timestamps;
       return false;
     }
@@ -223,11 +225,11 @@ class ShareServer {
     
     // Pre-cache file stats to avoid repeated disk I/O during file list requests
     // This is especially important for large files where stat() can be slow
-    debugPrint('📊 Caching file stats for ${files.length} files...');
+    AppLogger.info('📊 Caching file stats for ${files.length} files...');
     _cachedFileStats = await Future.wait(
       files.map((f) => f.stat())
     );
-    debugPrint('✅ File stats cached');
+    AppLogger.info('✅ File stats cached');
 
     try {
       int port = _defaultPort;
@@ -244,7 +246,7 @@ class ShareServer {
         } catch (e) {
           port++;
           if (attempt == 9) {
-            debugPrint('Failed to bind to any port');
+            AppLogger.error('Failed to bind to any port');
             return null;
           }
         }
@@ -255,7 +257,7 @@ class ShareServer {
       final localIp = await NetworkUtils.getLocalIp();
       _shareUrl = 'http://$localIp:${_server!.port}';
 
-      debugPrint('Web share server running at $_shareUrl');
+      AppLogger.info('Web share server running at $_shareUrl');
 
       _serve();
 
@@ -264,13 +266,13 @@ class ShareServer {
 
       // Auto-expire after duration
       _expirationTimer = Timer(_shareExpiration, () {
-        debugPrint('Share expired, stopping server');
+        AppLogger.info('Share expired, stopping server');
         stop();
       });
 
       return _shareUrl;
     } catch (e) {
-      debugPrint('Error starting web share: $e');
+      AppLogger.error('Error starting web share: $e');
       return null;
     }
   }
@@ -282,14 +284,14 @@ class ShareServer {
       _expirationTimer?.cancel();
       _expirationTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling expiration timer: $e');
+      AppLogger.error('Error cancelling expiration timer: $e');
     }
 
     try {
       _cleanupTimer?.cancel();
       _cleanupTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling cleanup timer: $e');
+      AppLogger.error('Error cancelling cleanup timer: $e');
     }
 
     if (_server != null) {
@@ -321,7 +323,7 @@ class ShareServer {
         await _connectionEventController.close();
       }
     } catch (e) {
-      debugPrint('Error closing connection event controller: $e');
+      AppLogger.error('Error closing connection event controller: $e');
     }
     
     try {
@@ -329,7 +331,7 @@ class ShareServer {
         await _activeConnectionCountController.close();
       }
     } catch (e) {
-      debugPrint('Error closing active connection count controller: $e');
+      AppLogger.error('Error closing active connection count controller: $e');
     }
   }
 
@@ -390,14 +392,14 @@ class ShareServer {
 
       // Emit event for UI to show confirmation dialog
       _confirmationRequestController.add(confirmation);
-      debugPrint('⏳ Connection confirmation requested for ${AppLogger.sanitize(ipAddress)}');
+      AppLogger.info('⏳ Connection confirmation requested for ${AppLogger.sanitize(ipAddress)}');
 
       // Set timeout to auto-deny after 1 minute
       Timer(_confirmationTimeout, () {
         final conf = _pendingConfirmations[ipAddress];
         if (conf != null && conf.isPending) {
           conf.denied = true;
-          debugPrint('⏱️ Connection confirmation timed out for ${AppLogger.sanitize(ipAddress)}');
+          AppLogger.info('⏱️ Connection confirmation timed out for ${AppLogger.sanitize(ipAddress)}');
         }
       });
 
@@ -422,7 +424,7 @@ class ShareServer {
       ipAddress: ipAddress,
       userAgent: userAgent,
     ));
-    debugPrint('✅ Client connected: ${AppLogger.sanitize(ipAddress)} (Total: ${_activeConnections.length})');
+    AppLogger.info('✅ Client connected: ${AppLogger.sanitize(ipAddress)} (Total: ${_activeConnections.length})');
   }
 
   /// Called when confirmation is granted - activates the connection
@@ -439,7 +441,7 @@ class ShareServer {
       fileName: fileName,
       fileSize: fileSize,
     ));
-    debugPrint('Download started: $fileName by ${AppLogger.sanitize(ipAddress)}');
+    AppLogger.info('Download started: $fileName by ${AppLogger.sanitize(ipAddress)}');
   }
 
   void _onDownloadCompleted(String ipAddress, String fileName, int fileSize) {
@@ -449,7 +451,7 @@ class ShareServer {
       fileName: fileName,
       fileSize: fileSize,
     ));
-    debugPrint('Download completed: $fileName by ${AppLogger.sanitize(ipAddress)}');
+    AppLogger.info('Download completed: $fileName by ${AppLogger.sanitize(ipAddress)}');
   }
 
   /// Serve HTTP requests
@@ -460,12 +462,12 @@ class ShareServer {
       try {
         await _handleRequest(request);
       } catch (e) {
-        debugPrint('Error handling request: $e');
+        AppLogger.error('Error handling request: $e');
         try {
           request.response.statusCode = HttpStatus.internalServerError;
           await request.response.close();
         } catch (closeError) {
-          debugPrint('Error closing error response: $closeError');
+          AppLogger.error('Error closing error response: $closeError');
         }
       }
     }
@@ -484,7 +486,7 @@ class ShareServer {
       request.response.statusCode = HttpStatus.tooManyRequests;
       request.response.write('Rate limit exceeded. Please try again later.');
       await request.response.close();
-      debugPrint('⚠️ Rate limit blocked request from $clientIp');
+      AppLogger.warn('⚠️ Rate limit blocked request from $clientIp');
       return;
     }
 
@@ -507,12 +509,19 @@ class ShareServer {
     }
 
     // Track connection when accessing index page
-    if (requestPath == '/' || requestPath == '/index.html') {
+    if (requestPath == '/' ||
+        requestPath == '/index.html' ||
+        requestPath.startsWith('/download/')) {
       _onClientConnected(clientIp, userAgent); // MODIFIED
     }
 
     // SECURITY: Require connection confirmation for file list, connected clients, and thumbnails
     if (requestPath == '/api/files' || requestPath == '/api/connected-clients' || requestPath.startsWith('/thumbnail/')) {
+      // Ensure a pending confirmation exists even if the client never loaded
+      // the index page (otherwise a direct hit here would have no confirmation
+      // record and — with the fail-closed check below — be rejected until the
+      // user approves). This is what surfaces the approval prompt.
+      _onClientConnected(clientIp, userAgent);
       if (!isConnectionAllowed(clientIp)) {
         request.response.statusCode = HttpStatus.forbidden;
         request.response.write('Forbidden: Connection not confirmed');
@@ -659,7 +668,7 @@ class ShareServer {
       await request.response.addStream(file.openRead());
       await request.response.close();
     } catch (e) {
-      debugPrint('Error serving thumbnail: $e');
+      AppLogger.error('Error serving thumbnail: $e');
     }
   }
 
@@ -671,7 +680,7 @@ class ShareServer {
       request.response.statusCode = HttpStatus.forbidden;
       request.response.write('Connection not confirmed. Please wait for user approval.');
       await request.response.close();
-      debugPrint('❌ Download denied for unconfirmed connection: $clientIp');
+      AppLogger.error('❌ Download denied for unconfirmed connection: $clientIp');
       return;
     }
 
@@ -770,15 +779,15 @@ class ShareServer {
       // Notify download completed
       _onDownloadCompleted(clientIp, fileName, fileSize);
 
-      debugPrint(
+      AppLogger.info(
           'Successfully served file: $fileName ($fileSize bytes) to $clientIp');
     } catch (e) {
-      debugPrint('Error streaming file $fileName: $e');
+      AppLogger.error('Error streaming file $fileName: $e');
       // Don't try to send error response if headers already sent
       try {
         await request.response.close();
       } catch (closeError) {
-        debugPrint('Error closing response after stream error: $closeError');
+        AppLogger.error('Error closing response after stream error: $closeError');
       }
     }
   }
@@ -813,7 +822,7 @@ class ShareServer {
       request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
       request.response.headers.add('Content-Range', 'bytes */$fileSize');
       await request.response.close();
-      debugPrint('❌ Invalid range request for $fileName: bytes $start-$end/$fileSize');
+      AppLogger.error('❌ Invalid range request for $fileName: bytes $start-$end/$fileSize');
       return;
     }
 
@@ -821,7 +830,7 @@ class ShareServer {
     end = end.clamp(0, fileSize - 1);
     final contentLength = end - start + 1;
 
-    debugPrint('📤 Serving range: $fileName bytes $start-$end/$fileSize ($contentLength bytes)');
+    AppLogger.info('📤 Serving range: $fileName bytes $start-$end/$fileSize ($contentLength bytes)');
 
     try {
       // Set partial content headers
@@ -868,16 +877,16 @@ class ShareServer {
         // Notify download completed (partial content)
         _onDownloadCompleted(clientIp, fileName, contentLength);
         
-        debugPrint('✅ Range served: $fileName ($contentLength bytes) to ${AppLogger.sanitize(clientIp)}');
+        AppLogger.info('✅ Range served: $fileName ($contentLength bytes) to ${AppLogger.sanitize(clientIp)}');
       } finally {
         await randomAccessFile.close();
       }
     } catch (e) {
-      debugPrint('Error streaming range $fileName: $e');
+      AppLogger.error('Error streaming range $fileName: $e');
       try {
         await request.response.close();
       } catch (closeError) {
-        debugPrint('Error closing response after range stream error: $closeError');
+        AppLogger.error('Error closing response after range stream error: $closeError');
       }
     }
   }

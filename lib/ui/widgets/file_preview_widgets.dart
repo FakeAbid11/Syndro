@@ -49,7 +49,11 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
   @override
   void initState() {
     super.initState();
-    _loadThumbnailIfNeeded();
+    // Deferred: _loadThumbnailIfNeeded() calls setState synchronously, which
+    // is illegal during initState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadThumbnailIfNeeded();
+    });
   }
 
   @override
@@ -234,7 +238,11 @@ class _LargeFilePreviewState extends State<LargeFilePreview> {
   @override
   void initState() {
     super.initState();
-    _loadThumbnailIfVideo();
+    // Deferred: _loadThumbnailIfVideo() calls setState synchronously, which
+    // is illegal during initState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadThumbnailIfVideo();
+    });
   }
 
   Future<void> _loadThumbnailIfVideo() async {

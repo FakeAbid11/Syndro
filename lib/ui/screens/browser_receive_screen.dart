@@ -31,7 +31,11 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
   @override
   void initState() {
     super.initState();
-    _startReceiving();
+    // Defer to after the first frame: _startReceiving() calls setState
+    // synchronously, which is illegal during initState/build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startReceiving();
+    });
   }
 
   @override

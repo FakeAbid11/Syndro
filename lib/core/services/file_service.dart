@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
@@ -168,7 +167,7 @@ class FileService {
       return normalizedFile.startsWith(normalizedDir + Platform.pathSeparator) ||
           normalizedFile == normalizedDir;
     } catch (e) {
-      debugPrint('Error validating path: $e');
+      AppLogger.error('Error validating path: $e');
       return false;
     }
   }
@@ -250,7 +249,7 @@ class FileService {
 
       return items;
     } catch (e) {
-      debugPrint('Error picking files: $e');
+      AppLogger.error('Error picking files: $e');
       throw FileServiceException('Failed to pick files', originalError: e);
     }
   }
@@ -285,7 +284,7 @@ class FileService {
 
       return items;
     } catch (e) {
-      debugPrint('Error picking media: $e');
+      AppLogger.error('Error picking media: $e');
       throw FileServiceException('Failed to pick media', originalError: e);
     }
   }
@@ -295,7 +294,7 @@ class FileService {
       final result = await FilePicker.getDirectoryPath();
       return result;
     } catch (e) {
-      debugPrint('Error picking folder: $e');
+      AppLogger.error('Error picking folder: $e');
       throw FileServiceException('Failed to pick folder', originalError: e);
     }
   }
@@ -385,7 +384,7 @@ class FileService {
 
       hierarchy[relativePath] = children;
     } catch (e) {
-      debugPrint('Error scanning directory: $e');
+      AppLogger.error('Error scanning directory: $e');
       throw FileServiceException('Failed to scan directory: $relativePath',
           originalError: e);
     }
@@ -399,7 +398,7 @@ class FileService {
         if (entity is File) count++;
       }
     } catch (e) {
-      debugPrint('Error counting files in directory: $e');
+      AppLogger.error('Error counting files in directory: $e');
     }
 
     return count;
@@ -484,7 +483,7 @@ class FileService {
         onProgress?.call(bytesRead, fileSize);
       }
     } catch (e) {
-      debugPrint('Error streaming file: $e');
+      AppLogger.error('Error streaming file: $e');
       throw FileServiceException('Failed to stream file', originalError: e);
     }
   }
@@ -543,7 +542,7 @@ class FileService {
         try {
           await sink.close();
         } catch (closeError) {
-          debugPrint('Error closing sink during cleanup: $closeError');
+          AppLogger.error('Error closing sink during cleanup: $closeError');
         }
       }
 
@@ -553,10 +552,10 @@ class FileService {
           await tempFile.delete();
         }
       } catch (deleteError) {
-        debugPrint('Error deleting temp file during cleanup: $deleteError');
+        AppLogger.error('Error deleting temp file during cleanup: $deleteError');
       }
 
-      debugPrint('Error saving file from stream: $e');
+      AppLogger.error('Error saving file from stream: $e');
       throw FileServiceException('Failed to save file', originalError: e);
     }
   }
@@ -615,7 +614,7 @@ class FileService {
         try {
           await sink.close();
         } catch (closeError) {
-          debugPrint('Error closing sink during copy cleanup: $closeError');
+          AppLogger.error('Error closing sink during copy cleanup: $closeError');
         }
       }
 
@@ -625,10 +624,10 @@ class FileService {
           await tempFile.delete();
         }
       } catch (deleteError) {
-        debugPrint('Error deleting temp file during copy cleanup: $deleteError');
+        AppLogger.error('Error deleting temp file during copy cleanup: $deleteError');
       }
 
-      debugPrint('Error copying file: $e');
+      AppLogger.error('Error copying file: $e');
       throw FileServiceException('Failed to copy file', originalError: e);
     }
   }
@@ -664,7 +663,7 @@ class FileService {
       return file;
     } catch (e) {
       if (e is FileServiceException) rethrow;
-      debugPrint('Error saving file with path: $e');
+      AppLogger.error('Error saving file with path: $e');
       throw FileServiceException('Failed to save file', originalError: e);
     }
   }
@@ -732,7 +731,7 @@ class FileService {
         try {
           await sink.close();
         } catch (closeError) {
-          debugPrint('Error closing sink during save cleanup: $closeError');
+          AppLogger.error('Error closing sink during save cleanup: $closeError');
         }
       }
 
@@ -742,11 +741,11 @@ class FileService {
           await tempFile.delete();
         }
       } catch (deleteError) {
-        debugPrint('Error deleting temp file during save cleanup: $deleteError');
+        AppLogger.error('Error deleting temp file during save cleanup: $deleteError');
       }
 
       if (e is FileServiceException) rethrow;
-      debugPrint('Error saving file from stream: $e');
+      AppLogger.error('Error saving file from stream: $e');
       throw FileServiceException('Failed to save file', originalError: e);
     }
   }
@@ -773,10 +772,10 @@ class FileService {
             await testFile.writeAsString('test');
             await testFile.delete();
 
-            debugPrint('📁 Using download directory: ${AppLogger.sanitize(syndroDir.path)}');
+            AppLogger.info('📁 Using download directory: ${AppLogger.sanitize(syndroDir.path)}');
             return syndroDir.path;
           } catch (e) {
-            debugPrint('⚠️ Cannot use $downloadPath: $e');
+            AppLogger.warn('⚠️ Cannot use $downloadPath: $e');
             continue;
           }
         }
@@ -792,11 +791,11 @@ class FileService {
               await syndroDir.create(recursive: true);
             }
 
-            debugPrint('📁 Fallback to app external: ${syndroDir.path}');
+            AppLogger.info('📁 Fallback to app external: ${syndroDir.path}');
             return syndroDir.path;
           }
         } catch (e) {
-          debugPrint('⚠️ Cannot use external storage: $e');
+          AppLogger.warn('⚠️ Cannot use external storage: $e');
         }
 
         // Last resort - app documents directory
@@ -808,10 +807,10 @@ class FileService {
             await syndroDir.create(recursive: true);
           }
 
-          debugPrint('📁 Fallback to app docs: ${syndroDir.path}');
+          AppLogger.info('📁 Fallback to app docs: ${syndroDir.path}');
           return syndroDir.path;
         } catch (e) {
-          debugPrint('⚠️ Cannot use app documents: $e');
+          AppLogger.warn('⚠️ Cannot use app documents: $e');
         }
 
         throw FileServiceException(
@@ -865,7 +864,7 @@ class FileService {
         return syndroDir.path;
       }
     } catch (e) {
-      debugPrint('Error getting download directory: $e');
+      AppLogger.error('Error getting download directory: $e');
       if (e is FileServiceException) rethrow;
     }
 
@@ -902,11 +901,11 @@ class FileService {
       final file = File(filePath);
       await file.writeAsBytes(bytes);
 
-      debugPrint('✅ File saved to: ${AppLogger.sanitize(filePath)}');
+      AppLogger.info('✅ File saved to: ${AppLogger.sanitize(filePath)}');
       return file;
     } catch (e) {
       if (e is FileServiceException) rethrow;
-      debugPrint('Error saving file: $e');
+      AppLogger.error('Error saving file: $e');
       throw FileServiceException('Failed to save file', originalError: e);
     }
   }
@@ -928,7 +927,7 @@ class FileService {
           originalError: e,
         );
       }
-      debugPrint('Error getting file size: $e');
+      AppLogger.error('Error getting file size: $e');
       throw FileServiceException('Failed to get file size', originalError: e);
     }
   }
@@ -1006,7 +1005,7 @@ class FileService {
           originalError: e,
         );
       }
-      debugPrint('Error reading file: $e');
+      AppLogger.error('Error reading file: $e');
       throw FileServiceException('Failed to read file', originalError: e);
     }
   }

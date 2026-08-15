@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:network_info_plus/network_info_plus.dart';
@@ -144,12 +143,12 @@ class DeviceDiscoveryService {
               .toSet()
               .toList();
           ipAddress = primaryIp;
-          debugPrint('📍 Using IP: ${AppLogger.sanitize(ipAddress)} with ${_subnets.length} subnet(s)');
+          AppLogger.info('📍 Using IP: ${AppLogger.sanitize(ipAddress)} with ${_subnets.length} subnet(s)');
         } else {
-          debugPrint('⚠️ No valid IP addresses found, using fallback: ${AppLogger.sanitize(ipAddress)}');
+          AppLogger.warn('⚠️ No valid IP addresses found, using fallback: ${AppLogger.sanitize(ipAddress)}');
         }
       } catch (e) {
-        debugPrint('Error getting IPs: $e');
+        AppLogger.error('Error getting IPs: $e');
         // Keep default '0.0.0.0' on error
       }
 
@@ -174,7 +173,7 @@ class DeviceDiscoveryService {
       _startUdpDiscovery();
       _startCleanup();
     } catch (e) {
-      debugPrint('Error initializing device discovery: $e');
+      AppLogger.error('Error initializing device discovery: $e');
       _isInitialized = false;
 
       if (!_deviceController.isClosed) {
@@ -203,14 +202,14 @@ class DeviceDiscoveryService {
       if (deviceId == null || deviceId.isEmpty) {
         deviceId = _uuid.v4();
         await prefs.setString(_deviceIdKey, deviceId);
-        debugPrint('✅ Generated new device ID');
+        AppLogger.info('✅ Generated new device ID');
       } else {
-        debugPrint('✅ Loaded existing device ID');
+        AppLogger.info('✅ Loaded existing device ID');
       }
 
       return deviceId;
     } catch (e) {
-      debugPrint('Error with device ID persistence: $e');
+      AppLogger.error('Error with device ID persistence: $e');
       return _uuid.v4();
     }
   }
@@ -220,11 +219,11 @@ class DeviceDiscoveryService {
     try {
       final customNickname = await _nicknameService.getNickname(deviceId);
       if (customNickname != null && customNickname.isNotEmpty) {
-        debugPrint('✅ Using custom device nickname: $customNickname');
+        AppLogger.info('✅ Using custom device nickname: $customNickname');
         return customNickname;
       }
     } catch (e) {
-      debugPrint('Error getting custom nickname: $e');
+      AppLogger.error('Error getting custom nickname: $e');
     }
 
     return await _getDeviceName();
@@ -241,7 +240,7 @@ class DeviceDiscoveryService {
         return _getLinuxDeviceName();
       }
     } catch (e) {
-      debugPrint('Error getting device name: $e');
+      AppLogger.error('Error getting device name: $e');
     }
     return 'Syndro Device';
   }
@@ -257,7 +256,7 @@ class DeviceDiscoveryService {
           return deviceName;
         }
       } catch (e) {
-        debugPrint('Platform channel not available: $e');
+        AppLogger.info('Platform channel not available: $e');
       }
 
       // FIX: getprop may not work without shell - skip this on Android
@@ -265,7 +264,7 @@ class DeviceDiscoveryService {
       
       return 'Android Device';
     } catch (e) {
-      debugPrint('Error getting Android device name: $e');
+      AppLogger.error('Error getting Android device name: $e');
       return 'Android Device';
     }
   }
@@ -306,7 +305,7 @@ class DeviceDiscoveryService {
         }
       }
     } catch (e) {
-      debugPrint('Could not read /etc/hostname: $e');
+      AppLogger.info('Could not read /etc/hostname: $e');
     }
 
     final user = Platform.environment['USER'];
@@ -330,7 +329,7 @@ class DeviceDiscoveryService {
         ips.add(wifiIP);
       }
     } catch (e) {
-      debugPrint('Error getting WiFi IP: $e');
+      AppLogger.error('Error getting WiFi IP: $e');
     }
 
     // 2. Scan all network interfaces (with timeout)
@@ -351,12 +350,12 @@ class DeviceDiscoveryService {
         }
       }
     } catch (e) {
-      debugPrint('Error getting IP from interfaces: $e');
+      AppLogger.error('Error getting IP from interfaces: $e');
     }
 
     // FIX: Return empty list instead of ['0.0.0.0'] to handle consistently
     if (ips.isEmpty) {
-      debugPrint('⚠️ No valid IP addresses found');
+      AppLogger.warn('⚠️ No valid IP addresses found');
       return [];
     }
 
@@ -428,7 +427,7 @@ class DeviceDiscoveryService {
 
       // FIX: Handle empty IP list gracefully
       if (_localIps.isEmpty) {
-        debugPrint('No valid IP addresses, skipping scan');
+        AppLogger.info('No valid IP addresses, skipping scan');
         return;
       }
 
@@ -438,12 +437,12 @@ class DeviceDiscoveryService {
           .toSet()
           .toList();
     } catch (e) {
-      debugPrint('Error refreshing IPs: $e');
+      AppLogger.error('Error refreshing IPs: $e');
       return;
     }
 
     if (_subnets.isEmpty) {
-      debugPrint('No valid subnets, skipping scan');
+      AppLogger.info('No valid subnets, skipping scan');
       return;
     }
 
@@ -452,7 +451,7 @@ class DeviceDiscoveryService {
     try {
       await _scanNetwork();
     } catch (e) {
-      debugPrint('Scan error: $e');
+      AppLogger.error('Scan error: $e');
     } finally {
       _setScanning(false);
     }
@@ -465,7 +464,7 @@ class DeviceDiscoveryService {
 
     // Handle empty subnets gracefully
     if (_subnets.isEmpty) {
-      debugPrint('⚠️ No subnets available for scanning');
+      AppLogger.warn('⚠️ No subnets available for scanning');
       return;
     }
     
@@ -514,7 +513,7 @@ class DeviceDiscoveryService {
 
     if (ipsToScan.isEmpty) return;
 
-    debugPrint(
+    AppLogger.info(
         '🔍 Scanning ${ipsToScan.length} IPs across ${subnetsToScan.length} subnet(s)...');
 
     // Increased batch size for faster scanning with reduced timeouts
@@ -583,7 +582,7 @@ class DeviceDiscoveryService {
         try {
           socket?.destroy();
         } catch (e) {
-          debugPrint('Error destroying socket: $e');
+          AppLogger.error('Error destroying socket: $e');
         }
       }
     });
@@ -659,10 +658,10 @@ class DeviceDiscoveryService {
       final newName = await _getDeviceNameWithNickname(_currentDevice.id);
       if (newName != _currentDevice.name) {
         _currentDevice = _currentDevice.copyWith(name: newName);
-        debugPrint('✅ Device name updated to: $newName');
+        AppLogger.info('✅ Device name updated to: $newName');
       }
     } catch (e) {
-      debugPrint('Error reloading device name: $e');
+      AppLogger.error('Error reloading device name: $e');
     }
   }
 
@@ -740,20 +739,20 @@ class DeviceDiscoveryService {
             tempSocket?.close();
             tempSocket = null;
           } catch (e) {
-            debugPrint('Error closing temporary socket: $e');
+            AppLogger.error('Error closing temporary socket: $e');
           }
           
           if (i == maxRetries) {
-            debugPrint('⚠️ UDP discovery: could not bind any port ($baseUdpPort–${baseUdpPort + maxRetries})');
+            AppLogger.warn('⚠️ UDP discovery: could not bind any port ($baseUdpPort–${baseUdpPort + maxRetries})');
             return;
           }
-          debugPrint('⚠️ UDP port ${baseUdpPort + i} busy, trying next...');
+          AppLogger.warn('⚠️ UDP port ${baseUdpPort + i} busy, trying next...');
         }
       }
 
       _udpSocket?.broadcastEnabled = true;
 
-      debugPrint('🚀 UDP Discovery listening on port $_udpPort');
+      AppLogger.info('🚀 UDP Discovery listening on port $_udpPort');
 
       _udpSocket?.listen(
         (event) {
@@ -767,10 +766,10 @@ class DeviceDiscoveryService {
           }
         },
         onError: (e) {
-          debugPrint('UDP socket error: $e');
+          AppLogger.error('UDP socket error: $e');
         },
         onDone: () {
-          debugPrint('UDP socket closed');
+          AppLogger.info('UDP socket closed');
         },
       );
 
@@ -784,7 +783,7 @@ class DeviceDiscoveryService {
       // Send immediate broadcast
       _sendUdpBroadcast();
     } catch (e) {
-      debugPrint('Failed to start UDP discovery: $e');
+      AppLogger.error('Failed to start UDP discovery: $e');
       // FIX: Don't crash if UDP fails - HTTP discovery still works
     }
   }
@@ -812,11 +811,11 @@ class DeviceDiscoveryService {
         try {
           _udpSocket?.send(data, InternetAddress('$subnet.255'), _udpPort);
         } catch (e) {
-          debugPrint('Error sending UDP broadcast to subnet $subnet: $e');
+          AppLogger.error('Error sending UDP broadcast to subnet $subnet: $e');
         }
       }
     } catch (e) {
-      debugPrint('UDP Broadcast error: $e');
+      AppLogger.error('UDP Broadcast error: $e');
     }
   }
 
@@ -835,13 +834,13 @@ class DeviceDiscoveryService {
       final ip = datagram.address.address;
       final port = data['port'] as int? ?? AppConfig.defaultTransferPort;
 
-      debugPrint('📡 UDP Discovered device: ${AppLogger.sanitize('$ip:$port')} (${data['name']})');
+      AppLogger.info('📡 UDP Discovered device: ${AppLogger.sanitize('$ip:$port')} (${data['name']})');
 
       // Verify via HTTP
       _checkDeviceOnSpecificPort(ip, port);
     } catch (e) {
       // Invalid packet - ignore (expected for non-Syndro broadcasts)
-      debugPrint('Received invalid UDP packet: $e');
+      AppLogger.info('Received invalid UDP packet: $e');
     }
   }
 
@@ -860,7 +859,7 @@ class DeviceDiscoveryService {
         }
       }
     } catch (e) {
-      debugPrint('Error checking device at ${AppLogger.sanitize('$ip:$port')}: $e');
+      AppLogger.error('Error checking device at ${AppLogger.sanitize('$ip:$port')}: $e');
     }
   }
 
@@ -873,21 +872,21 @@ class DeviceDiscoveryService {
       _scanTimer?.cancel();
       _scanTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling scan timer: $e');
+      AppLogger.error('Error cancelling scan timer: $e');
     }
 
     try {
       _cleanupTimer?.cancel();
       _cleanupTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling cleanup timer: $e');
+      AppLogger.error('Error cancelling cleanup timer: $e');
     }
 
     try {
       _udpBroadcastTimer?.cancel();
       _udpBroadcastTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling UDP broadcast timer: $e');
+      AppLogger.error('Error cancelling UDP broadcast timer: $e');
     }
 
     // Close UDP socket properly
@@ -895,10 +894,10 @@ class DeviceDiscoveryService {
       if (_udpSocket != null) {
         _udpSocket?.close();
         _udpSocket = null;
-        debugPrint('✅ UDP socket closed');
+        AppLogger.info('✅ UDP socket closed');
       }
     } catch (e) {
-      debugPrint('Error closing UDP socket: $e');
+      AppLogger.error('Error closing UDP socket: $e');
     }
 
     // Close HTTP server if exists
@@ -906,29 +905,29 @@ class DeviceDiscoveryService {
       if (_server != null) {
         await _server!.close(force: true);
         _server = null;
-        debugPrint('✅ HTTP server closed');
+        AppLogger.info('✅ HTTP server closed');
       }
     } catch (e) {
-      debugPrint('Error closing HTTP server: $e');
+      AppLogger.error('Error closing HTTP server: $e');
     }
 
     // Close stream controller
     try {
       if (!_deviceController.isClosed) {
         await _deviceController.close();
-        debugPrint('✅ Device controller closed');
+        AppLogger.info('✅ Device controller closed');
       }
     } catch (e) {
-      debugPrint('Error closing device controller: $e');
+      AppLogger.error('Error closing device controller: $e');
     }
 
     try {
       if (!_scanningController.isClosed) {
         await _scanningController.close();
-        debugPrint('✅ Scanning controller closed');
+        AppLogger.info('✅ Scanning controller closed');
       }
     } catch (e) {
-      debugPrint('Error closing scanning controller: $e');
+      AppLogger.error('Error closing scanning controller: $e');
     }
   }
 }

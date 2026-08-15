@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+
+import '../../../utils/app_logger.dart';
 
 /// Network utility functions for web sharing
 class NetworkUtils {
@@ -46,14 +47,14 @@ class NetworkUtils {
 
       // Priority: hotspot > wifi > any private IP
       final selectedIp = hotspotIp ?? wifiIp ?? anyPrivateIp ?? '127.0.0.1';
-      debugPrint('🌐 Network interfaces found:');
-      debugPrint('   Hotspot IP: $hotspotIp');
-      debugPrint('   WiFi IP: $wifiIp');
-      debugPrint('   Selected: $selectedIp');
-      
+      AppLogger.info('🌐 Network interfaces found:');
+      AppLogger.info('   Hotspot IP: $hotspotIp');
+      AppLogger.info('   WiFi IP: $wifiIp');
+      AppLogger.info('   Selected: $selectedIp');
+
       return selectedIp;
     } catch (e) {
-      debugPrint('Error getting local IP: $e');
+      AppLogger.error('Error getting local IP: $e');
     }
     return '127.0.0.1';
   }
@@ -74,7 +75,7 @@ class NetworkUtils {
         }
       }
     } catch (e) {
-      debugPrint('Error getting local IPs: $e');
+      AppLogger.error('Error getting local IPs: $e');
     }
     return ips;
   }

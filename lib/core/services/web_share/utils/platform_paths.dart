@@ -1,8 +1,9 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+
+import '../../../utils/app_logger.dart';
 
 /// Platform-specific path utilities
 class PlatformPaths {
@@ -22,10 +23,10 @@ class PlatformPaths {
             final testFile = File('$publicDownload/.syndro_test');
             await testFile.writeAsString('test');
             await testFile.delete();
-            debugPrint('✅ Using public Downloads folder: $publicDownload');
+            AppLogger.info('✅ Using public Downloads folder: $publicDownload');
             return publicDownload;
           } catch (e) {
-            debugPrint('⚠️ Cannot write to public Downloads: $e');
+            AppLogger.warn('⚠️ Cannot write to public Downloads: $e');
           }
         }
 
@@ -36,16 +37,16 @@ class PlatformPaths {
           if (!await syndroDir.exists()) {
             await syndroDir.create(recursive: true);
           }
-          debugPrint('✅ Using Syndro Downloads folder: $syndroDownload');
+          AppLogger.info('✅ Using Syndro Downloads folder: $syndroDownload');
           return syndroDownload;
         } catch (e) {
-          debugPrint('⚠️ Cannot create Syndro folder: $e');
+          AppLogger.warn('⚠️ Cannot create Syndro folder: $e');
         }
 
         // Fallback: Try external storage directory
         final extDir = await getExternalStorageDirectory();
         if (extDir != null) {
-          debugPrint('⚠️ Falling back to app storage: ${extDir.path}');
+          AppLogger.warn('⚠️ Falling back to app storage: ${extDir.path}');
           return extDir.path;
         }
 
@@ -69,7 +70,7 @@ class PlatformPaths {
         return '/tmp';
       }
     } catch (e) {
-      debugPrint('Error getting download directory: $e');
+      AppLogger.error('Error getting download directory: $e');
     }
 
     // Final fallback - use app documents directory

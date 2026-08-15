@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
 import '../models/transfer_checkpoint.dart';
+import '../utils/app_logger.dart';
 
 /// Manages transfer checkpoints (save/load/clear) for resume-on-failure.
 ///
@@ -52,7 +52,7 @@ class CheckpointManager {
       _fileLocks[transferId] = true;
       return true;
     } catch (e) {
-      debugPrint('⚠️ Lock acquisition error: $e');
+      AppLogger.warn('⚠️ Lock acquisition error: $e');
       return false;
     }
   }
@@ -68,7 +68,7 @@ class CheckpointManager {
         await lockFile.delete();
       }
     } catch (e) {
-      debugPrint('⚠️ Lock release error: $e');
+      AppLogger.warn('⚠️ Lock release error: $e');
     }
   }
 
@@ -76,7 +76,7 @@ class CheckpointManager {
   Future<void> saveCheckpoint(TransferCheckpoint checkpoint) async {
     final acquired = await _acquireLock(checkpoint.transferId);
     if (!acquired) {
-      debugPrint('⚠️ Could not acquire lock for checkpoint: ${checkpoint.transferId}');
+      AppLogger.warn('⚠️ Could not acquire lock for checkpoint: ${checkpoint.transferId}');
       return;
     }
 
@@ -88,7 +88,7 @@ class CheckpointManager {
       await file.writeAsString(json);
     } catch (e) {
       // FIX: Use debugPrint instead of print
-      debugPrint('Error saving checkpoint: $e');
+      AppLogger.error('Error saving checkpoint: $e');
     } finally {
       await _releaseLock(checkpoint.transferId);
     }
@@ -98,7 +98,7 @@ class CheckpointManager {
   Future<TransferCheckpoint?> loadCheckpoint(String transferId) async {
     final acquired = await _acquireLock(transferId);
     if (!acquired) {
-      debugPrint('⚠️ Could not acquire lock for checkpoint: $transferId');
+      AppLogger.warn('⚠️ Could not acquire lock for checkpoint: $transferId');
       return null;
     }
 
@@ -125,7 +125,7 @@ class CheckpointManager {
       return checkpoint;
     } catch (e) {
       // FIX: Use debugPrint instead of print
-      debugPrint('Error loading checkpoint: $e');
+      AppLogger.error('Error loading checkpoint: $e');
       return null;
     } finally {
       await _releaseLock(transferId);
@@ -136,7 +136,7 @@ class CheckpointManager {
   Future<void> clearCheckpoint(String transferId) async {
     final acquired = await _acquireLock(transferId);
     if (!acquired) {
-      debugPrint('⚠️ Could not acquire lock for clearing checkpoint: $transferId');
+      AppLogger.warn('⚠️ Could not acquire lock for clearing checkpoint: $transferId');
       // Try to delete anyway as this is cleanup
     }
 
@@ -149,7 +149,7 @@ class CheckpointManager {
       }
     } catch (e) {
       // FIX: Use debugPrint instead of print
-      debugPrint('Error clearing checkpoint: $e');
+      AppLogger.error('Error clearing checkpoint: $e');
     } finally {
       if (acquired) {
         await _releaseLock(transferId);
@@ -202,14 +202,14 @@ class CheckpointManager {
           }
         } catch (e) {
           // FIX: Use debugPrint instead of print
-          debugPrint('Error reading checkpoint file: $e');
+          AppLogger.error('Error reading checkpoint file: $e');
         }
       }
 
       return checkpoints;
     } catch (e) {
       // FIX: Use debugPrint instead of print
-      debugPrint('Error getting checkpoints: $e');
+      AppLogger.error('Error getting checkpoints: $e');
       return [];
     }
   }
@@ -226,7 +226,7 @@ class CheckpointManager {
           .where((f) => f.path.endsWith('.json'))
           .length;
     } catch (e) {
-      debugPrint('Error getting checkpoint count: $e');
+      AppLogger.error('Error getting checkpoint count: $e');
       return 0;
     }
   }
@@ -241,7 +241,7 @@ class CheckpointManager {
       }
     } catch (e) {
       // FIX: Use debugPrint instead of print
-      debugPrint('Error clearing all checkpoints: $e');
+      AppLogger.error('Error clearing all checkpoints: $e');
     }
   }
 

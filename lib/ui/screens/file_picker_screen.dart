@@ -563,6 +563,24 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
     final isDesktop =
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
+    // Recipient(s) for the header card. Supports single- and multi-recipient
+    // mode; `recipientDevice` may be null when launched with `recipientDevices`.
+    final recipients = widget.allRecipients;
+    final Device? primaryRecipient =
+        recipients.isNotEmpty ? recipients.first : null;
+    final bool isMultiRecipient = recipients.length > 1;
+    final IconData recipientIcon = isMultiRecipient
+        ? Icons.groups_rounded
+        : (primaryRecipient != null
+            ? _getDeviceIcon(primaryRecipient.platform)
+            : Icons.devices_other_rounded);
+    final String recipientName = isMultiRecipient
+        ? '${recipients.length} devices'
+        : (primaryRecipient?.name ?? 'No recipient selected');
+    final String? recipientSubtitle = isMultiRecipient
+        ? recipients.map((d) => d.name).join(', ')
+        : primaryRecipient?.ipAddress;
+
     Widget body = Container(
       decoration: BoxDecoration(
         gradient: AppTheme.backgroundGradient,
@@ -615,7 +633,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                         ],
                       ),
                       child: Icon(
-                        _getDeviceIcon(widget.recipientDevice!.platform),
+                        recipientIcon,
                         color: Colors.white,
                         size: 32,
                       ),
@@ -634,29 +652,39 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          widget.recipientDevice!.name,
+                          recipientName,
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.wifi_rounded,
-                              size: 14,
-                              color: AppTheme.textTertiary,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              widget.recipientDevice!.ipAddress,
-                              style:
-                                  Theme.of(context).textTheme.bodySmall?.copyWith(
+                        if (recipientSubtitle != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                isMultiRecipient
+                                    ? Icons.devices_rounded
+                                    : Icons.wifi_rounded,
+                                size: 14,
+                                color: AppTheme.textTertiary,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  recipientSubtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
                                         color: AppTheme.textTertiary,
                                       ),
-                            ),
-                          ],
-                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

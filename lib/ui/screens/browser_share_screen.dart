@@ -63,8 +63,12 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
   void initState() {
     super.initState();
     _files = List.from(widget.files);
-    _startSharing();
     _setupConnectionListeners();
+    // Defer to after the first frame: _startSharing() calls setState
+    // synchronously, which is illegal during initState/build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startSharing();
+    });
   }
 
   @override

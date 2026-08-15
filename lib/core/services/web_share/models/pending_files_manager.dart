@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import '../../../utils/app_logger.dart';
 import 'received_file.dart';
 
 /// Manages pending files that have been received but not yet saved
@@ -65,9 +65,9 @@ class PendingFilesManager {
       await finalDir.create(recursive: true);
     }
 
-    debugPrint('📁 PendingFilesManager initialized');
-    debugPrint('   Temp: $tempDirectory');
-    debugPrint('   Final: $finalDirectory');
+    AppLogger.info('📁 PendingFilesManager initialized');
+    AppLogger.info('   Temp: $tempDirectory');
+    AppLogger.info('   Final: $finalDirectory');
   }
 
   /// Get temp directory path
@@ -81,18 +81,18 @@ class PendingFilesManager {
     _pendingFiles.add(file);
     _notifyListeners();
     _fileEventController.add(file);
-    debugPrint('📥 Added pending file: ${file.name}');
+    AppLogger.info('📥 Added pending file: ${file.name}');
   }
 
   /// Save a single file to final destination
   Future<bool> saveFile(ReceivedFile file) async {
     if (!file.canSave) {
-      debugPrint('⚠️ Cannot save file: ${file.name} (status: ${file.status})');
+      AppLogger.warn('⚠️ Cannot save file: ${file.name} (status: ${file.status})');
       return false;
     }
 
     if (_finalDirectory == null) {
-      debugPrint('❌ Final directory not set');
+      AppLogger.error('❌ Final directory not set');
       return false;
     }
 
@@ -119,10 +119,10 @@ class PendingFilesManager {
       _notifyListeners();
       _fileEventController.add(file);
 
-      debugPrint('✅ Saved file: ${file.name} → ${file.finalPath}');
+      AppLogger.info('✅ Saved file: ${file.name} → ${file.finalPath}');
       return true;
     } catch (e) {
-      debugPrint('❌ Error saving file ${file.name}: $e');
+      AppLogger.error('❌ Error saving file ${file.name}: $e');
       file.status = FileReceiveStatus.error;
       file.errorMessage = e.toString();
       _notifyListeners();
@@ -155,7 +155,7 @@ class PendingFilesManager {
   /// Discard a single file (delete from temp)
   Future<bool> discardFile(ReceivedFile file) async {
     if (!file.canDiscard) {
-      debugPrint('⚠️ Cannot discard file: ${file.name} (status: ${file.status})');
+      AppLogger.warn('⚠️ Cannot discard file: ${file.name} (status: ${file.status})');
       return false;
     }
 
@@ -169,10 +169,10 @@ class PendingFilesManager {
       _notifyListeners();
       _fileEventController.add(file);
 
-      debugPrint('🗑️ Discarded file: ${file.name}');
+      AppLogger.info('🗑️ Discarded file: ${file.name}');
       return true;
     } catch (e) {
-      debugPrint('❌ Error discarding file ${file.name}: $e');
+      AppLogger.error('❌ Error discarding file ${file.name}: $e');
       return false;
     }
   }
@@ -201,7 +201,7 @@ class PendingFilesManager {
           await tempFile.delete();
         }
       } catch (e) {
-        debugPrint('Error deleting temp file: $e');
+        AppLogger.error('Error deleting temp file: $e');
       }
     }
 

@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/device.dart';
 import '../models/encryption_models.dart';
+import '../utils/app_logger.dart';
 import 'encryption_service.dart';
 
 /// Handles secure key exchange between devices
@@ -14,6 +15,13 @@ import 'encryption_service.dart';
 /// Uses X25519 Diffie-Hellman (same as Signal Protocol)
 class KeyExchangeService {
   final EncryptionService _encryptionService;
+
+  /// Secure storage for the persistent device identity seed.
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
+  /// Storage key holding the 32-byte X25519 private seed (base64) for this
+  /// device's long-term identity.
+  static const String _identityKey = 'syndro.identity.privkey';
 
   // Cache of active sessions
   final Map<String, EncryptionSession> _sessions = {};
@@ -24,12 +32,39 @@ class KeyExchangeService {
 
   KeyExchangeService(this._encryptionService);
 
-  /// Initialize with a new key pair
+  /// Initialize with a persistent key pair.
+  ///
+  /// Loads the device's long-term X25519 identity from secure storage, or
+  /// generates and persists one on first run. Persisting the identity means
+  /// peers who pinned this device (TOFU) will not see a false MITM alarm after
+  /// an app restart.
   Future<void> initialize() async {
+    try {
+      final stored = await _secureStorage.read(key: _identityKey);
+      if (stored != null && stored.isNotEmpty) {
+        final seed = base64Decode(stored);
+        _currentKeyPair = await _encryptionService.keyPairFromSeed(seed);
+        _currentPublicKey =
+            await _encryptionService.getPublicKey(_currentKeyPair!);
+        AppLogger.info('🔐 Key exchange service initialized (persistent identity)');
+        return;
+      }
+    } catch (e) {
+      // Corrupt / unreadable identity — fall through to regenerate.
+      AppLogger.warn('⚠️ Could not load persisted identity, regenerating: $e');
+    }
+
     _currentKeyPair = await _encryptionService.generateKeyPair();
     _currentPublicKey =
         await _encryptionService.getPublicKey(_currentKeyPair!);
-    debugPrint('🔐 Key exchange service initialized');
+
+    try {
+      final seed = await _encryptionService.keyPairSeedBytes(_currentKeyPair!);
+      await _secureStorage.write(key: _identityKey, value: base64Encode(seed));
+      AppLogger.info('🔐 Key exchange service initialized (new identity persisted)');
+    } catch (e) {
+      AppLogger.warn('⚠️ Could not persist device identity: $e');
+    }
   }
 
   /// Get our public key for sharing
@@ -115,10 +150,10 @@ class KeyExchangeService {
         expiresAt: DateTime.now().add(const Duration(hours: 24)),
       );
 
-      debugPrint('🔐 Key exchange successful with ${remoteDevice.name}');
+      AppLogger.info('🔐 Key exchange successful with ${remoteDevice.name}');
       return sharedSecret;
     } catch (e) {
-      debugPrint('❌ Key exchange failed: $e');
+      AppLogger.error('❌ Key exchange failed: $e');
       rethrow;
     }
   }

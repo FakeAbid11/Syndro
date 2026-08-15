@@ -70,19 +70,19 @@ class ParallelTransferService {
     final fileName = file.path.split(Platform.pathSeparator).last;
 
     if (!config.shouldUseParallel(fileSize)) {
-      debugPrint('📁 File too small for parallel, using single connection');
+      AppLogger.info('📁 File too small for parallel, using single connection');
       throw UnsupportedError('Use regular sendFile for small files');
     }
 
-    debugPrint(
+    AppLogger.info(
         '🚀 Starting parallel transfer: $fileName (${ByteFormatter.format(fileSize)})');
-    debugPrint(
+    AppLogger.info(
         '   Connections: ${config.connections}, Chunk size: ${ByteFormatter.format(config.chunkSize)}');
-    debugPrint(
+    AppLogger.info(
         '   Receiver: ${receiver.ipAddress}:${receiver.port}');
 
     final chunks = config.getAllChunks(fileSize);
-    debugPrint('   Total chunks: ${chunks.length}');
+    AppLogger.info('   Total chunks: ${chunks.length}');
 
     final state = ParallelTransferState(
       transferId: transferId,
@@ -98,7 +98,7 @@ class ParallelTransferService {
     try {
       // FIX: Initiate transfer FIRST with placeholder hash
       // This notifies the receiver immediately so they can show the transfer request
-      debugPrint('📤 Initiating transfer with receiver (hash will be calculated in parallel)...');
+      AppLogger.info('📤 Initiating transfer with receiver (hash will be calculated in parallel)...');
       final initResponse = await _initiateParallelTransfer(
         receiver: receiver,
         transferId: transferId,
@@ -115,7 +115,7 @@ class ParallelTransferService {
       // FIX: Handle pending_approval status - wait for receiver to approve
       final status = initResponse['status'] as String?;
       if (status == 'pending_approval') {
-        debugPrint('⏳ Transfer pending approval. Waiting for receiver to accept...');
+        AppLogger.info('⏳ Transfer pending approval. Waiting for receiver to accept...');
         
         // Wait for approval by polling the receiver
         final requestId = initResponse['requestId'] as String? ?? transferId;
@@ -130,15 +130,15 @@ class ParallelTransferService {
           throw Exception('Transfer rejected or timed out');
         }
         
-        debugPrint('✅ Transfer approved! Starting upload...');
+        AppLogger.info('✅ Transfer approved! Starting upload...');
       } else if (initResponse['success'] != true) {
         throw Exception(
             'Failed to initiate parallel transfer: ${initResponse['error']}');
       } else {
-        debugPrint('✅ Receiver auto-accepted! Starting upload...');
+        AppLogger.info('✅ Receiver auto-accepted! Starting upload...');
       }
 
-      debugPrint('📤 Now calculating hash and uploading chunks in parallel...');
+      AppLogger.info('📤 Now calculating hash and uploading chunks in parallel...');
 
       // FIX: Calculate hash in parallel with chunk uploads
       final hashCompleter = Completer<String>();
@@ -148,7 +148,7 @@ class ParallelTransferService {
         file: file,
         onProgress: (bytesProcessed, totalBytes) {
           if (bytesProcessed % (100 * 1024 * 1024) == 0) {
-            debugPrint('   Hash progress: ${ByteFormatter.format(bytesProcessed)}/${ByteFormatter.format(totalBytes)}');
+            AppLogger.info('   Hash progress: ${ByteFormatter.format(bytesProcessed)}/${ByteFormatter.format(totalBytes)}');
           }
         },
       ).then((hash) {
@@ -157,7 +157,7 @@ class ParallelTransferService {
         }
         return hash;
       }).catchError((e) {
-        debugPrint('❌ Hash calculation failed: $e');
+        AppLogger.error('❌ Hash calculation failed: $e');
         if (!hashCompleter.isCompleted) {
           hashCompleter.completeError(e);
         }
@@ -190,9 +190,9 @@ class ParallelTransferService {
       await Future.wait(futures);
 
       // Wait for hash calculation to complete (should be done by now)
-      debugPrint('⏳ Waiting for hash calculation to complete...');
+      AppLogger.info('⏳ Waiting for hash calculation to complete...');
       final fileHash = await hashFuture;
-      debugPrint('✅ Hash calculated: ${fileHash.substring(0, 16)}...');
+      AppLogger.info('✅ Hash calculated: ${fileHash.substring(0, 16)}...');
 
       await _notifyTransferComplete(
         receiver: receiver,
@@ -201,16 +201,16 @@ class ParallelTransferService {
         senderId: sender.id,
       );
 
-      debugPrint('✅ Parallel transfer complete: $fileName');
+      AppLogger.info('✅ Parallel transfer complete: $fileName');
     } on SocketException catch (e) {
-      debugPrint('❌ Network error during parallel transfer: $e');
+      AppLogger.error('❌ Network error during parallel transfer: $e');
       rethrow;
     } on TimeoutException catch (e) {
-      debugPrint('❌ Timeout during parallel transfer: $e');
+      AppLogger.error('❌ Timeout during parallel transfer: $e');
       rethrow;
     } catch (e, stackTrace) {
-      debugPrint('❌ Parallel transfer failed: $e');
-      debugPrint('Stack trace: $stackTrace');
+      AppLogger.error('❌ Parallel transfer failed: $e');
+      AppLogger.info('Stack trace: $stackTrace');
       rethrow;
     } finally {
       await _transfersLock.synchronized(() async {
@@ -225,7 +225,7 @@ class ParallelTransferService {
     void Function(int bytesProcessed, int totalBytes)? onProgress,
   }) async {
     final hashStartTime = DateTime.now();
-    debugPrint('📝 Starting background hash calculation...');
+    AppLogger.info('📝 Starting background hash calculation...');
     
     final filePath = file.path;
     final hash = await Isolate.run(() async {
@@ -233,7 +233,7 @@ class ParallelTransferService {
     });
     
     final hashDuration = DateTime.now().difference(hashStartTime);
-    debugPrint('📝 Hash calculated in ${hashDuration.inSeconds}s');
+    AppLogger.info('📝 Hash calculated in ${hashDuration.inSeconds}s');
     return hash;
   }
 
@@ -261,7 +261,7 @@ class ParallelTransferService {
     SecretKey? encryptionKey,
     void Function(int bytesSent, int totalBytes)? onProgress,
   }) async {
-    debugPrint(
+    AppLogger.info(
         '🔗 Connection $connectionId: Uploading ${chunks.length} chunks');
 
     RandomAccessFile? raf;
@@ -270,7 +270,7 @@ class ParallelTransferService {
 
       for (final chunk in chunks) {
         if (state.isCancelled || _isDisposed) {
-          debugPrint('🚫 Connection $connectionId: Transfer cancelled');
+          AppLogger.info('🚫 Connection $connectionId: Transfer cancelled');
           break;
         }
 
@@ -302,16 +302,16 @@ class ParallelTransferService {
         _emitProgress(state);
       }
 
-      debugPrint('✅ Connection $connectionId: Complete');
+      AppLogger.info('✅ Connection $connectionId: Complete');
     } on FileSystemException catch (e) {
-      debugPrint('⚠️ File system error in connection $connectionId: $e');
+      AppLogger.error('⚠️ File system error in connection $connectionId: $e');
       rethrow;
     } finally {
       // FIXED: Ensure file is always closed
       try {
         await raf?.close();
       } catch (e) {
-        debugPrint('⚠️ Error closing file in connection $connectionId: $e');
+        AppLogger.error('⚠️ Error closing file in connection $connectionId: $e');
       }
     }
   }
@@ -346,21 +346,21 @@ class ParallelTransferService {
         return;
       } on SocketException catch (e) {
         lastError = e;
-        debugPrint(
+        AppLogger.error(
             '⚠️ Network error uploading chunk $chunkIndex (attempt ${attempt + 1}): $e');
         if (attempt < maxRetries - 1) {
           await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
         }
       } on TimeoutException catch (e) {
         lastError = e;
-        debugPrint(
+        AppLogger.warn(
             '⚠️ Timeout uploading chunk $chunkIndex (attempt ${attempt + 1}): $e');
         if (attempt < maxRetries - 1) {
           await Future.delayed(Duration(milliseconds: 1000 * (attempt + 1)));
         }
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        debugPrint(
+        AppLogger.error(
             '⚠️ Chunk $chunkIndex upload failed (attempt ${attempt + 1}): $e');
 
         if (attempt < maxRetries - 1) {
@@ -432,7 +432,7 @@ class ParallelTransferService {
     final url = Uri.parse(
         'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/initiate');
 
-    debugPrint('📤 Initiating parallel transfer to ${AppLogger.sanitize('${receiver.ipAddress}:${receiver.port}')}');
+    AppLogger.info('📤 Initiating parallel transfer to ${AppLogger.sanitize('${receiver.ipAddress}:${receiver.port}')}');
 
     try {
       final response = await http
@@ -462,7 +462,7 @@ class ParallelTransferService {
             },
           );
 
-      debugPrint('📥 Initiation response: ${response.statusCode}');
+      AppLogger.info('📥 Initiation response: ${response.statusCode}');
       
       if (response.statusCode == 200) {
         return {'success': true, ...jsonDecode(response.body)};
@@ -470,16 +470,16 @@ class ParallelTransferService {
         return {'success': false, 'error': response.body};
       }
     } on SocketException catch (e) {
-      debugPrint('❌ Socket error during initiation: $e');
+      AppLogger.error('❌ Socket error during initiation: $e');
       return {'success': false, 'error': 'Network error: $e'};
     } on TimeoutException catch (e) {
-      debugPrint('❌ Timeout during initiation: $e');
+      AppLogger.error('❌ Timeout during initiation: $e');
       return {'success': false, 'error': 'Request timeout: $e'};
     } on FormatException catch (e) {
-      debugPrint('❌ Invalid response format: $e');
+      AppLogger.error('❌ Invalid response format: $e');
       return {'success': false, 'error': 'Invalid response format: $e'};
     } catch (e) {
-      debugPrint('❌ Unexpected error during initiation: $e');
+      AppLogger.error('❌ Unexpected error during initiation: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -513,7 +513,7 @@ class ParallelTransferService {
             },
           );
     } catch (e) {
-      debugPrint('⚠️ Failed to notify transfer completion: $e');
+      AppLogger.error('⚠️ Failed to notify transfer completion: $e');
       // Don't rethrow - transfer is already complete, notification is optional
     }
   }
@@ -542,23 +542,23 @@ class ParallelTransferService {
           final status = data['status'] as String?;
           
           if (status == 'approved') {
-            debugPrint('✅ Transfer approved by receiver');
+            AppLogger.info('✅ Transfer approved by receiver');
             return true;
           } else if (status == 'rejected' || status == 'expired') {
-            debugPrint('❌ Transfer $status by receiver');
+            AppLogger.error('❌ Transfer $status by receiver');
             return false;
           }
           // status == 'pending' - continue waiting
         }
       } catch (e) {
-        debugPrint('⚠️ Error checking approval status: $e');
+        AppLogger.error('⚠️ Error checking approval status: $e');
       }
       
       // Wait before polling again
       await Future.delayed(const Duration(milliseconds: 500));
     }
     
-    debugPrint('⏰ Transfer approval timed out');
+    AppLogger.info('⏰ Transfer approval timed out');
     return false;
   }
 
@@ -635,7 +635,7 @@ class ParallelTransferService {
           percentage: state.percentage,
         ));
       } catch (e) {
-        debugPrint('⚠️ Error emitting progress: $e');
+        AppLogger.error('⚠️ Error emitting progress: $e');
       }
     }
   }
@@ -655,7 +655,7 @@ class ParallelTransferService {
     if (_isDisposed) return;
     _isDisposed = true;
 
-    debugPrint('🧹 Disposing ParallelTransferService...');
+    AppLogger.info('🧹 Disposing ParallelTransferService...');
 
     // Cancel all active transfers first to unblock any pending lock waiters
     try {
@@ -664,14 +664,14 @@ class ParallelTransferService {
       }
       _activeTransfers.clear();
     } catch (e) {
-      debugPrint('⚠️ Error cancelling active transfers: $e');
+      AppLogger.error('⚠️ Error cancelling active transfers: $e');
     }
 
     // Dispose the transfer lock so any pending waiters are released
     try {
       _transfersLock.dispose();
     } catch (e) {
-      debugPrint('⚠️ Error disposing transfer lock: $e');
+      AppLogger.error('⚠️ Error disposing transfer lock: $e');
     }
 
     // FIXED: Close HTTP clients with error handling
@@ -679,7 +679,7 @@ class ParallelTransferService {
       try {
         client.close();
       } catch (e) {
-        debugPrint('⚠️ Error closing HTTP client: $e');
+        AppLogger.error('⚠️ Error closing HTTP client: $e');
       }
     }
     _clientPool.clear();
@@ -688,7 +688,7 @@ class ParallelTransferService {
     try {
       await _writerManager.closeAll();
     } catch (e) {
-      debugPrint('⚠️ Error closing writer manager: $e');
+      AppLogger.error('⚠️ Error closing writer manager: $e');
     }
 
     // FIXED: Close progress controller with error handling
@@ -697,10 +697,10 @@ class ParallelTransferService {
         await _progressController.close();
       }
     } catch (e) {
-      debugPrint('⚠️ Error closing progress controller: $e');
+      AppLogger.error('⚠️ Error closing progress controller: $e');
     }
 
-    debugPrint('✅ ParallelTransferService disposed');
+    AppLogger.info('✅ ParallelTransferService disposed');
   }
 
 }

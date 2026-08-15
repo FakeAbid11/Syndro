@@ -31,23 +31,30 @@ class PlatformService {
   /// Get platform-specific download directory
   static Future<Directory> getDownloadDirectory() async {
     if (Platform.isAndroid) {
-      // Android: Use external storage downloads
+      // Android 11+ ignores requestLegacyExternalStorage, so a bare exists()
+      // check on the public Download folder is not enough — the folder can
+      // exist yet be unwritable under scoped storage. Probe writability and
+      // fall back to app-specific external storage, then documents.
       try {
         final directory = Directory('/storage/emulated/0/Download');
         if (await directory.exists()) {
+          final probe = File('${directory.path}/.syndro_write_test');
+          await probe.writeAsString('test');
+          await probe.delete();
           return directory;
         }
       } catch (e) {
-        // Fallback to app directory
+        // Not writable (scoped storage) — fall through.
       }
       // Fallback to app-specific external storage
       try {
         final externalDir = await getExternalStorageDirectory();
         if (externalDir != null) {
           final downloadDir = Directory('${externalDir.path}/Download');
-          if (await downloadDir.exists()) {
-            return downloadDir;
+          if (!await downloadDir.exists()) {
+            await downloadDir.create(recursive: true);
           }
+          return downloadDir;
         }
       } catch (e) {
         // Fallback to documents directory

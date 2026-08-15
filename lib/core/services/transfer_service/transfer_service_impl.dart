@@ -83,6 +83,11 @@ class TransferService {
 
   final _transferController = StreamController<Transfer>.broadcast();
   final Map<String, Transfer> _activeTransfers = {};
+  /// Transfer-scoped authorization: maps an approved transferId to the exact
+  /// sender token that was accepted for it. Upload/chunk/complete handlers must
+  /// present a matching token so a device with a valid encryption session
+  /// cannot push data into a transfer approved for a *different* sender.
+  final Map<String, String> _transferTokens = {};
   final Map<String, StreamController<TransferProgress>> _progressControllers =
       {};
 
@@ -92,6 +97,9 @@ class TransferService {
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   static const String _trustedDevicesKey = 'syndro_trusted_devices';
+  /// Storage key holding the 32-byte X25519 private seed (base64) for this
+  /// device's persistent long-term identity used in TOFU pinning.
+  static const String _identityKeyStorageKey = 'syndro.identity.privkey';
   final AppSettingsService _settingsService = AppSettingsService();
 
   final Map<String, TrustedDevice> _trustedDevices = {};
@@ -155,7 +163,7 @@ class TransferService {
     // Start initialization and store the future
     // Use catchError to reset _initFuture on failure, allowing retries
     _initFuture = _doInitialize().catchError((Object e, StackTrace st) {
-      if (kDebugMode) debugPrint('TransferService initialization failed: $e\n$st');
+      if (kDebugMode) AppLogger.error('TransferService initialization failed: $e\n$st');
       _initFuture = null; // Allow retry on failure
     });
     return _initFuture;
@@ -165,7 +173,7 @@ class TransferService {
     await _loadTrustedDevices();
     await _initializeEncryption();
     _isInitialized = true;
-    if (kDebugMode) debugPrint('✅ TransferService initialized');
+    if (kDebugMode) AppLogger.info('✅ TransferService initialized');
   }
 
   Stream<Transfer> get transferStream => _transferController.stream;
@@ -179,10 +187,40 @@ class TransferService {
 
   Future<void> _initializeEncryption() async {
     try {
+      // Load a persisted long-term identity if present so peers who pinned
+      // this device (TOFU) don't get a false MITM alarm after a restart.
+      final stored = await _secureStorage.read(key: _identityKeyStorageKey);
+      if (stored != null && stored.isNotEmpty) {
+        try {
+          final seed = base64Decode(stored);
+          if (seed.length == 32) {
+            _encryptionKeyPair = await _keyExchange.newKeyPairFromSeed(seed);
+            if (kDebugMode) {
+              AppLogger.info('🔐 Encryption initialized (persistent identity)');
+            }
+            return;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            AppLogger.warn('⚠️ Corrupt stored identity, regenerating: $e');
+          }
+        }
+      }
+
+      // First run (or unreadable identity): generate and persist.
       _encryptionKeyPair = await _keyExchange.newKeyPair();
-      if (kDebugMode) debugPrint('🔐 Encryption initialized (X25519 + AES-256-GCM)');
+      try {
+        final data = await _encryptionKeyPair!.extract();
+        await _secureStorage.write(
+          key: _identityKeyStorageKey,
+          value: base64Encode(data.bytes),
+        );
+      } catch (e) {
+        if (kDebugMode) AppLogger.warn('⚠️ Could not persist device identity: $e');
+      }
+      if (kDebugMode) AppLogger.info('🔐 Encryption initialized (X25519 + AES-256-GCM)');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ Failed to initialize encryption: $e');
+      if (kDebugMode) AppLogger.error('❌ Failed to initialize encryption: $e');
       _encryptionKeyPair = null;
       encryptionEnabled = false;
     }
@@ -290,7 +328,7 @@ class TransferService {
 
     if (expiredIds.isNotEmpty) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.info(
             '🧹 Cleaned up ${expiredIds.length} expired encryption sessions');
       }
     }
@@ -324,7 +362,7 @@ class TransferService {
     }
 
     if (expiredIds.isNotEmpty) {
-      if (kDebugMode) debugPrint('🧹 Cleaned up ${expiredIds.length} old trusted devices');
+      if (kDebugMode) AppLogger.info('🧹 Cleaned up ${expiredIds.length} old trusted devices');
       _saveTrustedDevices();
     }
   }
@@ -376,7 +414,7 @@ class TransferService {
       }
     };
 
-    debugPrint('⚡ Parallel transfer handlers initialized');
+    AppLogger.info('⚡ Parallel transfer handlers initialized');
   }
 
   Future<void> _handleParallelInitiate(HttpRequest request) async {
@@ -396,6 +434,15 @@ class TransferService {
         return;
       }
 
+      // Enforce the global size cap on the parallel receive path too.
+      if (fileSize > _maxFileSizeBytes) {
+        AppLogger.info(
+            'Security: File size $fileSize exceeds maximum $_maxFileSizeBytes');
+        await _sendBadRequest(request,
+            'File size exceeds maximum allowed size (${_maxFileSizeBytes ~/ (1024 * 1024 * 1024)}GB)');
+        return;
+      }
+
       // Check if auto-accept is enabled for trusted devices
       final trustedDevice = _trustedDevices[senderId];
       final autoAcceptTrusted = await _settingsService.getAutoAcceptTrusted();
@@ -407,8 +454,9 @@ class TransferService {
           ) &&
           autoAcceptTrusted) {
         // Auto-accept: proceed with transfer immediately
-        debugPrint('✅ Auto-accepting parallel transfer from trusted device: $senderName');
-        
+        AppLogger.info('✅ Auto-accepting parallel transfer from trusted device: $senderName');
+
+        _transferTokens[transferId] = senderToken;
         final result = await _parallelReceiver.handleInitiate(data);
         await _sendResponse(request,
             result['success'] == true ? HttpStatus.ok : HttpStatus.badRequest, result);
@@ -441,7 +489,7 @@ class TransferService {
         _pendingRequestsController.add(_pendingRequests.values.toList());
       }
 
-      if (kDebugMode) debugPrint('📥 Parallel transfer pending approval: $fileName from $senderName');
+      if (kDebugMode) AppLogger.info('📥 Parallel transfer pending approval: $fileName from $senderName');
 
       // Return pending_approval status so sender waits for approval
       await _sendResponse(request, HttpStatus.ok, {
@@ -460,9 +508,25 @@ class TransferService {
       final chunkIndexStr = request.headers.value('X-Chunk-Index');
       final originalSizeStr = request.headers.value('X-Original-Size');
       final encryptedStr = request.headers.value('X-Encrypted');
+      final senderId = request.headers.value('X-Sender-Id');
+      final senderToken = request.headers.value('X-Sender-Token');
 
       if (transferId == null || chunkIndexStr == null) {
         await _sendBadRequest(request, 'Missing required headers');
+        return;
+      }
+
+      // Transfer-scoped authorization: the chunk must belong to an approved
+      // parallel transfer and present the token accepted for it. Without this a
+      // device with any encryption session could inject chunks into another
+      // sender's transfer.
+      if (!await _isTransferAuthorized(
+        transferId: transferId,
+        senderId: senderId,
+        presentedToken: senderToken,
+      )) {
+        AppLogger.info('Security: Unauthorized chunk upload for transfer $transferId');
+        await _sendUnauthorized(request, 'Invalid sender token');
         return;
       }
 
@@ -475,6 +539,15 @@ class TransferService {
 
       final originalSize = int.tryParse(originalSizeStr ?? '0') ?? 0;
       final encrypted = encryptedStr == 'true';
+
+      // B4: reject a plaintext chunk downgrade. If we hold an encryption session
+      // for this sender (key exchange completed), an attacker-supplied
+      // X-Encrypted: false must not slip an unencrypted chunk past us.
+      if (!encrypted && senderId != null && _encryptionSessions.containsKey(senderId)) {
+        AppLogger.info('Security: Rejected plaintext chunk for key-exchanged sender $senderId');
+        await _sendUnauthorized(request, 'Encryption required for this session');
+        return;
+      }
 
       final chunks = <int>[];
       await for (final chunk in request) {
@@ -538,12 +611,28 @@ class TransferService {
       final transferId = data['transferId'] as String;
       final fileHash = data['fileHash'] as String;
 
+      // Transfer-scoped identity check: the completing device must be the same
+      // sender the parallel receive session was approved for. (The completion
+      // request carries no body token; chunk uploads already enforce the token,
+      // so binding the finalize to the approved senderId is the invariant here.)
+      final callerId = request.headers.value('x-device-id');
+      final parallelSession = _parallelReceiver.getSession(transferId);
+      if (parallelSession == null ||
+          callerId == null ||
+          parallelSession.senderId != callerId) {
+        AppLogger.info(
+            'Security: Unauthorized parallel complete for transfer $transferId');
+        await _sendUnauthorized(request, 'Not authorized for this transfer');
+        return;
+      }
+
       final result = await _parallelReceiver.handleComplete(
         transferId: transferId,
         fileHash: fileHash,
       );
 
       if (result['success'] == true) {
+        _transferTokens.remove(transferId);
         await BackgroundTransferService.showTransferComplete(
           fileName:
               result['filePath'].toString().split(Platform.pathSeparator).last,
@@ -566,40 +655,40 @@ class TransferService {
       final eventType = event['event'] as String?;
       final requestId = event['requestId'] as String?;
 
-      if (kDebugMode) debugPrint('📱 Notification event: $eventType for request: $requestId');
+      if (kDebugMode) AppLogger.info('📱 Notification event: $eventType for request: $requestId');
 
       switch (eventType) {
         case 'cancelled':
-          debugPrint('📱 Transfer cancelled from notification: $requestId');
+          AppLogger.info('📱 Transfer cancelled from notification: $requestId');
           if (requestId != null && _activeTransfers.containsKey(requestId)) {
             cancelTransfer(requestId);
           }
           break;
         case 'accepted':
-          debugPrint('📱 Transfer accepted from notification: $requestId');
+          AppLogger.info('📱 Transfer accepted from notification: $requestId');
           if (requestId != null) {
             // FIX: Check if request still exists before approving
             if (_pendingRequests.containsKey(requestId)) {
               approveTransfer(requestId, trustSender: false);
             } else {
-              debugPrint('⚠️ Request $requestId no longer exists (may have been handled by UI)');
+              AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
             }
           }
           break;
         case 'rejected':
-          debugPrint('📱 Transfer rejected from notification: $requestId');
+          AppLogger.info('📱 Transfer rejected from notification: $requestId');
           if (requestId != null) {
             // FIX: Check if request still exists before rejecting
             if (_pendingRequests.containsKey(requestId)) {
               rejectTransfer(requestId);
             } else {
-              debugPrint('⚠️ Request $requestId no longer exists (may have been handled by UI)');
+              AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
             }
           }
           break;
       }
     }, onError: (error) {
-      if (kDebugMode) debugPrint('❌ Error in notification events: $error');
+      if (kDebugMode) AppLogger.error('❌ Error in notification events: $error');
     });
   }
 
@@ -612,10 +701,10 @@ class TransferService {
           final device = TrustedDevice.fromJson(json as Map<String, dynamic>);
           _trustedDevices[device.senderId] = device;
         }
-        debugPrint('✅ Loaded ${_trustedDevices.length} trusted devices');
+        AppLogger.info('✅ Loaded ${_trustedDevices.length} trusted devices');
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error loading trusted devices: $e');
+      if (kDebugMode) AppLogger.error('Error loading trusted devices: $e');
     }
   }
 
@@ -626,9 +715,9 @@ class TransferService {
         key: _trustedDevicesKey,
         value: jsonEncode(jsonList),
       );
-      if (kDebugMode) debugPrint('✅ Saved ${_trustedDevices.length} trusted devices');
+      if (kDebugMode) AppLogger.info('✅ Saved ${_trustedDevices.length} trusted devices');
     } catch (e) {
-      if (kDebugMode) debugPrint('Error saving trusted devices: $e');
+      if (kDebugMode) AppLogger.error('Error saving trusted devices: $e');
     }
   }
 
@@ -656,7 +745,7 @@ class TransferService {
       if (!_pendingRequestsController.isClosed) {
         _pendingRequestsController.add(_pendingRequests.values.toList());
       }
-      if (kDebugMode) debugPrint('🧹 Cleaned up ${expiredIds.length} expired pending requests');
+      if (kDebugMode) AppLogger.info('🧹 Cleaned up ${expiredIds.length} expired pending requests');
     }
   }
 
@@ -672,13 +761,13 @@ class TransferService {
       final customNickname = await _nicknameService.getNickname(id);
       if (customNickname != null && customNickname.isNotEmpty) {
         _deviceName = customNickname;
-        debugPrint(
+        AppLogger.info(
             '✅ Using custom nickname for transfer service: $_deviceName');
       } else {
         _deviceName = name;
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error getting custom nickname: $e');
+      if (kDebugMode) AppLogger.error('Error getting custom nickname: $e');
       _deviceName = name;
     }
 
@@ -690,10 +779,10 @@ class TransferService {
       final customNickname = await _nicknameService.getNickname(_deviceId);
       if (customNickname != null && customNickname.isNotEmpty) {
         _deviceName = customNickname;
-        debugPrint('✅ Updated device name to: $_deviceName');
+        AppLogger.info('✅ Updated device name to: $_deviceName');
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error updating device name: $e');
+      if (kDebugMode) AppLogger.error('Error updating device name: $e');
     }
   }
 
@@ -739,20 +828,20 @@ class TransferService {
     for (int p = port; p <= port + 5; p++) {
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, p);
-        debugPrint('🚀 Transfer server running on port ${_server!.port}');
-        debugPrint(
+        AppLogger.info('🚀 Transfer server running on port ${_server!.port}');
+        AppLogger.info(
             '🔐 Encryption: ${encryptionEnabled ? "ENABLED" : "DISABLED"}');
         // FIX: Don't await _serve() - it runs indefinitely and blocks initialization
         _serve(); // Run in background
         break;
       } catch (e) {
         if (p == port + 5) {
-          debugPrint(
+          AppLogger.error(
               'Failed to start transfer server on any port in range: $e');
           throw TransferException('Failed to start server',
               code: 'SERVER_START_FAILED', originalError: e);
         }
-        debugPrint('Port $p busy, trying next port...');
+        AppLogger.info('Port $p busy, trying next port...');
       }
     }
 
@@ -760,7 +849,7 @@ class TransferService {
       _parallelConfig = await ParallelConfig.autoDetect();
       _parallelSender = ParallelTransferService(config: _parallelConfig);
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.info(
             '⚡ Parallel transfer: ${_parallelConfig!.connections} connections, ${_parallelConfig!.chunkSize ~/ (1024 * 1024)}MB chunks');
       }
     }
@@ -774,7 +863,7 @@ class TransferService {
           return customNickname;
         }
       } catch (e) {
-        debugPrint('Error getting custom nickname: $e');
+        AppLogger.error('Error getting custom nickname: $e');
       }
     }
 
@@ -788,7 +877,7 @@ class TransferService {
             return deviceName;
           }
         } catch (e) {
-          debugPrint('Platform channel not available: $e');
+          AppLogger.info('Platform channel not available: $e');
         }
         return 'Android Device';
       } else if (Platform.isWindows) {
@@ -797,7 +886,7 @@ class TransferService {
         return Platform.environment['HOSTNAME'] ?? 'Linux PC';
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error getting device name: $e');
+      if (kDebugMode) AppLogger.error('Error getting device name: $e');
     }
     return 'Syndro Device';
   }
@@ -811,22 +900,22 @@ class TransferService {
         try {
           await _handleRequest(request);
         } catch (e, stackTrace) {
-          debugPrint('Error handling request: $e');
-          debugPrint('Stack trace: $stackTrace');
+          AppLogger.error('Error handling request: $e');
+          AppLogger.info('Stack trace: $stackTrace');
           try {
             request.response.statusCode = HttpStatus.internalServerError;
             request.response.write('Internal server error');
             await request.response.close();
           } catch (closeError) { 
             // Response may already be closed or in error state
-            debugPrint("Error closing response: $closeError"); 
+            AppLogger.error("Error closing response: $closeError"); 
           }
         }
       }
     } catch (e) {
       // Server was closed or socket error - this is expected during dispose
       if (!_isDisposed) {
-        debugPrint('Server error: $e');
+        AppLogger.error('Server error: $e');
       }
     }
   }
@@ -853,7 +942,7 @@ class TransferService {
         request.response.statusCode = HttpStatus.unauthorized;
         request.response.write('Unauthorized: Valid encryption session required');
         await request.response.close();
-        if (kDebugMode) debugPrint('⚠️ Unauthorized transfer attempt from ${request.connectionInfo?.remoteAddress}');
+        if (kDebugMode) AppLogger.warn('⚠️ Unauthorized transfer attempt from ${request.connectionInfo?.remoteAddress}');
         return;
       }
 
@@ -906,8 +995,8 @@ class TransferService {
 
       await _sendNotFound(request, 'Not found');
     } catch (e, stackTrace) {
-      if (kDebugMode) debugPrint('Error handling request: $e');
-      if (kDebugMode) debugPrint('Stack trace: $stackTrace');
+      if (kDebugMode) AppLogger.error('Error handling request: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
       await _sendError(request, 'Internal server error');
     }
   }
@@ -946,7 +1035,7 @@ class TransferService {
           );
         } on SecurityException catch (secEx) {
           if (kDebugMode) {
-            debugPrint('🚫 TOFU pin mismatch during key exchange: $secEx');
+            AppLogger.info('🚫 TOFU pin mismatch during key exchange: $secEx');
           }
           await _sendUnauthorized(
             request,
@@ -964,12 +1053,12 @@ class TransferService {
           final pubKeyBase64 = base64Url.encode(theirPublicKeyBytes);
           await _pinTrustedDeviceKey(trustedDevice, pubKeyBase64);
           if (kDebugMode) {
-            debugPrint(
+            AppLogger.info(
                 '📌 Auto-pinned public key for trusted device $theirDeviceId');
           }
         } catch (e) {
           if (kDebugMode) {
-            debugPrint('⚠️ Auto-pin failed for $theirDeviceId: $e');
+            AppLogger.error('⚠️ Auto-pin failed for $theirDeviceId: $e');
           }
         }
       }
@@ -989,9 +1078,9 @@ class TransferService {
         'publicKey': myPublicKey?.toList() ?? [],
       });
 
-      if (kDebugMode) debugPrint('🔐 Key exchange completed with $theirDeviceId');
+      if (kDebugMode) AppLogger.info('🔐 Key exchange completed with $theirDeviceId');
     } catch (e) {
-      if (kDebugMode) debugPrint('Key exchange error: $e');
+      if (kDebugMode) AppLogger.error('Key exchange error: $e');
       await _sendError(request, 'Key exchange failed');
     }
   }
@@ -1005,7 +1094,7 @@ class TransferService {
         currentName = customNickname;
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error getting nickname for device info: $e');
+      if (kDebugMode) AppLogger.error('Error getting nickname for device info: $e');
     }
 
     final myPublicKey = await getPublicKey();
@@ -1065,7 +1154,7 @@ class TransferService {
       }
       return data;
     } catch (e) {
-      if (kDebugMode) debugPrint('JSON parse error: $e');
+      if (kDebugMode) AppLogger.error('JSON parse error: $e');
       return null;
     }
   }
@@ -1160,6 +1249,50 @@ class TransferService {
       } catch (_) {
         return false;
       }
+    }
+
+    return false;
+  }
+
+  /// Transfer-scoped authorization gate for upload/chunk/complete endpoints.
+  ///
+  /// Confirms (1) the transfer was approved (`_activeTransfers` has it or a
+  /// parallel receive session exists), (2) the presented [senderId] matches the
+  /// approved sender, and (3) the presented [presentedToken] matches the exact
+  /// token accepted for this transfer — or is a valid trusted-device token.
+  ///
+  /// This closes the gap where any device with *some* encryption session could
+  /// push data into a transfer approved for a different sender.
+  Future<bool> _isTransferAuthorized({
+    required String transferId,
+    required String? senderId,
+    required String? presentedToken,
+  }) async {
+    if (senderId == null || senderId.isEmpty) return false;
+
+    // The sender bound to this transfer, from either the classic or the
+    // parallel approval path.
+    final transfer = _activeTransfers[transferId];
+    final parallelSession = _parallelReceiver.getSession(transferId);
+    final approvedSenderId = transfer?.senderId ?? parallelSession?.senderId;
+
+    if (approvedSenderId == null) return false;
+    if (approvedSenderId != senderId) return false;
+
+    final expectedToken = _transferTokens[transferId];
+    if (expectedToken != null &&
+        presentedToken != null &&
+        _secureTokenCompare(expectedToken, presentedToken)) {
+      return true;
+    }
+
+    // Fall back to a valid trusted-device token (covers auto-accept where the
+    // per-transfer token may not have been recorded yet).
+    if (presentedToken != null && presentedToken.isNotEmpty) {
+      return await _verifyDeviceToken(
+        senderId: senderId,
+        presentedToken: presentedToken,
+      );
     }
 
     return false;
@@ -1294,8 +1427,8 @@ class TransferService {
         'message': 'Waiting for receiver approval',
       });
     } catch (e, stackTrace) {
-      if (kDebugMode) debugPrint('Error initiating transfer: $e');
-      if (kDebugMode) debugPrint('Stack trace: $stackTrace');
+      if (kDebugMode) AppLogger.error('Error initiating transfer: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
       await _sendError(request, 'Error initiating transfer');
     }
   }
@@ -1352,7 +1485,7 @@ class TransferService {
     final pending = _pendingRequests[requestId];
     if (pending == null) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.warn(
             '⚠️ Warning: Attempted to approve non-existent request: $requestId');
       }
       return;
@@ -1386,19 +1519,20 @@ class TransferService {
           sharedSecret: sharedSecret,
           createdAt: DateTime.now(),
         );
-        debugPrint('🔐 Key exchange completed on approval');
+        AppLogger.info('🔐 Key exchange completed on approval');
       } catch (e) {
-        debugPrint('❌ Key exchange failed on approval: $e');
+        AppLogger.error('❌ Key exchange failed on approval: $e');
       }
     }
 
     // FIX: Handle parallel transfer approval differently
     if (pending.isParallelTransfer && pending.parallelData != null) {
       // For parallel transfers, initialize the receiver session
-      if (kDebugMode) debugPrint('✅ Approving parallel transfer: ${pending.requestId}');
+      if (kDebugMode) AppLogger.info('✅ Approving parallel transfer: ${pending.requestId}');
+      _transferTokens[pending.requestId] = pending.senderToken;
       final result = await _parallelReceiver.handleInitiate(pending.parallelData!);
       if (result['success'] != true) {
-        debugPrint('❌ Failed to initialize parallel receiver: ${result['error']}');
+        AppLogger.error('❌ Failed to initialize parallel receiver: ${result['error']}');
       }
       // The sender will check approval status and start uploading chunks
     } else {
@@ -1417,7 +1551,7 @@ class TransferService {
     final removed = _pendingRequests.remove(requestId);
     if (removed == null) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.warn(
             '⚠️ Warning: Attempted to reject non-existent request: $requestId');
       }
       return;
@@ -1453,6 +1587,7 @@ class TransferService {
     );
 
     _activeTransfers[transfer.id] = transfer;
+    _transferTokens[requestId] = senderToken;
     _transferController.add(transfer);
 
     // Start Live Activity for Android lock screen progress
@@ -1496,8 +1631,9 @@ class TransferService {
       for (int i = 0; i < removeCount; i++) {
         final transfer = toRemove[i];
         _activeTransfers.remove(transfer.id);
+        _transferTokens.remove(transfer.id);
         _cleanupProgressController(transfer.id);
-        debugPrint('🧹 Cleaned up old transfer: ${transfer.id}');
+        AppLogger.info('🧹 Cleaned up old transfer: ${transfer.id}');
       }
     }
   }
@@ -1518,6 +1654,7 @@ class TransferService {
       final fileName = request.headers.value('x-file-name');
       final originalSizeHeader = request.headers.value('x-original-size');
       final senderId = request.headers.value('x-sender-id');
+      final senderToken = request.headers.value('x-sender-token');
       final fileHash = request.headers.value('x-file-hash');
       // Read file metadata timestamps
       final modifiedHeader = request.headers.value('x-file-modified');
@@ -1559,9 +1696,32 @@ class TransferService {
         return;
       }
 
+      // Transfer-scoped token check (encrypted path previously verified no
+      // token at all — only that some encryption session existed).
+      if (!await _isTransferAuthorized(
+        transferId: transferId,
+        senderId: senderId,
+        presentedToken: senderToken,
+      )) {
+        AppLogger.info('Security: Invalid sender token for transfer $transferId');
+        await _sendUnauthorized(request, 'Invalid sender token');
+        return;
+      }
+
       final session = _encryptionSessions[senderId];
       if (session == null) {
         await _sendUnauthorized(request, 'No encryption session');
+        return;
+      }
+
+      // Enforce the size cap on the encrypted path too — previously only the
+      // plaintext upload path checked this, leaving encrypted receives
+      // unbounded and vulnerable to disk-exhaustion.
+      if (originalSize > _maxFileSizeBytes) {
+        AppLogger.info(
+            'Security: File size $originalSize exceeds maximum $_maxFileSizeBytes');
+        await _sendBadRequest(request,
+            'File size exceeds maximum allowed size (${_maxFileSizeBytes ~/ (1024 * 1024 * 1024)}GB)');
         return;
       }
 
@@ -1575,7 +1735,8 @@ class TransferService {
       final downloadDir = await _fileService.getDownloadDirectory();
       final finalFilePath =
           '$downloadDir${Platform.pathSeparator}$sanitizedFileName';
-      tempFilePath = '$finalFilePath.tmp';
+      // Scope temp path to the transfer id to avoid same-name collisions.
+      tempFilePath = '$finalFilePath.$transferId.tmp';
 
       if (!_fileService.isPathWithinDirectory(finalFilePath, downloadDir)) {
         await _sendBadRequest(request, 'Invalid filename');
@@ -1604,13 +1765,13 @@ class TransferService {
 
         // Check buffer size to prevent memory exhaustion
         if (buffer.length > maxBufferSize) {
-          debugPrint('Buffer overflow: ${buffer.length} > $maxBufferSize');
+          AppLogger.info('Buffer overflow: ${buffer.length} > $maxBufferSize');
           await _sendBadRequest(request, 'Buffer overflow - chunk size mismatch');
           await fileSink.close();
           try {
             await File(tempFilePath).delete();
           } catch (e) {
-            debugPrint('⚠️ Failed to delete temp file: $e');
+            AppLogger.error('⚠️ Failed to delete temp file: $e');
           }
           return;
         }
@@ -1675,7 +1836,7 @@ class TransferService {
           throw TransferException('File integrity check failed',
               code: 'HASH_MISMATCH');
         }
-        debugPrint('✅ File integrity verified');
+        AppLogger.info('✅ File integrity verified');
       }
 
       final tempFileRef = File(tempFilePath);
@@ -1691,9 +1852,9 @@ class TransferService {
       if (fileModified != null) {
         try {
           await finalFile.setLastModified(fileModified);
-          debugPrint('📅 Applied file modification time: $fileModified');
+          AppLogger.info('📅 Applied file modification time: $fileModified');
         } catch (e) {
-          debugPrint('⚠️ Could not set file modification time: $e');
+          AppLogger.warn('⚠️ Could not set file modification time: $e');
         }
       }
 
@@ -1731,18 +1892,18 @@ class TransferService {
         'verified': fileHash != null,
       });
 
-      if (kDebugMode) debugPrint('🔐 Encrypted file received: $finalFilePath');
+      if (kDebugMode) AppLogger.info('🔐 Encrypted file received: $finalFilePath');
 
       _cleanupCompletedTransfers();
     } catch (e, stackTrace) {
-      if (kDebugMode) debugPrint('Error receiving encrypted file: $e');
-      if (kDebugMode) debugPrint('Stack trace: $stackTrace');
+      if (kDebugMode) AppLogger.error('Error receiving encrypted file: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
 
       if (fileSink != null) {
         try {
           await fileSink.close();
         } catch (closeError) {
-          debugPrint('Error closing file sink: $closeError');
+          AppLogger.error('Error closing file sink: $closeError');
         }
       }
 
@@ -1753,7 +1914,7 @@ class TransferService {
             await tempFile.delete();
           }
         } catch (deleteError) {
-          debugPrint('Error deleting temp file: $deleteError');
+          AppLogger.error('Error deleting temp file: $deleteError');
         }
       }
 
@@ -1807,8 +1968,9 @@ class TransferService {
 
       // Validate file size limit
       if (fileSize > _maxFileSizeBytes) {
-        debugPrint('Security: File size $fileSize exceeds maximum $_maxFileSizeBytes');
-        await _sendBadRequest(request, 'File size exceeds maximum allowed size (16GB)');
+        AppLogger.info('Security: File size $fileSize exceeds maximum $_maxFileSizeBytes');
+        await _sendBadRequest(request,
+            'File size exceeds maximum allowed size (${_maxFileSizeBytes ~/ (1024 * 1024 * 1024)}GB)');
         return;
       }
 
@@ -1820,15 +1982,39 @@ class TransferService {
       }
 
       if (transfer.senderId != senderId) {
-        debugPrint(
+        AppLogger.info(
             'Security: Sender ID mismatch. Expected: ${transfer.senderId}, Got: $senderId');
         await _sendUnauthorized(request, 'Sender ID mismatch');
         return;
       }
 
+      // Transfer-scoped token check: the presented token must match the token
+      // accepted for THIS transfer (or a valid trusted-device token).
+      if (!await _isTransferAuthorized(
+        transferId: transferId,
+        senderId: senderId,
+        presentedToken: senderToken,
+      )) {
+        AppLogger.info('Security: Invalid sender token for transfer $transferId');
+        await _sendUnauthorized(request, 'Invalid sender token');
+        return;
+      }
+
+      // B4: Reject plaintext downgrade. If this sender completed a key exchange
+      // we have a live encryption session for it; a plaintext upload on the
+      // unencrypted endpoint would be a silent downgrade. Force the encrypted
+      // path instead of trusting the sender's choice of endpoint.
+      if (_encryptionSessions.containsKey(senderId)) {
+        AppLogger.info(
+            'Security: Rejected plaintext upload for key-exchanged sender $senderId');
+        await _sendUnauthorized(
+            request, 'Encryption required for this session');
+        return;
+      }
+
       final sanitizedFileName = _fileService.sanitizeFilename(fileName);
       if (sanitizedFileName != fileName) {
-        debugPrint(
+        AppLogger.info(
             'Security: Filename was sanitized. Original: $fileName, Sanitized: $sanitizedFileName');
       }
 
@@ -1840,10 +2026,12 @@ class TransferService {
       final downloadDir = await _fileService.getDownloadDirectory();
       final finalFilePath =
           '$downloadDir${Platform.pathSeparator}$sanitizedFileName';
-      tempFilePath = '$finalFilePath.tmp';
+      // Scope temp path to the transfer id so two concurrent transfers of the
+      // same filename cannot collide on a shared "<name>.tmp" scratch file.
+      tempFilePath = '$finalFilePath.$transferId.tmp';
 
       if (!_fileService.isPathWithinDirectory(finalFilePath, downloadDir)) {
-        debugPrint(
+        AppLogger.info(
             'Security: Path traversal attempt detected for file: $fileName');
         await _sendBadRequest(request, 'Invalid filename');
         return;
@@ -1906,9 +2094,9 @@ class TransferService {
       if (fileModified != null) {
         try {
           await finalFile.setLastModified(fileModified);
-          debugPrint('📅 Applied file modification time: $fileModified');
+          AppLogger.info('📅 Applied file modification time: $fileModified');
         } catch (e) {
-          debugPrint('⚠️ Could not set file modification time: $e');
+          AppLogger.warn('⚠️ Could not set file modification time: $e');
         }
       }
 
@@ -1947,14 +2135,14 @@ class TransferService {
 
       _cleanupCompletedTransfers();
     } catch (e, stackTrace) {
-      if (kDebugMode) debugPrint('Error uploading file: $e');
-      if (kDebugMode) debugPrint('Stack trace: $stackTrace');
+      if (kDebugMode) AppLogger.error('Error uploading file: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
 
       if (fileSink != null) {
         try {
           await fileSink.close();
         } catch (closeError) {
-          debugPrint('Error closing file sink: $closeError');
+          AppLogger.error('Error closing file sink: $closeError');
         }
       }
 
@@ -1965,7 +2153,7 @@ class TransferService {
             await tempFile.delete();
           }
         } catch (deleteError) {
-          debugPrint('Error deleting temp file: $deleteError');
+          AppLogger.error('Error deleting temp file: $deleteError');
         }
       }
 
@@ -2040,7 +2228,7 @@ class TransferService {
     final parallelSender = _parallelSender;
     if (useParallel && items.length == 1 && parallelSender != null) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.info(
             '⚡ Using parallel transfer for large file (${totalSize ~/ (1024 * 1024)}MB)');
       }
 
@@ -2051,7 +2239,7 @@ class TransferService {
       final shouldEncrypt = encrypted ?? encryptionEnabled;
 
       if (shouldEncrypt && encryptionEnabled) {
-        debugPrint('🔐 Starting key exchange with receiver...');
+        AppLogger.info('🔐 Starting key exchange with receiver...');
         final myPublicKey = await getPublicKey();
 
         final keyExchangeUrl =
@@ -2084,11 +2272,25 @@ class TransferService {
                 sharedSecret: encryptionKey,
                 createdAt: DateTime.now(),
               );
-              debugPrint('🔐 Key exchange successful');
+              AppLogger.info('🔐 Key exchange successful');
             }
           }
         } catch (e) {
-          debugPrint('❌ Key exchange failed: $e');
+          // B4: never silently downgrade a parallel transfer to plaintext.
+          AppLogger.error('❌ Key exchange failed: $e');
+          throw TransferException(
+            'Secure key exchange failed; refusing to send unencrypted. $e',
+            code: 'KEY_EXCHANGE_FAILED',
+          );
+        }
+
+        // B4: if encryption was requested but no key was derived (e.g. receiver
+        // returned no public key / non-200), abort rather than send plaintext.
+        if (encryptionKey == null) {
+          throw TransferException(
+            'Secure key exchange failed; refusing to send unencrypted.',
+            code: 'KEY_EXCHANGE_FAILED',
+          );
         }
       }
 
@@ -2170,7 +2372,7 @@ class TransferService {
         _cleanupProgressController(transferId);
         return;
       } catch (e) {
-        debugPrint('❌ Parallel transfer failed: $e');
+        AppLogger.error('❌ Parallel transfer failed: $e');
 
         final failedTransfer = parallelTransfer.copyWith(
           status: TransferStatus.failed,
@@ -2186,11 +2388,11 @@ class TransferService {
       }
     }
 
-    debugPrint('Using sequential transfer for ${items.length} file(s)');
+    AppLogger.info('Using sequential transfer for ${items.length} file(s)');
 
     if (checkpoint != null) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.info(
             '📂 Resuming transfer from checkpoint: file $startIndex, $resumedBytes bytes');
       }
     }
@@ -2282,10 +2484,16 @@ class TransferService {
             createdAt: DateTime.now(),
           );
 
-          debugPrint('🔐 Key exchange successful, encryption enabled');
+          AppLogger.info('🔐 Key exchange successful, encryption enabled');
         } catch (e) {
-          debugPrint('❌ Key exchange failed, falling back to unencrypted');
-          useEncryption = false;
+          // B4: Do NOT silently fall back to plaintext. If encryption was
+          // negotiated, a key-exchange failure must surface to the user rather
+          // than downgrading the transfer to an unencrypted channel.
+          AppLogger.error('❌ Key exchange failed: $e');
+          throw TransferException(
+            'Secure key exchange failed; refusing to send unencrypted. $e',
+            code: 'KEY_EXCHANGE_FAILED',
+          );
         }
       }
 
@@ -2361,8 +2569,8 @@ class TransferService {
             ),
           );
         } catch (e, stackTrace) {
-          debugPrint('Error sending file ${item.name}: $e');
-          debugPrint('Stack trace: $stackTrace');
+          AppLogger.error('Error sending file ${item.name}: $e');
+          AppLogger.info('Stack trace: $stackTrace');
           rethrow;
         }
       }
@@ -2395,14 +2603,14 @@ class TransferService {
       await _checkpointManager.clearCheckpoint(transferId);
 
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.info(
             '✅ Transfer completed ${useEncryption ? "(encrypted)" : "(unencrypted)"}');
       }
 
       _cleanupCompletedTransfers();
     } catch (e, stackTrace) {
-      if (kDebugMode) debugPrint('Error sending files: $e');
-      if (kDebugMode) debugPrint('Stack trace: $stackTrace');
+      if (kDebugMode) AppLogger.error('Error sending files: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
 
       await BackgroundTransferService.stopBackgroundTransfer();
 
@@ -2549,7 +2757,7 @@ class TransferService {
       );
     }
 
-    debugPrint('🔐 File sent encrypted: ${item.name}');
+    AppLogger.info('🔐 File sent encrypted: ${item.name}');
   }
 
   Future<void> _sendFileUnencrypted({
@@ -2674,9 +2882,14 @@ class TransferService {
                     createdAt: DateTime.now(),
                   );
 
-                  debugPrint('🔐 Key exchange completed on approval');
+                  AppLogger.info('🔐 Key exchange completed on approval');
                 } catch (e) {
-                  debugPrint('❌ Key exchange failed: $e');
+                  // B4: refuse to proceed unencrypted after a failed exchange.
+                  AppLogger.error('❌ Key exchange failed: $e');
+                  throw TransferException(
+                    'Secure key exchange failed on approval; refusing to send unencrypted. $e',
+                    code: 'KEY_EXCHANGE_FAILED',
+                  );
                 }
               }
               return true;
@@ -2686,7 +2899,11 @@ class TransferService {
           }
         }
       } catch (e) {
-        debugPrint('Error checking approval: $e');
+        // B4: a key-exchange failure must abort, not be retried into a timeout.
+        if (e is TransferException && e.code == 'KEY_EXCHANGE_FAILED') {
+          rethrow;
+        }
+        AppLogger.error('Error checking approval: $e');
       }
 
       await Future.delayed(const Duration(milliseconds: 500)); // FIX: Faster polling (was 2 seconds)
@@ -2711,7 +2928,7 @@ class TransferService {
       if (attempts < maxRetries && _isRetryableError(e)) {
         // FIX: Use fixed 1-second delay for local network (was exponential backoff)
         const delay = 1; // Fixed 1 second instead of 2^attempts
-        debugPrint(
+        AppLogger.info(
             'Retry attempt ${attempts + 1}/$maxRetries after ${delay}s delay');
         await Future.delayed(const Duration(seconds: delay));
         return _retryRequest(request, attempts: attempts + 1);
@@ -2749,7 +2966,7 @@ class TransferService {
       _cleanupProgressController(transferId);
     } else {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.warn(
             'Warning: Attempted to cancel non-existent transfer: $transferId');
       }
     }
@@ -2759,7 +2976,7 @@ class TransferService {
     final removed = _trustedDevices.remove(senderId);
     if (removed != null) {
       if (kDebugMode) {
-        debugPrint('Revoked trust for device: ${removed.senderName}');
+        AppLogger.info('Revoked trust for device: ${removed.senderName}');
       }
       await _saveTrustedDevices();
     }
@@ -2783,14 +3000,14 @@ class TransferService {
     await _saveTrustedDevices();
 
     if (kDebugMode) {
-      debugPrint('🔄 Rotated pin for device: ${device.senderName} ($deviceId)');
+      AppLogger.info('🔄 Rotated pin for device: ${device.senderName} ($deviceId)');
     }
   }
 
   Future<void> clearTrustedSenders() async {
     _trustedDevices.clear();
     await _saveTrustedDevices();
-    debugPrint('Cleared all trusted devices');
+    AppLogger.info('Cleared all trusted devices');
   }
 
   Stream<TransferProgress> getTransferProgress(String transferId) {
@@ -2810,14 +3027,14 @@ class TransferService {
       _pendingRequestsCleanupTimer?.cancel();
       _pendingRequestsCleanupTimer = null;
     } catch (e) {
-      if (kDebugMode) debugPrint('Error cancelling pending requests cleanup timer: $e');
+      if (kDebugMode) AppLogger.error('Error cancelling pending requests cleanup timer: $e');
     }
 
     try {
       _sessionCleanupTimer?.cancel();
       _sessionCleanupTimer = null;
     } catch (e) {
-      if (kDebugMode) debugPrint('Error cancelling session cleanup timer: $e');
+      if (kDebugMode) AppLogger.error('Error cancelling session cleanup timer: $e');
     }
 
     try {
@@ -2832,7 +3049,7 @@ class TransferService {
       await _notificationEventSubscription?.cancel();
       _notificationEventSubscription = null;
     } catch (e) {
-      if (kDebugMode) debugPrint('Error cancelling notification subscription: $e');
+      if (kDebugMode) AppLogger.error('Error cancelling notification subscription: $e');
     }
 
     // Close server
@@ -2840,7 +3057,7 @@ class TransferService {
       await _server?.close(force: true);
       _server = null;
     } catch (e) {
-      if (kDebugMode) debugPrint('Error closing server: $e');
+      if (kDebugMode) AppLogger.error('Error closing server: $e');
     }
 
     // Close controllers
@@ -2849,7 +3066,7 @@ class TransferService {
         await _transferController.close();
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error closing transfer controller: $e');
+      if (kDebugMode) AppLogger.error('Error closing transfer controller: $e');
     }
 
     try {
@@ -2857,7 +3074,7 @@ class TransferService {
         await _pendingRequestsController.close();
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error closing pending requests controller: $e');
+      if (kDebugMode) AppLogger.error('Error closing pending requests controller: $e');
     }
 
     // Close progress controllers
@@ -2867,7 +3084,7 @@ class TransferService {
           await controller.close();
         }
       } catch (e) {
-        debugPrint('Error closing progress controller: $e');
+        AppLogger.error('Error closing progress controller: $e');
       }
     }
 
@@ -2880,15 +3097,15 @@ class TransferService {
     try {
       await _parallelReceiver.dispose();
     } catch (e) {
-      if (kDebugMode) debugPrint('Error disposing parallel receiver: $e');
+      if (kDebugMode) AppLogger.error('Error disposing parallel receiver: $e');
     }
 
     try {
       await _parallelSender?.dispose();
     } catch (e) {
-      if (kDebugMode) debugPrint('Error disposing parallel sender: $e');
+      if (kDebugMode) AppLogger.error('Error disposing parallel sender: $e');
     }
 
-    debugPrint('✅ TransferService disposed');
+    AppLogger.info('✅ TransferService disposed');
   }
 }

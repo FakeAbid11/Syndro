@@ -91,6 +91,27 @@ class EncryptionService {
     return await _keyExchange.newKeyPair();
   }
 
+  /// Extract the 32-byte private seed from an X25519 key pair.
+  ///
+  /// This is sensitive material — it fully reconstructs the private key via
+  /// [keyPairFromSeed]. Persist it only in secure storage.
+  Future<Uint8List> keyPairSeedBytes(SimpleKeyPair keyPair) async {
+    final data = await keyPair.extract();
+    return Uint8List.fromList(data.bytes);
+  }
+
+  /// Reconstruct an X25519 key pair from a previously stored 32-byte seed.
+  ///
+  /// Enables a device to persist a stable long-term identity across restarts
+  /// so that peers who pinned this device do not see a false MITM alarm.
+  Future<SimpleKeyPair> keyPairFromSeed(List<int> seed) async {
+    if (seed.length != 32) {
+      throw EncryptionException(
+          'Invalid X25519 seed length: ${seed.length} (expected 32)');
+    }
+    return await _keyExchange.newKeyPairFromSeed(seed);
+  }
+
   /// Extract public key from key pair
   ///
   /// The public key can be safely shared with the remote device

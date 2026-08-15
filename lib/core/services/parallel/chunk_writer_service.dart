@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'parallel_config.dart';
+import '../../utils/app_logger.dart';
 import '../../utils/byte_formatter.dart';
+import '../../utils/synchronized.dart';
 
 /// RAM-efficient chunk writer service
 /// 
@@ -19,6 +21,11 @@ class ChunkWriterService {
   final _completionController = StreamController<double>.broadcast();
   bool _isComplete = false;
   bool _isClosed = false;
+
+  /// Serializes seek+write pairs (and the shared bookkeeping below) so that
+  /// concurrent connections cannot interleave `setPosition`/`writeFrom` on the
+  /// single shared [RandomAccessFile] handle and corrupt the output.
+  final SynchronizedLock<void> _writeLock = SynchronizedLock<void>();
   
   /// Track bytes received for progress
   int _bytesReceived = 0;
@@ -68,9 +75,9 @@ class ChunkWriterService {
       await _file!.writeByte(0);
       await _file!.setPosition(0);
       
-      debugPrint('📁 Pre-allocated file: $tempPath (${ByteFormatter.format(totalSize)})');
+      AppLogger.info('📁 Pre-allocated file: $tempPath (${ByteFormatter.format(totalSize)})');
     } catch (e) {
-      debugPrint('Error initializing chunk writer: $e');
+      AppLogger.error('Error initializing chunk writer: $e');
       rethrow;
     }
   }
@@ -86,43 +93,53 @@ class ChunkWriterService {
     if (_file == null) {
       throw StateError('ChunkWriter not initialized');
     }
-    
-    if (_receivedChunks.contains(chunkIndex)) {
-      debugPrint('⚠️ Chunk $chunkIndex already received, skipping');
-      return;
-    }
-    
+
     if (chunkIndex >= totalChunks) {
       throw RangeError('Chunk index $chunkIndex out of range (max: ${totalChunks - 1})');
     }
 
-    try {
-      // Calculate offset
-      final offset = chunkIndex * config.chunkSize;
-      
-      // Seek to offset and write
-      await _file!.setPosition(offset);
-      await _file!.writeFrom(data);
-      
-      // Mark chunk as received
-      _receivedChunks.add(chunkIndex);
-      _bytesReceived += data.length;
-      
-      // Emit progress
-      final progress = _receivedChunks.length / totalChunks;
-      if (!_completionController.isClosed) {
-        _completionController.add(progress);
+    // Serialize the entire seek+write+bookkeeping section. The single
+    // RandomAccessFile handle is shared across all parallel connections, so an
+    // unlocked `setPosition` followed by `writeFrom` can be interleaved by
+    // another connection's seek, silently writing chunks to the wrong offset.
+    await _writeLock.synchronized(() async {
+      if (_isClosed) {
+        throw StateError('ChunkWriter is closed');
       }
-      
-      // Check if complete
-      if (_receivedChunks.length == totalChunks) {
-        _isComplete = true;
-        debugPrint('✅ All $totalChunks chunks received');
+
+      if (_receivedChunks.contains(chunkIndex)) {
+        AppLogger.warn('⚠️ Chunk $chunkIndex already received, skipping');
+        return;
       }
-    } catch (e) {
-      debugPrint('Error writing chunk $chunkIndex: $e');
-      rethrow;
-    }
+
+      try {
+        // Calculate offset
+        final offset = chunkIndex * config.chunkSize;
+
+        // Seek to offset and write (atomic under the lock)
+        await _file!.setPosition(offset);
+        await _file!.writeFrom(data);
+
+        // Mark chunk as received
+        _receivedChunks.add(chunkIndex);
+        _bytesReceived += data.length;
+
+        // Emit progress
+        final progress = _receivedChunks.length / totalChunks;
+        if (!_completionController.isClosed) {
+          _completionController.add(progress);
+        }
+
+        // Check if complete
+        if (_receivedChunks.length == totalChunks) {
+          _isComplete = true;
+          AppLogger.info('✅ All $totalChunks chunks received');
+        }
+      } catch (e) {
+        AppLogger.error('Error writing chunk $chunkIndex: $e');
+        rethrow;
+      }
+    });
   }
 
   /// Get list of missing chunks (for retry)
@@ -155,25 +172,49 @@ class ChunkWriterService {
       // Rename temp to final
       final tempPath = '$filePath.tmp';
       final tempFile = File(tempPath);
-      final finalFile = File(filePath);
-      
-      // Delete existing final file if exists
-      if (await finalFile.exists()) {
-        await finalFile.delete();
-      }
-      
+
+      // Do NOT clobber an existing file with the same name — pick a unique
+      // destination (e.g. "photo (1).jpg") so an incoming transfer can never
+      // silently overwrite a user's existing file.
+      final destinationPath = await _resolveUniqueFinalPath(filePath);
+
       // Rename
-      await tempFile.rename(filePath);
-      
+      await tempFile.rename(destinationPath);
+
       _isClosed = true;
       await _completionController.close();
-      
-      debugPrint('✅ File finalized: $filePath');
-      return File(filePath);
+
+      AppLogger.info('✅ File finalized: $destinationPath');
+      return File(destinationPath);
     } catch (e) {
-      debugPrint('Error finalizing file: $e');
+      AppLogger.error('Error finalizing file: $e');
       rethrow;
     }
+  }
+
+  /// Resolve a non-colliding destination path.
+  ///
+  /// If [path] does not exist it is returned unchanged; otherwise a numeric
+  /// suffix is inserted before the extension ("file (1).ext", "file (2).ext",
+  /// …) until a free name is found.
+  Future<String> _resolveUniqueFinalPath(String path) async {
+    if (!await File(path).exists()) return path;
+
+    final sep = Platform.pathSeparator;
+    final lastSep = path.lastIndexOf(sep);
+    final dir = lastSep >= 0 ? path.substring(0, lastSep + 1) : '';
+    final name = lastSep >= 0 ? path.substring(lastSep + 1) : path;
+
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    final ext = dot > 0 ? name.substring(dot) : '';
+
+    for (int i = 1; i < 10000; i++) {
+      final candidate = '$dir$base ($i)$ext';
+      if (!await File(candidate).exists()) return candidate;
+    }
+    // Extremely unlikely fallback: timestamp-suffixed name.
+    return '$dir$base (${DateTime.now().millisecondsSinceEpoch})$ext';
   }
 
   /// Abort and cleanup
@@ -192,9 +233,9 @@ class ChunkWriterService {
       _isClosed = true;
       await _completionController.close();
       
-      debugPrint('🚫 Transfer aborted, temp file deleted');
+      AppLogger.info('🚫 Transfer aborted, temp file deleted');
     } catch (e) {
-      debugPrint('Error aborting: $e');
+      AppLogger.error('Error aborting: $e');
     }
   }
 
@@ -211,7 +252,7 @@ class ChunkWriterService {
         await _completionController.close();
       }
     } catch (e) {
-      debugPrint('Error closing chunk writer: $e');
+      AppLogger.error('Error closing chunk writer: $e');
     }
   }
 

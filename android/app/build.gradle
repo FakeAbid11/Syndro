@@ -59,11 +59,26 @@ android {
 
     buildTypes {
         release {
-            // Use release signing if configured, otherwise fall back to debug
-            if (signingConfigs.release.hasProperty("storeFile") && signingConfigs.release.storeFile != null) {
+            // Require a real release keystore. Falling back to debug signing here
+            // would ship a publicly-known debug key, letting anyone forge updates
+            // that overwrite the installed app. Fail the build instead.
+            //
+            // For deliberate local testing you may opt back into debug signing
+            // with:  flutter build apk --release -PallowDebugSigning=true
+            def hasReleaseKeystore = signingConfigs.release.hasProperty("storeFile") &&
+                    signingConfigs.release.storeFile != null
+            def allowDebugSigning = project.hasProperty("allowDebugSigning") &&
+                    project.property("allowDebugSigning").toString().toBoolean()
+
+            if (hasReleaseKeystore) {
                 signingConfig signingConfigs.release
-            } else {
+            } else if (allowDebugSigning) {
+                logger.warn("WARNING: release build is DEBUG-SIGNED (allowDebugSigning=true). Do not distribute this artifact.")
                 signingConfig signingConfigs.debug
+            } else {
+                throw new GradleException(
+                    "No release keystore configured. Set KEYSTORE_PASSWORD and provide " +
+                    "android/app/keystore.jks, or pass -PallowDebugSigning=true for local testing only.")
             }
             minifyEnabled true
             shrinkResources true

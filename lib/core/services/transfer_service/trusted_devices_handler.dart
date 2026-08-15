@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../utils/app_logger.dart';
 import 'http_response_helper.dart';
 import 'models.dart';
 
@@ -62,10 +62,10 @@ class TrustedDevicesHandler {
           final device = TrustedDevice.fromJson(json as Map<String, dynamic>);
           _trustedDevices[device.senderId] = device;
         }
-        debugPrint('✅ Loaded ${_trustedDevices.length} trusted devices');
+        AppLogger.info('✅ Loaded ${_trustedDevices.length} trusted devices');
       }
     } catch (e) {
-      debugPrint('Error loading trusted devices: $e');
+      AppLogger.error('Error loading trusted devices: $e');
     }
   }
 
@@ -76,9 +76,9 @@ class TrustedDevicesHandler {
         key: _trustedDevicesKey,
         value: jsonEncode(jsonList),
       );
-      debugPrint('✅ Saved ${_trustedDevices.length} trusted devices');
+      AppLogger.info('✅ Saved ${_trustedDevices.length} trusted devices');
     } catch (e) {
-      debugPrint('Error saving trusted devices: $e');
+      AppLogger.error('Error saving trusted devices: $e');
     }
   }
 
@@ -93,7 +93,7 @@ class TrustedDevicesHandler {
     try {
       await _secureStorage.delete(key: '$_pinKeyPrefix$senderId');
     } catch (e) {
-      debugPrint('Error removing pinned key: $e');
+      AppLogger.error('Error removing pinned key: $e');
     }
     await saveTrustedDevices();
   }
@@ -105,7 +105,7 @@ class TrustedDevicesHandler {
       try {
         await _secureStorage.delete(key: '$_pinKeyPrefix$id');
       } catch (e) {
-        debugPrint('Error removing pinned key for $id: $e');
+        AppLogger.error('Error removing pinned key for $id: $e');
       }
     }
     _trustedDevices.clear();
@@ -129,7 +129,7 @@ class TrustedDevicesHandler {
         value: pubKeyBase64Url,
       );
     } catch (e) {
-      debugPrint('Error persisting pinned key: $e');
+      AppLogger.error('Error persisting pinned key: $e');
     }
     // Also update the in-memory TrustedDevice (if present)
     final existing = _trustedDevices[deviceId];
@@ -166,7 +166,7 @@ class TrustedDevicesHandler {
     try {
       await _secureStorage.delete(key: '$_pinKeyPrefix$deviceId');
     } catch (e) {
-      debugPrint('Error removing pinned key during rotation: $e');
+      AppLogger.error('Error removing pinned key during rotation: $e');
     }
     final existing = _trustedDevices[deviceId];
     if (existing != null) {
@@ -220,7 +220,7 @@ class TrustedDevicesHandler {
         _pendingRequests.remove(id);
       }
       _notifyPendingRequestsChanged();
-      debugPrint(
+      AppLogger.info(
           '🧹 Cleaned up ${expiredIds.length} expired pending requests');
     }
   }

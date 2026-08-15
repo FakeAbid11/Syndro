@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
+import '../../../utils/app_logger.dart';
 import '../models/received_file.dart';
 import '../models/pending_files_manager.dart';
 import '../utils/network_utils.dart';
@@ -56,6 +56,10 @@ class ReceiveServer {
   static const int _maxUploadSizeBytes = 10 * 1024 * 1024 * 1024;
   // Maximum single file size (5GB)
   static const int _maxFileSizeBytes = 5 * 1024 * 1024 * 1024;
+  // Upper bound on how much of an upload body we will buffer in memory for
+  // multipart parsing. The body is streamed to a temp file first, but parsing
+  // still reads it back into RAM, so we cap that to avoid OOM on huge uploads.
+  static const int _maxInMemoryParseBytes = 1024 * 1024 * 1024; // 1GB
 
   // User confirmation tracking - require user confirmation before accepting uploads
   bool _requireConfirmation = true;
@@ -104,7 +108,7 @@ class ReceiveServer {
     final confirmation = _pendingConfirmations[uploadId];
     if (confirmation != null && confirmation.isPending) {
       confirmation.confirmed = true;
-      debugPrint('✅ Upload confirmed for $uploadId');
+      AppLogger.info('✅ Upload confirmed for $uploadId');
       return true;
     }
     return false;
@@ -115,7 +119,7 @@ class ReceiveServer {
     final confirmation = _pendingConfirmations[uploadId];
     if (confirmation != null && confirmation.isPending) {
       confirmation.denied = true;
-      debugPrint('❌ Upload denied for $uploadId');
+      AppLogger.error('❌ Upload denied for $uploadId');
       return true;
     }
     return false;
@@ -142,7 +146,7 @@ class ReceiveServer {
     timestamps.removeWhere((t) => t.isBefore(windowStart));
     
     if (timestamps.length >= _maxRequestsPerMinute) {
-      debugPrint('⚠️ Rate limit exceeded for $ipAddress');
+      AppLogger.warn('⚠️ Rate limit exceeded for $ipAddress');
       _requestTimestamps[ipAddress] = timestamps;
       return false;
     }
@@ -161,7 +165,7 @@ class ReceiveServer {
     // Create temp directory for pending files
     _tempDirectory = await _createTempDirectory();
     if (_tempDirectory == null) {
-      debugPrint('❌ Failed to create temp directory');
+      AppLogger.error('❌ Failed to create temp directory');
       return null;
     }
 
@@ -171,8 +175,8 @@ class ReceiveServer {
       finalDirectory: _finalDirectory!,
     );
 
-    debugPrint('📁 Temp directory: $_tempDirectory');
-    debugPrint('📁 Final directory: $_finalDirectory');
+    AppLogger.info('📁 Temp directory: $_tempDirectory');
+    AppLogger.info('📁 Final directory: $_finalDirectory');
 
     try {
       int port = _receivePort;
@@ -189,7 +193,7 @@ class ReceiveServer {
         } catch (e) {
           port++;
           if (attempt == 9) {
-            debugPrint('Failed to bind to any port');
+            AppLogger.error('Failed to bind to any port');
             return null;
           }
         }
@@ -200,19 +204,19 @@ class ReceiveServer {
       final localIp = await NetworkUtils.getLocalIp();
       _shareUrl = 'http://$localIp:${_server!.port}';
 
-      debugPrint('Web receive server running at $_shareUrl');
+      AppLogger.info('Web receive server running at $_shareUrl');
 
       _serve();
 
       // Auto-expire after duration
       _expirationTimer = Timer(_shareExpiration, () {
-        debugPrint('Receive session expired');
+        AppLogger.info('Receive session expired');
         stop();
       });
 
       return _shareUrl;
     } catch (e) {
-      debugPrint('Error starting receive server: $e');
+      AppLogger.error('Error starting receive server: $e');
       return null;
     }
   }
@@ -249,7 +253,7 @@ class ReceiveServer {
 
       return tempPath;
     } catch (e) {
-      debugPrint('Error creating temp directory: $e');
+      AppLogger.error('Error creating temp directory: $e');
 
       // Fallback to system temp
       try {
@@ -260,7 +264,7 @@ class ReceiveServer {
         await dir.create(recursive: true);
         return fallbackPath;
       } catch (e2) {
-        debugPrint('Error creating fallback temp directory: $e2');
+        AppLogger.error('Error creating fallback temp directory: $e2');
         return null;
       }
     }
@@ -273,7 +277,7 @@ class ReceiveServer {
       _expirationTimer?.cancel();
       _expirationTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling expiration timer: $e');
+      AppLogger.error('Error cancelling expiration timer: $e');
     }
 
     // FIX: Add try-catch for server closure
@@ -283,7 +287,7 @@ class ReceiveServer {
         _server = null;
       }
     } catch (e) {
-      debugPrint('Error closing server: $e');
+      AppLogger.error('Error closing server: $e');
     }
 
     _shareUrl = null;
@@ -297,7 +301,7 @@ class ReceiveServer {
     try {
       await _pendingFilesManager.dispose();
     } catch (e) {
-      debugPrint('Error disposing pending files manager: $e');
+      AppLogger.error('Error disposing pending files manager: $e');
     }
     
     // FIX: Check if controller is closed before closing
@@ -306,7 +310,7 @@ class ReceiveServer {
         await _receivedFilesController.close();
       }
     } catch (e) {
-      debugPrint('Error closing received files controller: $e');
+      AppLogger.error('Error closing received files controller: $e');
     }
 
     // Clean up temp directory
@@ -317,7 +321,7 @@ class ReceiveServer {
           await dir.delete(recursive: true);
         }
       } catch (e) {
-        debugPrint('Error cleaning up temp directory: $e');
+        AppLogger.error('Error cleaning up temp directory: $e');
       }
     }
   }
@@ -330,12 +334,12 @@ class ReceiveServer {
       try {
         await _handleRequest(request);
       } catch (e) {
-        debugPrint('Error handling receive request: $e');
+        AppLogger.error('Error handling receive request: $e');
         try {
           request.response.statusCode = HttpStatus.internalServerError;
           await request.response.close();
         } catch (closeError) {
-          debugPrint('Error closing error response: $closeError');
+          AppLogger.error('Error closing error response: $closeError');
         }
       }
     }
@@ -352,7 +356,7 @@ class ReceiveServer {
       request.response.statusCode = HttpStatus.tooManyRequests;
       request.response.write('Rate limit exceeded. Please try again later.');
       await request.response.close();
-      debugPrint('⚠️ Rate limit blocked request from $clientIp');
+      AppLogger.warn('⚠️ Rate limit blocked request from $clientIp');
       return;
     }
 
@@ -397,7 +401,7 @@ class ReceiveServer {
       return;
     }
 
-    debugPrint('📥 Receiving files to temp: $_tempDirectory');
+    AppLogger.info('📥 Receiving files to temp: $_tempDirectory');
 
     try {
       // Track uploaded files for response payload
@@ -449,7 +453,7 @@ class ReceiveServer {
             try {
               await tempBodyFile.delete();
             } catch (e, stack) {
-              debugPrint('⚠️ Failed to delete temp file: $e\n$stack');
+              AppLogger.error('⚠️ Failed to delete temp file: $e\n$stack');
             }
             request.response.statusCode = HttpStatus.requestEntityTooLarge;
             request.response.write('Upload exceeds maximum size limit (${_maxUploadSizeBytes ~/ (1024 * 1024 * 1024)}GB)');
@@ -460,7 +464,18 @@ class ReceiveServer {
         await tempSink.flush();
         await tempSink.close();
 
-        debugPrint('📦 Received $totalSize bytes (streamed to temp file)');
+        AppLogger.info('📦 Received $totalSize bytes (streamed to temp file)');
+
+        // Cap the amount we buffer in memory for parsing. readAsBytes below
+        // loads the whole body into RAM; without this a multi-GB upload could
+        // exhaust memory even though it was streamed to disk safely.
+        if (totalSize > _maxInMemoryParseBytes) {
+          request.response.statusCode = HttpStatus.requestEntityTooLarge;
+          request.response.write(
+              'Upload too large for browser transfer (${_maxInMemoryParseBytes ~/ (1024 * 1024 * 1024)}GB max). Use the app-to-app transfer for larger files.');
+          await request.response.close();
+          return;
+        }
 
         // Read back from temp file for parsing (still needed for multipart boundary detection)
         final bytes = await tempBodyFile.readAsBytes();
@@ -474,7 +489,7 @@ class ReceiveServer {
               part.data.isNotEmpty) {
             // FIX (Bug #6): Validate individual file size
             if (part.data.length > _maxFileSizeBytes) {
-              debugPrint('⚠️ File ${part.filename} exceeds size limit, skipping');
+              AppLogger.warn('⚠️ File ${part.filename} exceeds size limit, skipping');
               continue;
             }
             
@@ -486,7 +501,7 @@ class ReceiveServer {
             final tempFilename = '${timestamp}_$cleanFilename';
             final tempFilePath = path.join(_tempDirectory!, tempFilename);
 
-            debugPrint('💾 Saving to temp: $cleanFilename → $tempFilePath');
+            AppLogger.info('💾 Saving to temp: $cleanFilename → $tempFilePath');
 
             try {
               final file = File(tempFilePath);
@@ -497,7 +512,7 @@ class ReceiveServer {
               // Verify file was written
               if (await file.exists()) {
                 final stat = await file.stat();
-                debugPrint(
+                AppLogger.info(
                     '✅ File saved to temp: $cleanFilename (${stat.size} bytes)');
 
                 uploadedFiles.add({
@@ -521,10 +536,10 @@ class ReceiveServer {
                 // Also notify via stream (for backward compatibility)
                 _receivedFilesController.add(receivedFile);
               } else {
-                debugPrint('❌ File was not created: $tempFilePath');
+                AppLogger.error('❌ File was not created: $tempFilePath');
               }
             } catch (e) {
-              debugPrint('❌ Error saving file $cleanFilename: $e');
+              AppLogger.error('❌ Error saving file $cleanFilename: $e');
             }
           }
         }
@@ -535,11 +550,11 @@ class ReceiveServer {
             await tempBodyFile.delete();
           }
         } catch (deleteError) {
-          debugPrint('Error deleting temp body file: $deleteError');
+          AppLogger.error('Error deleting temp body file: $deleteError');
         }
       }
 
-      debugPrint('📊 Total files received: ${uploadedFiles.length}');
+      AppLogger.info('📊 Total files received: ${uploadedFiles.length}');
 
       // Send response
       request.response.headers.contentType = ContentType.json;
@@ -551,7 +566,7 @@ class ReceiveServer {
       }));
       await request.response.close();
     } catch (e) {
-      debugPrint('❌ Error handling upload: $e');
+      AppLogger.error('❌ Error handling upload: $e');
       request.response.statusCode = HttpStatus.internalServerError;
       request.response.write('Upload failed: $e');
       await request.response.close();
