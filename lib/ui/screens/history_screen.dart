@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/utils/byte_formatter.dart';
 
@@ -101,9 +103,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
+            style: FilledButton.styleFrom(
               backgroundColor: AppTheme.errorColor,
             ),
             child: const Text('Clear All'),
@@ -189,33 +191,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
+        title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.history,
-                color: Colors.white,
-                size: 20,
-              ),
+            GradientIconTile(
+              icon: Icons.history,
+              size: 36,
+              iconSize: 20,
+              radius: AppRadius.sm,
             ),
-            const SizedBox(width: 12),
-            const Text('Transfer History'),
+            SizedBox(width: AppSpacing.md),
+            Text('Transfer History'),
           ],
         ),
         actions: [
           if (_transfers.isNotEmpty)
             IconButton(
               icon: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(AppSpacing.sm),
                 decoration: BoxDecoration(
                   color: AppTheme.errorColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: AppRadius.smAll,
                 ),
                 child: const Icon(
                   Icons.delete_sweep,
@@ -247,31 +243,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.history,
-            size: 64,
-            color: AppTheme.textTertiary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No transfer history',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppTheme.textTertiary,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your completed transfers will appear here',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.textTertiary,
-                ),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      icon: Icons.history,
+      title: 'No transfer history',
+      message: 'Your completed transfers will appear here',
     );
   }
 
@@ -279,50 +254,30 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (_statistics.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.9),
-            AppTheme.surfaceColor.withValues(alpha: 0.7),
+      margin: const EdgeInsets.all(AppSpacing.lg),
+      child: AppCard(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStatItem(
+              'Total',
+              _statistics['totalTransfers']?.toString() ?? '0',
+              Icons.swap_horiz,
+            ),
+            _buildStatItem(
+              'Completed',
+              _statistics['completedTransfers']?.toString() ?? '0',
+              Icons.check_circle,
+              color: AppTheme.successColor,
+            ),
+            _buildStatItem(
+              'Data',
+              ByteFormatter.format(_statistics['totalBytes'] ?? 0),
+              Icons.data_usage,
+            ),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.2),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem(
-            'Total',
-            _statistics['totalTransfers']?.toString() ?? '0',
-            Icons.swap_horiz,
-          ),
-          _buildStatItem(
-            'Completed',
-            _statistics['completedTransfers']?.toString() ?? '0',
-            Icons.check_circle,
-            color: AppTheme.successColor,
-          ),
-          _buildStatItem(
-            'Data',
-            ByteFormatter.format(_statistics['totalBytes'] ?? 0),
-            Icons.data_usage,
-          ),
-        ],
       ),
     );
   }
@@ -332,7 +287,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -342,7 +297,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 (color ?? AppTheme.primaryColor).withValues(alpha: 0.1),
               ],
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.mdAll,
             border: Border.all(
               color: (color ?? AppTheme.primaryColor).withValues(alpha: 0.3),
               width: 1,
@@ -354,14 +309,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             size: 26,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         Text(
           value,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpacing.xs + 2),
         Text(
           label,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -374,7 +329,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Widget _buildHistoryList() {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       itemCount: _transfers.length,
       itemBuilder: (context, index) {
         final transfer = _transfers[index];
@@ -392,159 +347,131 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           direction: DismissDirection.endToStart,
           background: Container(
             alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.only(right: AppSpacing.xl),
+            margin: const EdgeInsets.only(bottom: AppSpacing.md),
+            decoration: const BoxDecoration(
               color: AppTheme.errorColor,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.lgAll,
             ),
             child: const Icon(Icons.delete, color: Colors.white),
           ),
           onDismissed: (_) => _deleteTransfer(transferId),
           child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.cardColor.withValues(alpha: 0.9),
-                  AppTheme.surfaceColor.withValues(alpha: 0.7),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _getStatusColor(status)
-                    .withValues(alpha: 0.2),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {},
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              _getStatusColor(status)
-                                  .withValues(alpha: 0.2),
-                              _getStatusColor(status)
-                                  .withValues(alpha: 0.1),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _getStatusColor(status)
-                                .withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          _getStatusIcon(status),
-                          color: _getStatusColor(status),
-                          size: 24,
-                        ),
+            margin: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: AppCard(
+              onTap: () {},
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          _getStatusColor(status)
+                              .withValues(alpha: 0.2),
+                          _getStatusColor(status)
+                              .withValues(alpha: 0.1),
+                        ],
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      borderRadius: AppRadius.mdAll,
+                      border: Border.all(
+                        color: _getStatusColor(status)
+                            .withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      _getStatusIcon(status),
+                      color: _getStatusColor(status),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          receiverName,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs + 2),
+                        Row(
                           children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.sm,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.surfaceColor.withValues(alpha: 0.5),
+                                borderRadius: AppRadius.smAll,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getFileTypeIcon(fileCount),
+                                    size: 12,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                  const SizedBox(width: AppSpacing.xs),
+                                  Text(
+                                    '$fileCount file(s)',
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: AppTheme.textTertiary,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
                             Text(
-                              receiverName,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              ByteFormatter.format(totalBytes),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.primaryColor,
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _getFileTypeIcon(fileCount),
-                                        size: 12,
-                                        color: AppTheme.textTertiary,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '$fileCount file(s)',
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: AppTheme.textTertiary,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  ByteFormatter.format(totalBytes),
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: AppTheme.primaryColor,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ],
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.xs + 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 12,
+                              color: AppTheme.textTertiary,
                             ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.access_time_rounded,
-                                  size: 12,
-                                  color: AppTheme.textTertiary,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatTimestamp(createdAt),
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: AppTheme.textTertiary,
-                                      ),
-                                ),
-                              ],
+                            const SizedBox(width: AppSpacing.xs),
+                            Text(
+                              _formatTimestamp(createdAt),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.textTertiary,
+                                  ),
                             ),
                           ],
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.chevron_right,
-                          color: AppTheme.textTertiary,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceColor.withValues(alpha: 0.5),
+                      borderRadius: AppRadius.smAll,
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right,
+                      color: AppTheme.textTertiary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

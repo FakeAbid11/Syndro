@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/app_widgets.dart';
 import 'main_navigation_screen.dart';
 
 class PermissionsOnboardingScreen extends StatefulWidget {
@@ -170,10 +172,10 @@ class _PermissionsOnboardingScreenState
                 'Syndro requires certain permissions to function properly. '
                 'Without these permissions, some features may not work.',
               ),
-              SizedBox(height: 16),
+              SizedBox(height: AppSpacing.lg),
               Text(
                 'You can grant permissions in Settings, or continue with limited functionality.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
+                style: TextStyle(fontSize: 14, color: AppTheme.textTertiary),
               ),
             ],
           ),
@@ -243,7 +245,7 @@ class _PermissionsOnboardingScreenState
                 Align(
                   alignment: Alignment.topRight,
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(AppSpacing.lg),
                     child: TextButton(
                       onPressed: _isLoading ? null : _skip,
                       child: const Text(
@@ -265,18 +267,19 @@ class _PermissionsOnboardingScreenState
 
                 // Page indicator (single dot)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        duration: AppMotion.normal,
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                         width: 24,
                         height: 8,
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                       ),
                     ],
@@ -286,32 +289,22 @@ class _PermissionsOnboardingScreenState
                 // Action button
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    24,
+                    AppSpacing.xxl,
                     0,
-                    24,
-                    _isDesktop ? 48 : 32,
+                    AppSpacing.xxl,
+                    _isDesktop ? 48 : AppSpacing.xxxl,
                   ),
                   child: Column(
                     children: [
                       SizedBox(
                         width: _isDesktop ? 220 : double.infinity,
                         height: 52,
-                        child: ElevatedButton(
+                        child: FilledButton(
                           onPressed: _isLoading
                               ? null
                               : (Platform.isAndroid && !_allGranted
                                   ? _requestPermissions
                                   : _continue),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor:
-                                AppTheme.primaryColor.withValues(alpha: 0.6),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
                           child: _isLoading
                               ? const SizedBox(
                                   width: 20,
@@ -336,7 +329,7 @@ class _PermissionsOnboardingScreenState
                       // Missing permissions text
                       if (Platform.isAndroid &&
                           _missingPermissions.isNotEmpty) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: AppSpacing.md),
                         Text(
                           'Missing: ${_missingPermissions.join(", ")}',
                           style: const TextStyle(
@@ -358,95 +351,57 @@ class _PermissionsOnboardingScreenState
 
   Widget _buildContent() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Icon with enhanced styling
-          Container(
-            width: 140,
-            height: 140,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.primaryColor.withValues(alpha: 0.25),
-                  AppTheme.primaryColor.withValues(alpha: 0.1),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(
-                color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                  blurRadius: 30,
-                  offset: const Offset(0, 15),
-                ),
-              ],
-            ),
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.primaryColor.withValues(alpha: 0.15),
-                    AppTheme.primaryColor.withValues(alpha: 0.05),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(
-                Icons.security_rounded,
-                size: 64,
-                color: AppTheme.primaryColor,
-              ),
-            ),
+          // Hero icon
+          const GradientIconTile(
+            icon: Icons.security_rounded,
+            size: 140,
+            radius: AppRadius.xxl,
           ),
 
           const SizedBox(height: 48),
 
           // Title with gradient effect
           ShaderMask(
-            shaderCallback: (bounds) => AppTheme.logoGradient.createShader(bounds),
-            child: const Text(
+            shaderCallback: (bounds) =>
+                AppTheme.logoGradient.createShader(bounds),
+            child: Text(
               'PERMISSIONS',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 1.5,
-              ),
+              style:
+                  Theme.of(context).textTheme.displaySmall?.copyWith(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 1.5,
+                      ),
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
 
           // Description
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Text(
               'Syndro needs a few permissions to share files seamlessly',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: AppTheme.textSecondary,
-                height: 1.6,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontSize: 16,
+                    color: AppTheme.textSecondary,
+                    height: 1.6,
+                  ),
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.xxxl),
 
           // Permissions list with enhanced styling
           _buildPermissionsList(),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.xxxl),
 
           // Decorative element
           Container(
@@ -462,7 +417,7 @@ class _PermissionsOnboardingScreenState
                   AppTheme.primaryColor.withValues(alpha: 0.3),
                 ],
               ),
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
           ),
         ],
@@ -471,29 +426,9 @@ class _PermissionsOnboardingScreenState
   }
 
   Widget _buildPermissionsList() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.9),
-            AppTheme.surfaceColor.withValues(alpha: 0.7),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.15),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: EdgeInsets.zero,
+      radius: AppRadius.xl,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: _permissions.asMap().entries.map((entry) {
@@ -510,7 +445,7 @@ class _PermissionsOnboardingScreenState
                   color: AppTheme.primaryColor.withValues(alpha: 0.1),
                   height: 1,
                   indent: 70,
-                  endIndent: 16,
+                  endIndent: AppSpacing.lg,
                 ),
             ],
           );
@@ -521,7 +456,10 @@ class _PermissionsOnboardingScreenState
 
   Widget _buildPermissionTile(_PermissionItem permission, bool isGranted) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: 14,
+      ),
       child: Row(
         children: [
           // Icon with enhanced styling
@@ -537,7 +475,7 @@ class _PermissionsOnboardingScreenState
                   permission.iconColor.withValues(alpha: 0.1),
                 ],
               ),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(
                 color: permission.iconColor.withValues(alpha: 0.3),
                 width: 1,
@@ -550,7 +488,7 @@ class _PermissionsOnboardingScreenState
             ),
           ),
 
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
 
           // Text
           Expanded(
@@ -559,19 +497,19 @@ class _PermissionsOnboardingScreenState
               children: [
                 Text(
                   permission.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   permission.description,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.textSecondary,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                      ),
                 ),
               ],
             ),
@@ -580,7 +518,7 @@ class _PermissionsOnboardingScreenState
           // Status indicator
           if (Platform.isAndroid)
             AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: AppMotion.normal,
               width: 28,
               height: 28,
               decoration: BoxDecoration(

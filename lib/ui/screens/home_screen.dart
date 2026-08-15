@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../animations/pulse_animation.dart';
 import '../widgets/device_card.dart';
 import '../../core/models/device.dart';
@@ -225,12 +227,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         child: Center(
           child: Container(
             padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 24,
+              horizontal: AppSpacing.xxxl,
+              vertical: AppSpacing.xxl,
             ),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
+              color: AppTheme.surfaceContainerHigh,
+              borderRadius: AppRadius.xlAll,
+              border: Border.all(color: AppTheme.outlineVariant, width: 1),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.3),
@@ -245,7 +248,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 CircularProgressIndicator(
                   color: AppTheme.primaryColor,
                 ),
-                SizedBox(height: 20),
+                SizedBox(height: AppSpacing.xl),
                 Text(
                   'Preparing files...',
                   style: TextStyle(
@@ -255,7 +258,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     decoration: TextDecoration.none,
                   ),
                 ),
-                SizedBox(height: 8),
+                SizedBox(height: AppSpacing.sm),
                 Text(
                   'This may take a moment for large files',
                   style: TextStyle(
@@ -291,52 +294,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       builder: (sheetContext) => Container(
         decoration: const BoxDecoration(
           color: AppTheme.surfaceColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
         ),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 40,
               height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.textTertiary,
-                borderRadius: BorderRadius.circular(2),
+              decoration: const BoxDecoration(
+                color: AppTheme.borderColor,
+                borderRadius: AppRadius.pillAll,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xxl),
             Text(
               'Browser Share',
               style: Theme.of(sheetContext).textTheme.titleLarge,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               'Share files without installing an app',
               style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textTertiary,
                   ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               'Connect to the same WiFi network or create a Hotspot',
               style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
                     color: AppTheme.warningColor,
                   ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xxl),
             _buildShareOption(
               context: sheetContext,
               icon: Icons.photo_library,
               title: 'Share Media',
               subtitle: 'Photos and videos from gallery',
-              color: const Color(0xFFF472B6),
+              color: AppTheme.secondaryColor,
               onTap: () {
                 Navigator.pop(sheetContext);
                 _pickAndShareMedia();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             _buildShareOption(
               context: sheetContext,
               icon: Icons.upload_file,
@@ -348,19 +352,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 _pickAndShareFiles();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             _buildShareOption(
               context: sheetContext,
               icon: Icons.download,
               title: 'Receive Files',
               subtitle: 'Get files from any device',
-              color: AppTheme.secondaryColor,
+              color: AppTheme.accentColor,
               onTap: () {
                 Navigator.pop(sheetContext);
                 _openReceiveScreen();
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
           ],
         ),
       ),
@@ -379,12 +383,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.lgAll,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppRadius.lgAll,
             border: Border.all(
               color: color.withValues(alpha: 0.3),
               width: 1,
@@ -393,10 +397,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mdAll,
                 ),
                 child: Icon(
                   icon,
@@ -404,7 +408,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   size: 28,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,7 +419,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                             fontWeight: FontWeight.w600,
                           ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -561,9 +565,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceColor,
+        backgroundColor: AppTheme.surfaceContainerHigh,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.xlAll,
           side: BorderSide(
             color: AppTheme.warningColor.withValues(alpha: 0.3),
           ),
@@ -571,7 +575,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: AppTheme.warningColor),
-            SizedBox(width: 12),
+            SizedBox(width: AppSpacing.md),
             Text('Large File Warning'),
           ],
         ),
@@ -583,30 +587,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               'You are about to share ${ByteFormatter.format(totalSize.toInt())}.',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             const Text(
               'Large files may take longer to prepare and could cause '
               'browser performance issues during download.',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: AppTheme.primaryContainer,
+                borderRadius: AppRadius.smAll,
                 border: Border.all(
                   color: AppTheme.primaryColor.withValues(alpha: 0.2),
                 ),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.lightbulb_outline, color: AppTheme.primaryColor, size: 20),
-                  SizedBox(width: 8),
+                  Icon(Icons.lightbulb_outline,
+                      color: AppTheme.onPrimaryContainer, size: 20),
+                  SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       'Tip: For better performance with large files, '
                       'use direct device-to-device transfer instead.',
-                      style: TextStyle(fontSize: 13),
+                      style: TextStyle(
+                          fontSize: 13, color: AppTheme.onPrimaryContainer),
                     ),
                   ),
                 ],
@@ -619,11 +625,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-            ),
+          FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Continue with Browser Share'),
           ),
@@ -643,9 +645,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         context: context,
         builder: (dialogContext) => Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(24),
+          insetPadding: const EdgeInsets.all(AppSpacing.xxl),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppRadius.lgAll,
             child: ConstrainedBox(
               constraints: const BoxConstraints(
                 maxWidth: 450,
@@ -684,133 +686,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Get custom nickname if available
     final customNickname = ref.watch(currentDeviceNicknameProvider);
     final displayName = customNickname ?? currentDevice.name;
-    
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.8),
-            AppTheme.surfaceColor.withValues(alpha: 0.6),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.2),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+
+    return AppCard(
+      child: Row(
+        children: [
+          const GradientIconTile(
+            icon: Icons.devices,
+            size: 52,
+            radius: AppRadius.lg,
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'This Device',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppTheme.textTertiary,
+                          ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    const StatusBadge(
+                      label: 'Online',
+                      variant: BadgeVariant.success,
+                      showDot: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs + 2),
+                Text(
+                  displayName,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.wifi_rounded,
+                      size: 14,
+                      color: AppTheme.textTertiary,
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text(
+                      currentDevice.ipAddress,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppTheme.textTertiary,
+                          ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.devices,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'This Device',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textTertiary,
-                            ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.successColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: AppTheme.successColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Text(
-                              'Online',
-                              style: TextStyle(
-                                color: AppTheme.successColor,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    displayName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.wifi_rounded,
-                        size: 14,
-                        color: AppTheme.textTertiary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        currentDevice.ipAddress,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              color: AppTheme.textTertiary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -826,23 +759,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
+        title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.share,
-                color: Colors.white,
-                size: 20,
-              ),
+            GradientIconTile(
+              icon: Icons.share,
+              size: 36,
+              iconSize: 20,
+              radius: AppRadius.sm,
+              glow: false,
             ),
-            const SizedBox(width: 12),
-            const Text('Syndro'),
+            SizedBox(width: AppSpacing.md),
+            Text('Syndro'),
           ],
         ),
         actions: const [],
@@ -856,52 +784,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   child: _buildCurrentDeviceCard(context, currentDevice),
                 ),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.logoGradient,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Nearby Devices',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildDeviceCountBadge(discoveredDevicesAsync),
-                      const Spacer(),
-                      if (_isRefreshing)
-                        const Row(
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppTheme.primaryColor,
-                              ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: SectionHeader(
+                    title: 'Nearby Devices',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildDeviceCountBadge(discoveredDevicesAsync),
+                        if (_isRefreshing) ...[
+                          const SizedBox(width: AppSpacing.md),
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primaryColor,
                             ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Scanning...',
-                              style: TextStyle(
-                                color: AppTheme.textTertiary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Text(
+                            'Scanning...',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: AppTheme.textTertiary),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
                 Expanded(
@@ -919,44 +836,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
             // Browser Share FAB
             Positioned(
-              right: 20,
+              right: AppSpacing.xl,
               bottom: _isMobile() ? 110 : 20,
-              child: GestureDetector(
-                onTap: _showShareModeDialog,
-                child: Container(
-                  height: 64,
-                  width: 64,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceColor,
-                    borderRadius: BorderRadius.circular(32),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                    border: Border.all(
-                      color: AppTheme.cardColor,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.language,
-                    color: AppTheme.primaryColor,
-                    size: 30,
-                  ),
-                ),
+              child: FloatingActionButton(
+                heroTag: null,
+                onPressed: _showShareModeDialog,
+                backgroundColor: AppTheme.surfaceContainerHigh,
+                foregroundColor: AppTheme.primaryColor,
+                shape: const CircleBorder(),
+                child: const Icon(Icons.language, size: 30),
               ),
             ),
 
             // Send Files FAB (when device selected)
             if (selectedDevice != null)
               Positioned(
-                right: 20,
+                right: AppSpacing.xl,
                 bottom: _isMobile() ? 190 : 80, // Raised from 20 to 80 for desktop
-                child: GestureDetector(
-                  onTap: () {
+                child: FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (routeContext) => FilePickerScreen(
@@ -965,54 +864,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       ),
                     );
                   },
-                  child: Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                      border: Border.all(
-                        color: AppTheme.cardColor,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.send,
-                          color: AppTheme.primaryColor,
-                          size: 24,
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Send Files',
-                          style: TextStyle(
-                            color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  backgroundColor: AppTheme.surfaceContainerHigh,
+                  foregroundColor: AppTheme.primaryColor,
+                  icon: const Icon(Icons.send, size: 24),
+                  label: const Text('Send Files'),
                 ),
               ),
-            
+
             // Multi-select Send FAB (when multiple devices selected)
             if (ref.watch(selectedDevicesProvider).isNotEmpty)
               Positioned(
-                right: 20,
+                right: AppSpacing.xl,
                 bottom: _isMobile() ? 190 : 80,
-                child: GestureDetector(
-                  onTap: () {
+                child: FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: () {
                     final selectedDevices = ref.read(selectedDevicesProvider);
                     Navigator.of(context).push(
                       MaterialPageRoute(
@@ -1022,76 +888,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       ),
                     );
                   },
-                  child: Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.logoGradient,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.send,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Send to ${ref.watch(selectedDevicesProvider).length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  icon: const Icon(Icons.send, size: 24),
+                  label: Text('Send to ${ref.watch(selectedDevicesProvider).length}'),
                 ),
               ),
-            
+
             // Multi-select cancel button
             if (ref.watch(selectedDevicesProvider).isNotEmpty)
               Positioned(
-                left: 20,
+                left: AppSpacing.xl,
                 bottom: _isMobile() ? 190 : 80,
-                child: GestureDetector(
-                  onTap: () {
+                child: FloatingActionButton(
+                  heroTag: null,
+                  onPressed: () {
                     ref.read(selectedDevicesProvider.notifier).state = {};
                   },
-                  child: Container(
-                    height: 56,
-                    width: 56,
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                      border: Border.all(
-                        color: AppTheme.errorColor.withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      color: AppTheme.errorColor,
-                      size: 24,
-                    ),
-                  ),
+                  backgroundColor: AppTheme.errorContainer,
+                  foregroundColor: AppTheme.onErrorContainer,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.close, size: 24),
                 ),
               ),
           ],
@@ -1102,50 +917,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   Widget _buildDeviceCountBadge(AsyncValue<List<dynamic>> devicesAsync) {
     return devicesAsync.when(
-      data: (devices) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.primaryColor,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          '${devices.length}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      data: (devices) => StatusBadge(
+        label: '${devices.length}',
+        variant: BadgeVariant.primary,
       ),
-      loading: () => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.textTertiary,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Text(
-          '...',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      loading: () => const StatusBadge(
+        label: '...',
+        variant: BadgeVariant.neutral,
       ),
-      error: (_, __) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppTheme.errorColor,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Text(
-          '!',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      error: (_, __) => const StatusBadge(
+        label: '!',
+        variant: BadgeVariant.error,
       ),
     );
   }
@@ -1161,7 +943,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             Text(HomeScreenStrings.initializing),
           ],
         ),
@@ -1210,7 +992,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               color: AppTheme.primaryColor.withValues(alpha: 0.4),
                             ),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: AppSpacing.xxl),
                           Text(
                             'Scanning for devices...',
                             style: Theme.of(context)
@@ -1220,7 +1002,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   color: AppTheme.textSecondary,
                                 ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpacing.sm),
                           Text(
                             'Make sure other devices are on the\nsame Wi-Fi network and have Syndro open.',
                             style: Theme.of(context)
@@ -1231,20 +1013,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                 ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: AppSpacing.xxxl),
                           OutlinedButton.icon(
                             onPressed: _isRefreshing ? null : _refreshDevices,
                             icon: const Icon(Icons.refresh),
                             label: const Text(HomeScreenStrings.scanAgain),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppTheme.primaryColor,
-                              side: BorderSide(
-                                color: AppTheme.primaryColor.withValues(alpha: 0.6),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
                           ),
                         ],
                       ),
@@ -1259,7 +1032,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         return RefreshIndicator(
           onRefresh: _refreshDevices,
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             itemCount: sameSubnetDevices.length,
             itemBuilder: (context, index) {
               final device = sameSubnetDevices[index];
@@ -1269,7 +1042,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                  (!isMultiSelectMode && selectedDevice?.id == device.id);
               
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
                 child: DeviceCard(
                   device: device,
                   isSelected: isSelected,
@@ -1312,14 +1085,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               size: 64,
               color: AppTheme.textTertiary,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             Text(
               HomeScreenStrings.scanningForDevices,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: AppTheme.textTertiary,
                   ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             const CircularProgressIndicator(),
           ],
         ),
@@ -1333,21 +1106,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               size: 64,
               color: AppTheme.errorColor,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             Text(
               HomeScreenStrings.errorDiscoveringDevices,
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
               child: Text(
                 error.toString(),
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             ElevatedButton.icon(
               onPressed: _refreshDevices,
               icon: const Icon(Icons.refresh),
@@ -1374,10 +1147,11 @@ class _TransferRequestSheetContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       decoration: const BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        color: AppTheme.surfaceColor,
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1385,51 +1159,37 @@ class _TransferRequestSheetContent extends StatelessWidget {
           Container(
             width: 40,
             height: 4,
-            decoration: BoxDecoration(
-              color: AppTheme.textTertiary,
-              borderRadius: BorderRadius.circular(2),
+            decoration: const BoxDecoration(
+              color: AppTheme.borderColor,
+              borderRadius: AppRadius.pillAll,
             ),
           ),
-          const SizedBox(height: 24),
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.file_download_rounded,
-              color: AppTheme.primaryColor,
-              size: 32,
-            ),
+          const SizedBox(height: AppSpacing.xxl),
+          const GradientIconTile(
+            icon: Icons.file_download_rounded,
+            size: 64,
+            radius: AppRadius.lg,
           ),
-          const SizedBox(height: 16),
-          const Text(
+          const SizedBox(height: AppSpacing.lg),
+          Text(
             'Incoming Transfer',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.headlineMedium,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             'From: ${request.senderName}',
-            style: const TextStyle(
-              fontSize: 16,
-              color: AppTheme.textSecondary,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: AppTheme.textSecondary,
+                ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             '${request.fileCount} file(s) • ${_formatSize(request.totalSize)}',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppTheme.textTertiary,
-            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.textTertiary,
+                ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
           Row(
             children: [
               Expanded(
@@ -1438,32 +1198,28 @@ class _TransferRequestSheetContent extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.errorColor,
                     side: const BorderSide(color: AppTheme.errorColor),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                   ),
                   child: const Text('REJECT'),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               Expanded(
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: onAccept,
-                  style: ElevatedButton.styleFrom(
+                  style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.successColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                   ),
                   child: const Text('ACCEPT'),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
         ],
       ),
     );

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../theme/app_dimens.dart';
+import '../theme/app_theme.dart';
+
 
 /// Shimmer loading effect for skeleton screens
 class ShimmerLoading extends StatelessWidget {
@@ -19,15 +22,9 @@ class ShimmerLoading extends StatelessWidget {
       return child;
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     return Shimmer.fromColors(
-      baseColor: isDark 
-          ? const Color(0xFF1E1E2E) 
-          : const Color(0xFFE0E0E0),
-      highlightColor: isDark 
-          ? const Color(0xFF2A2A3E) 
-          : const Color(0xFFF5F5F5),
+      baseColor: AppTheme.surfaceContainer,
+      highlightColor: AppTheme.surfaceContainerHigh,
       child: child,
     );
   }
@@ -42,19 +39,19 @@ class DeviceCardSkeleton extends StatelessWidget {
     return ShimmerLoading(
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
               // Icon skeleton
               Container(
                 width: 56,
                 height: 56,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mdAll,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               // Text skeleton
               Expanded(
                 child: Column(
@@ -115,18 +112,18 @@ class HistoryItemSkeleton extends StatelessWidget {
     return ShimmerLoading(
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.smAll,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

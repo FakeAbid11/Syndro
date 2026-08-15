@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 import '../../core/models/transfer.dart';
 
@@ -19,7 +20,7 @@ class TransferProgressWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -43,7 +44,7 @@ class TransferProgressWidget extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
 
             // File names
             Text(
@@ -53,22 +54,22 @@ class TransferProgressWidget extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
 
             // Progress bar
             if (transfer.status == TransferStatus.transferring ||
                 transfer.status == TransferStatus.connecting) ...[
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppRadius.smAll,
                 child: LinearProgressIndicator(
                   value: transfer.progress.percentage / 100,
                   minHeight: 8,
-                  backgroundColor: AppTheme.surfaceColor,
+                  backgroundColor: AppTheme.surfaceContainerHighest,
                   valueColor:
                       const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
 
               // Progress info
               Row(
@@ -85,7 +86,7 @@ class TransferProgressWidget extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
 
               // Speed and ETA
               if (transfer.progress.speed > 0)
@@ -113,7 +114,7 @@ class TransferProgressWidget extends StatelessWidget {
                 children: [
                   const Icon(Icons.check_circle,
                       color: AppTheme.successColor, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(
                     'Transfer completed',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -132,7 +133,7 @@ class TransferProgressWidget extends StatelessWidget {
                     children: [
                       const Icon(Icons.error,
                           color: AppTheme.errorColor, size: 20),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Text(
                         'Transfer failed',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -143,7 +144,7 @@ class TransferProgressWidget extends StatelessWidget {
                   ),
                   // FIX (Bug #4): Safe null check before accessing errorMessage
                   if (transfer.errorMessage != null && transfer.errorMessage!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     Text(
                       transfer.errorMessage!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -153,20 +154,15 @@ class TransferProgressWidget extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   // Retry button
                   if (onRetry != null)
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
+                      child: FilledButton.icon(
                         onPressed: onRetry,
                         icon: const Icon(Icons.refresh, size: 18),
                         label: const Text('Retry Transfer'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
                       ),
                     ),
                 ],
@@ -181,7 +177,7 @@ class TransferProgressWidget extends StatelessWidget {
                     children: [
                       const Icon(Icons.cancel,
                           color: AppTheme.warningColor, size: 20),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Text(
                         'Transfer cancelled',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -190,7 +186,7 @@ class TransferProgressWidget extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   // Retry button for cancelled transfers too
                   if (onRetry != null)
                     SizedBox(
@@ -199,11 +195,6 @@ class TransferProgressWidget extends StatelessWidget {
                         onPressed: onRetry,
                         icon: const Icon(Icons.refresh, size: 18),
                         label: const Text('Try Again'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: const BorderSide(color: AppTheme.primaryColor),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
                       ),
                     ),
                 ],

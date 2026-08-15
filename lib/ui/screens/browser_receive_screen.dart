@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
 class BrowserReceiveScreen extends StatefulWidget {
@@ -515,7 +517,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
-            SizedBox(height: 16),
+            SizedBox(height: AppSpacing.lg),
             Text('Starting receive server...'),
           ],
         ),
@@ -525,87 +527,73 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     if (_error != null) {
       final isPermissionError = _error!.contains('permission');
 
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isPermissionError ? Icons.folder_off : Icons.error_outline,
-                size: 64,
-                color: AppTheme.errorColor,
+      return EmptyState(
+        icon: isPermissionError ? Icons.folder_off : Icons.error_outline,
+        title: isPermissionError ? 'Storage Permission Required' : 'Error',
+        message: _error!,
+        action: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isPermissionError) ...[
+              FilledButton.icon(
+                onPressed: _openSettings,
+                icon: const Icon(Icons.settings),
+                label: const Text('Open Settings'),
               ),
-              const SizedBox(height: 16),
-              Text(
-                isPermissionError ? 'Storage Permission Required' : 'Error',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 24),
-              if (isPermissionError) ...[
-                ElevatedButton.icon(
-                  onPressed: _openSettings,
-                  icon: const Icon(Icons.settings),
-                  label: const Text('Open Settings'),
-                ),
-                const SizedBox(height: 12),
-              ],
-              OutlinedButton(
-                onPressed: _startReceiving,
-                child: const Text('Try Again'),
-              ),
+              const SizedBox(height: AppSpacing.md),
             ],
-          ),
+            OutlinedButton(
+              onPressed: _startReceiving,
+              child: const Text('Try Again'),
+            ),
+          ],
         ),
       );
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Instructions
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: const BoxDecoration(
+              color: AppTheme.primaryContainer,
+              borderRadius: AppRadius.mdAll,
             ),
             child: const Row(
               children: <Widget>[
-                Icon(Icons.info_outline, color: AppTheme.primaryColor),
-                SizedBox(width: 12),
+                Icon(Icons.info_outline, color: AppTheme.onPrimaryContainer),
+                SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
                     'Open the link on any device to send files to this device',
-                    style: TextStyle(fontSize: 14),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.onPrimaryContainer,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
 
           // Download location info
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.textTertiary.withValues(alpha: 0.3)),
+              color: AppTheme.surfaceContainer,
+              borderRadius: AppRadius.smAll,
+              border: Border.all(color: AppTheme.outlineVariant),
             ),
             child: Row(
               children: [
                 const Icon(Icons.folder, color: AppTheme.textSecondary, size: 20),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'Saving to: ${_downloadPath ?? 'Downloads'}',
@@ -620,11 +608,11 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // QR Code
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -634,7 +622,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   AppTheme.cardColor.withValues(alpha: 0.7),
                 ],
               ),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: AppRadius.xxlAll,
               border: Border.all(
                 color: AppTheme.primaryColor.withValues(alpha: 0.3),
                 width: 1.5,
@@ -650,10 +638,10 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: AppRadius.xlAll,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.15),
@@ -681,7 +669,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 ShaderMask(
                   shaderCallback: (bounds) => AppTheme.logoGradient.createShader(bounds),
                   child: const Text(
@@ -693,16 +681,16 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   'No app needed on the other device',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppTheme.textTertiary,
                       ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -712,7 +700,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                         AppTheme.surfaceColor.withValues(alpha: 0.7),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: AppRadius.mdAll,
                     border: Border.all(
                       color: AppTheme.primaryColor.withValues(alpha: 0.2),
                       width: 1,
@@ -721,10 +709,10 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppRadius.smAll,
                         ),
                         child: const Icon(
                           Icons.link,
@@ -732,7 +720,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                           color: AppTheme.primaryColor,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Text(
                           _receiveUrl!,
@@ -744,14 +732,14 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       GestureDetector(
                         onTap: _copyLink,
                         child: Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(AppSpacing.sm),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: AppRadius.smAll,
                           ),
                           child: const Icon(
                             Icons.copy,
@@ -767,14 +755,14 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // URL Display
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             decoration: BoxDecoration(
               color: AppTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.mdAll,
               border:
                   Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
             ),
@@ -791,7 +779,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 IconButton(
                   icon: const Icon(Icons.copy, size: 20),
                   onPressed: _copyLink,
@@ -802,12 +790,12 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.xxxl),
 
           // Pending Files Section
           if (_pendingFiles.isNotEmpty) ...[
             _buildPendingFilesSection(),
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxxl),
           ],
 
           // Stop receiving button
@@ -820,7 +808,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.errorColor,
                 side: const BorderSide(color: AppTheme.errorColor),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
               ),
             ),
           ),
@@ -849,7 +837,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   : AppTheme.successColor,
               size: 20,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.sm),
             Text(
               'Received ${_pendingFiles.length} file(s)',
               style: Theme.of(context).textTheme.titleMedium,
@@ -857,10 +845,10 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             const Spacer(),
             if (pendingCount > 0)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
                 decoration: BoxDecoration(
                   color: AppTheme.warningColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.smAll,
                 ),
                 child: Text(
                   '$pendingCount pending',
@@ -872,12 +860,12 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                 ),
               ),
             if (savedCount > 0) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
                 decoration: BoxDecoration(
                   color: AppTheme.successColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.smAll,
                 ),
                 child: Text(
                   '$savedCount saved',
@@ -892,7 +880,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
 
         // Action buttons (Save All / Discard All)
         if (pendingCount > 0) ...[
@@ -911,11 +899,11 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   label: Text(_isSavingAll ? 'Saving...' : 'Save All'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.successColor,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _discardAllFiles,
@@ -924,28 +912,28 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.errorColor,
                     side: const BorderSide(color: AppTheme.errorColor),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
         ],
 
         // Files list
         Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppTheme.surfaceColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.mdAll,
           ),
           child: ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _pendingFiles.length,
-            separatorBuilder: (_, __) => Divider(
+            separatorBuilder: (_, __) => const Divider(
               height: 1,
-              color: AppTheme.textTertiary.withValues(alpha: 0.2),
+              color: AppTheme.outlineVariant,
             ),
             itemBuilder: (context, index) {
               final file = _pendingFiles[index];
@@ -964,13 +952,13 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     final isSaving = file.status == FileReceiveStatus.saving;
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Row(
         children: [
           // Thumbnail with tap to preview
           _buildFileThumbnail(file),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
 
           // File info
           Expanded(
@@ -990,7 +978,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                         isDiscarded ? TextDecoration.lineThrough : null,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Row(
                   children: [
                     Text(
@@ -1000,7 +988,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                         color: AppTheme.textTertiary,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     _buildStatusBadge(file),
                   ],
                 ),

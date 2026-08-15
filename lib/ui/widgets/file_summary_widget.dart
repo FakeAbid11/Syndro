@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
+import 'common/app_widgets.dart';
 import 'file_preview_widgets.dart';
 
 /// Widget showing summary of multiple files
@@ -35,49 +37,47 @@ class FileSummaryWidget extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Summary card
-        Card(
-          color: AppTheme.primaryColor.withValues(alpha: 0.1),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.folder_open,
-                  color: AppTheme.primaryColor,
-                  size: 32,
+        AppCard(
+          color: AppTheme.primaryContainer,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.folder_open,
+                color: AppTheme.onPrimaryContainer,
+                size: 32,
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${filePaths.length} ${filePaths.length == 1 ? 'file' : 'files'} selected',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: AppTheme.onPrimaryContainer,
+                          ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Total size: ${FileTypeHelper.formatFileSize(totalSize)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppTheme.onPrimaryContainer
+                                .withValues(alpha: 0.8),
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${filePaths.length} ${filePaths.length == 1 ? 'file' : 'files'} selected',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Total size: ${FileTypeHelper.formatFileSize(totalSize)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textTertiary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
 
         // File type breakdown
         if (typeCount.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: typeCount.entries.map((entry) {
               final type = entry.key;
               final count = entry.value;
@@ -96,23 +96,23 @@ class FileSummaryWidget extends StatelessWidget {
 
         // File list (if enabled)
         if (showFileList && filePaths.length <= 5) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
           ...filePaths.map((path) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: FilePreviewCard(filePath: path),
               )),
         ],
 
         // Show "+X more" if many files
         if (showFileList && filePaths.length > 5) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
           ...filePaths.take(3).map((path) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: FilePreviewCard(filePath: path),
               )),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: Center(
                 child: Text(
                   '+${filePaths.length - 3} more files',

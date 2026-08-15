@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/device.dart';
 import '../../core/services/transfer_service.dart';
 import '../../core/providers/transfer_provider.dart';
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 import '../screens/transfer_progress_screen.dart';
+import 'common/app_widgets.dart';
 import 'transfer_request_strings.dart';
 import '../../core/utils/byte_formatter.dart';
 
@@ -24,10 +26,10 @@ class TransferRequestSheet extends ConsumerWidget {
         request.items.fold<int>(0, (sum, item) => sum + item.size);
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       decoration: const BoxDecoration(
         color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -36,34 +38,28 @@ class TransferRequestSheet extends ConsumerWidget {
           Container(
             width: 40,
             height: 4,
-            decoration: BoxDecoration(
-              color: AppTheme.textTertiary,
-              borderRadius: BorderRadius.circular(2),
+            decoration: const BoxDecoration(
+              color: AppTheme.outlineVariant,
+              borderRadius: AppRadius.pillAll,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // Incoming icon
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.download,
-              color: AppTheme.primaryColor,
-              size: 48,
-            ),
+          const GradientIconTile(
+            icon: Icons.download,
+            size: 80,
+            iconSize: 44,
+            radius: AppRadius.xl,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
 
           // Title
           Text(
             TransferRequestStrings.incomingTransfer,
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
 
           // Sender info with trusted badge
           Row(
@@ -79,48 +75,24 @@ class TransferRequestSheet extends ConsumerWidget {
                 ),
               ),
               if (request.isTrusted) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.successColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppTheme.successColor.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.verified_user,
-                        size: 12,
-                        color: AppTheme.successColor,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'Trusted',
-                        style: TextStyle(
-                          color: AppTheme.successColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(width: AppSpacing.sm),
+                const StatusBadge(
+                  label: 'Trusted',
+                  variant: BadgeVariant.success,
+                  icon: Icons.verified_user,
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
 
           // File details
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: AppTheme.cardColor,
-              borderRadius: BorderRadius.circular(12),
+              color: AppTheme.surfaceContainer,
+              borderRadius: AppRadius.mdAll,
+              border: Border.all(color: AppTheme.outlineVariant, width: 1),
             ),
             child: Row(
               children: [
@@ -130,7 +102,7 @@ class TransferRequestSheet extends ConsumerWidget {
                       : Icons.folder,
                   color: AppTheme.primaryColor,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,16 +111,13 @@ class TransferRequestSheet extends ConsumerWidget {
                         request.items.length == 1
                             ? request.items.first.name
                             : TransferRequestStrings.fileCount(request.items.length),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: Theme.of(context).textTheme.titleSmall,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         ByteFormatter.format(totalSize),
-                        style: const TextStyle(
-                          color: AppTheme.textTertiary,
-                          fontSize: 12,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -159,23 +128,24 @@ class TransferRequestSheet extends ConsumerWidget {
 
           // File list if multiple files
           if (request.items.length > 1) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             Container(
               constraints: const BoxConstraints(maxHeight: 150),
               decoration: BoxDecoration(
-                color: AppTheme.cardColor.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: AppRadius.mdAll,
+                border: Border.all(color: AppTheme.outlineVariant, width: 1),
               ),
               child: ListView.builder(
                 shrinkWrap: true,
                 itemCount: request.items.length,
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final item = request.items[index];
                   return Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.xs,
                     ),
                     child: Row(
                       children: [
@@ -184,23 +154,19 @@ class TransferRequestSheet extends ConsumerWidget {
                           size: 16,
                           color: AppTheme.textTertiary,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
                             item.name,
-                style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         Text(
                           ByteFormatter.format(item.size),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textTertiary,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
@@ -209,7 +175,7 @@ class TransferRequestSheet extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // Action buttons
           Row(
@@ -222,50 +188,35 @@ class TransferRequestSheet extends ConsumerWidget {
                     onDismiss();
                   },
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    foregroundColor: AppTheme.errorColor,
                     side: const BorderSide(color: AppTheme.errorColor),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                   ),
-                  child: const Text(
-                    TransferRequestStrings.decline,
-                    style: TextStyle(color: AppTheme.errorColor),
-                  ),
+                  child: const Text(TransferRequestStrings.decline),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               Expanded(
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: () {
                     _acceptTransfer(context, ref, false);
                   },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.successColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    foregroundColor: Colors.white,
                   ),
-                  child: const Text(
-                    TransferRequestStrings.accept,
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  child: const Text(TransferRequestStrings.accept),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
 
           // Trust option - warning label
-          const Text(
+          Text(
             '⚠ This will permanently trust this device',
-            style: TextStyle(
-              color: AppTheme.textTertiary,
-              fontSize: 12,
-            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
 
           // Trust option - full width OutlinedButton
           SizedBox(
@@ -275,26 +226,14 @@ class TransferRequestSheet extends ConsumerWidget {
                 _acceptTransfer(context, ref, true);
               },
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                foregroundColor: AppTheme.warningColor,
                 side: BorderSide(
                   color: AppTheme.warningColor.withValues(alpha: 0.6),
                 ),
                 backgroundColor: AppTheme.warningColor.withValues(alpha: 0.08),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
               ),
-              icon: const Icon(
-                Icons.verified_user_outlined,
-                size: 16,
-                color: AppTheme.warningColor,
-              ),
-              label: const Text(
-                TransferRequestStrings.acceptAndTrust,
-                style: const TextStyle(
-                  color: AppTheme.warningColor,
-                ),
-              ),
+              icon: const Icon(Icons.verified_user_outlined, size: 16),
+              label: const Text(TransferRequestStrings.acceptAndTrust),
             ),
           ),
         ],

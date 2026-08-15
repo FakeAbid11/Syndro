@@ -4,6 +4,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/transfer.dart';
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
 class DropZoneWidget extends StatefulWidget {
@@ -147,10 +148,10 @@ class _DropZoneWidgetState extends State<DropZoneWidget>
                   child: FadeTransition(
                     opacity: _opacityAnimation,
                     child: Container(
-                      margin: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.all(AppSpacing.lg),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: AppRadius.xxlAll,
                         border: Border.all(
                           color: AppTheme.primaryColor,
                           width: 3,
@@ -162,7 +163,7 @@ class _DropZoneWidgetState extends State<DropZoneWidget>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
-                              padding: const EdgeInsets.all(24),
+                              padding: const EdgeInsets.all(AppSpacing.xxl),
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryColor.withValues(alpha: 0.2),
                                 shape: BoxShape.circle,
@@ -173,22 +174,21 @@ class _DropZoneWidgetState extends State<DropZoneWidget>
                                 color: AppTheme.primaryColor,
                               ),
                             ),
-                            const SizedBox(height: 24),
-                            const Text(
+                            const SizedBox(height: AppSpacing.xxl),
+                            Text(
                               'Drop files here',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primaryColor,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(color: AppTheme.primaryColor),
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
                               'Release to add files for transfer',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.textSecondary,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(color: AppTheme.textSecondary),
                             ),
                           ],
                         ),
@@ -303,17 +303,17 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
     Widget content = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.all(32),
+      duration: AppMotion.normal,
+      padding: const EdgeInsets.all(AppSpacing.xxxl),
       decoration: BoxDecoration(
         color: _isDragging
             ? AppTheme.primaryColor.withValues(alpha: 0.1)
-            : AppTheme.surfaceColor.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(24),
+            : AppTheme.surfaceContainer,
+        borderRadius: AppRadius.xxlAll,
         border: Border.all(
           color: _isDragging
               ? AppTheme.primaryColor
-              : AppTheme.borderColor.withValues(alpha: 0.3),
+              : AppTheme.outlineVariant,
           width: _isDragging ? 3 : 2,
           strokeAlign: BorderSide.strokeAlignInside,
         ),
@@ -327,7 +327,7 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
               return Transform.scale(
                 scale: _isDragging ? 1.1 : _pulseAnimation.value,
                 child: Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
                     color: _isDragging
                         ? AppTheme.primaryColor.withValues(alpha: 0.2)
@@ -345,27 +345,27 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
               );
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
           Text(
             _isDragging ? 'Drop files here!' : 'No files selected',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: _isDragging ? AppTheme.primaryColor : AppTheme.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: _isDragging
+                      ? AppTheme.primaryColor
+                      : AppTheme.textPrimary,
+                ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             isDesktop
                 ? 'Drag & drop files here, or use the buttons below'
                 : 'Select files or folders to send',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondary,
-            ),
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: AppTheme.textSecondary),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -374,7 +374,7 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
                 label: 'Files',
                 onTap: widget.onPickFiles,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               _ActionButton(
                 icon: Icons.folder_rounded,
                 label: 'Folder',
@@ -416,34 +416,16 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppTheme.primaryColor.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: AppTheme.primaryColor, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: AppTheme.primaryColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+    return FilledButton.tonalIcon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 20),
+      label: Text(label),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppTheme.primaryContainer,
+        foregroundColor: AppTheme.onPrimaryContainer,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xl,
+          vertical: AppSpacing.md,
         ),
       ),
     );

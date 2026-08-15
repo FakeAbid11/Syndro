@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/transfer_provider.dart';
@@ -212,8 +214,8 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             context: context,
             builder: (dialogContext) => AlertDialog(
               backgroundColor: AppTheme.surfaceColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppRadius.xlAll,
               ),
               title: const Text('Cancel Transfer?'),
               content: const Text(
@@ -305,11 +307,11 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(AppSpacing.xxl),
               child: Column(
                 children: [
                   _buildDeviceCard(),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: AppSpacing.xxxl),
                   Expanded(child: _buildProgressSection()),
                   _buildActionButton(),
                 ],
@@ -322,97 +324,41 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildDeviceCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.9),
-            AppTheme.surfaceColor.withValues(alpha: 0.7),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: (widget.isSender
-                  ? AppTheme.primaryColor
-                  : AppTheme.successColor)
-              .withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (widget.isSender
-                    ? AppTheme.primaryColor
-                    : AppTheme.successColor)
-                .withValues(alpha: 0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    final accent =
+        widget.isSender ? AppTheme.primaryColor : AppTheme.successColor;
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.xl),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  (widget.isSender
-                          ? AppTheme.primaryColor
-                          : AppTheme.successColor)
-                      .withValues(alpha: 0.25),
-                  (widget.isSender
-                          ? AppTheme.primaryColor
-                          : AppTheme.successColor)
-                      .withValues(alpha: 0.1),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: (widget.isSender
-                        ? AppTheme.primaryColor
-                        : AppTheme.successColor)
-                    .withValues(alpha: 0.4),
-                width: 1.5,
-              ),
-            ),
-            child: Icon(
-              widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
-              color: widget.isSender
-                  ? AppTheme.primaryColor
-                  : AppTheme.successColor,
-              size: 32,
+          GradientIconTile(
+            icon:
+                widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
+            size: 56,
+            radius: AppRadius.lg,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [accent, accent.withValues(alpha: 0.7)],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   widget.isSender ? 'Sending to' : 'Receiving from',
-                  style: const TextStyle(
-                    color: AppTheme.textTertiary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: Theme.of(context).textTheme.labelMedium,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpacing.xs + 2),
                 Text(
                   widget.remoteDevice?.name ?? 'Unknown Device',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: AppSpacing.sm),
           _buildStatusBadge(),
         ],
       ),
@@ -422,51 +368,37 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   Widget _buildStatusBadge() {
     final status = _currentTransfer?.status ?? TransferStatus.connecting;
 
-    Color color;
+    BadgeVariant variant;
     String text;
 
     switch (status) {
       case TransferStatus.connecting:
-        color = AppTheme.warningColor;
+        variant = BadgeVariant.warning;
         text = 'Connecting';
         break;
       case TransferStatus.pending:
-        color = AppTheme.warningColor;
+        variant = BadgeVariant.warning;
         text = 'Waiting';
         break;
       case TransferStatus.transferring:
-        color = AppTheme.primaryColor;
+        variant = BadgeVariant.primary;
         text = 'Transferring';
         break;
       case TransferStatus.completed:
-        color = AppTheme.successColor;
+        variant = BadgeVariant.success;
         text = 'Completed';
         break;
       case TransferStatus.failed:
-        color = AppTheme.errorColor;
+        variant = BadgeVariant.error;
         text = 'Failed';
         break;
       case TransferStatus.cancelled:
-        color = AppTheme.textTertiary;
+        variant = BadgeVariant.neutral;
         text = 'Cancelled';
         break;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+    return StatusBadge(label: text, variant: variant);
   }
 
   Widget _buildProgressSection() {
@@ -495,7 +427,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           animation: _pulseController,
           builder: (context, child) {
             return Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.xxl),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor
                     .withValues(alpha: 0.1 + _pulseController.value * 0.1),
@@ -509,19 +441,15 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             );
           },
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: AppSpacing.xxxl),
         Text(
           _currentTransfer?.status == TransferStatus.pending
               ? 'Waiting for approval...'
               : 'Connecting...',
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(context).textTheme.headlineMedium,
         ),
-        const SizedBox(height: 32),
-        const CircularProgressIndicator(color: AppTheme.primaryColor),
+        const SizedBox(height: AppSpacing.xxxl),
+        const CircularProgressIndicator(),
       ],
     );
   }
@@ -538,96 +466,66 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.primaryColor.withValues(alpha: 0.3),
-            ),
-          ),
+        AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      _getFileIcon(currentFile.name),
-                      color: AppTheme.primaryColor,
-                      size: 24,
-                    ),
+                  GradientIconTile(
+                    icon: _getFileIcon(currentFile.name),
+                    size: 44,
+                    radius: AppRadius.md,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           currentFile.name,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppSpacing.xs),
                         Text(
                           'File ${_currentFileIndex + 1} of ${widget.items.length}',
-                          style: const TextStyle(
-                            color: AppTheme.textTertiary,
-                            fontSize: 12,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppRadius.smAll,
                 child: LinearProgressIndicator(
                   value: percentage / 100,
                   minHeight: 12,
-                  backgroundColor: AppTheme.cardColor,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     '${_formatSize(bytesTransferred)} / ${_formatSize(totalBytes)}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 14,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   Text(
                     '${percentage.toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      color: AppTheme.primaryColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppTheme.primaryColor,
+                        ),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xxl),
         Row(
           children: [
             Expanded(
@@ -638,7 +536,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
                 color: AppTheme.accentColor,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               child: _buildStatCard(
                 icon: Icons.timer_outlined,
@@ -649,7 +547,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xxl),
         Expanded(child: _buildFileList()),
       ],
     );
@@ -661,31 +559,19 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     required String value,
     required Color color,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return AppCard(
       child: Column(
         children: [
           Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             value,
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             label,
-            style: const TextStyle(
-              color: AppTheme.textTertiary,
-              fontSize: 12,
-            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
@@ -693,61 +579,56 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildFileList() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.sm),
       child: ListView.separated(
-        padding: const EdgeInsets.all(8),
+        padding: EdgeInsets.zero,
         itemCount: widget.items.length,
-        separatorBuilder: (_, __) => const Divider(
-          height: 1,
-          color: AppTheme.cardColor,
-        ),
+        separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final item = widget.items[index];
           final isCompleted = index < _currentFileIndex;
           final isCurrent = index == _currentFileIndex;
 
+          final Color tileColor = isCompleted
+              ? AppTheme.successColor.withValues(alpha: 0.2)
+              : isCurrent
+                  ? AppTheme.primaryColor.withValues(alpha: 0.2)
+                  : AppTheme.surfaceContainerHigh;
+          final Color iconColor = isCompleted
+              ? AppTheme.successColor
+              : isCurrent
+                  ? AppTheme.primaryColor
+                  : AppTheme.textTertiary;
+
           return ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
             leading: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
-                color: isCompleted
-                    ? AppTheme.successColor.withValues(alpha: 0.2)
-                    : isCurrent
-                        ? AppTheme.primaryColor.withValues(alpha: 0.2)
-                        : AppTheme.cardColor,
-                borderRadius: BorderRadius.circular(8),
+                color: tileColor,
+                borderRadius: AppRadius.smAll,
               ),
               child: Icon(
                 isCompleted ? Icons.check_circle : _getFileIcon(item.name),
-                color: isCompleted
-                    ? AppTheme.successColor
-                    : isCurrent
-                        ? AppTheme.primaryColor
-                        : AppTheme.textTertiary,
+                color: iconColor,
                 size: 20,
               ),
             ),
             title: Text(
               item.name,
-              style: TextStyle(
-                color: isCompleted || isCurrent
-                    ? AppTheme.textPrimary
-                    : AppTheme.textTertiary,
-                fontSize: 14,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: isCompleted || isCurrent
+                        ? AppTheme.textPrimary
+                        : AppTheme.textTertiary,
+                  ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             trailing: Text(
               item.sizeFormatted,
-              style: const TextStyle(
-                color: AppTheme.textTertiary,
-                fontSize: 12,
-              ),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           );
         },
@@ -760,7 +641,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           decoration: BoxDecoration(
             color: AppTheme.successColor.withValues(alpha: 0.2),
             shape: BoxShape.circle,
@@ -771,22 +652,15 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             color: AppTheme.successColor,
           ),
         ),
-        const SizedBox(height: 32),
-        const Text(
+        const SizedBox(height: AppSpacing.xxxl),
+        Text(
           'Transfer Complete!',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+          style: Theme.of(context).textTheme.displaySmall,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         Text(
           '${widget.items.length} file${widget.items.length == 1 ? '' : 's'} ${widget.isSender ? 'sent' : 'received'} successfully',
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 16,
-          ),
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
       ],
     );
@@ -797,7 +671,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           decoration: BoxDecoration(
             color: AppTheme.errorColor.withValues(alpha: 0.2),
             shape: BoxShape.circle,
@@ -808,24 +682,17 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             color: AppTheme.errorColor,
           ),
         ),
-        const SizedBox(height: 32),
-        const Text(
+        const SizedBox(height: AppSpacing.xxxl),
+        Text(
           'Transfer Failed',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+          style: Theme.of(context).textTheme.displaySmall,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Text(
             _currentTransfer?.errorMessage ?? 'An unknown error occurred',
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 14,
-            ),
+            style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
         ),
@@ -838,7 +705,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           decoration: BoxDecoration(
             color: AppTheme.textTertiary.withValues(alpha: 0.2),
             shape: BoxShape.circle,
@@ -849,14 +716,10 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             color: AppTheme.textTertiary,
           ),
         ),
-        const SizedBox(height: 32),
-        const Text(
+        const SizedBox(height: AppSpacing.xxxl),
+        Text(
           'Transfer Cancelled',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+          style: Theme.of(context).textTheme.displaySmall,
         ),
       ],
     );
@@ -868,19 +731,12 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     if (status == TransferStatus.completed) {
       return SizedBox(
         width: double.infinity,
-        child: ElevatedButton(
+        child: FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          style: ElevatedButton.styleFrom(
+          style: FilledButton.styleFrom(
             backgroundColor: AppTheme.successColor,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
           ),
-          child: const Text(
-            'Done',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
+          child: const Text('Done'),
         ),
       );
     }
@@ -889,19 +745,9 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         status == TransferStatus.cancelled) {
       return SizedBox(
         width: double.infinity,
-        child: ElevatedButton(
+        child: FilledButton.tonal(
           onPressed: () => Navigator.of(context).pop(false),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.cardColor,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: const Text(
-            'Close',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
+          child: const Text('Close'),
         ),
       );
     }
@@ -913,15 +759,8 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         style: OutlinedButton.styleFrom(
           foregroundColor: AppTheme.errorColor,
           side: const BorderSide(color: AppTheme.errorColor),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
         ),
-        child: const Text(
-          'Cancel Transfer',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+        child: const Text('Cancel Transfer'),
       ),
     );
   }

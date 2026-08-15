@@ -4,6 +4,8 @@ import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/device_provider.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../widgets/device_card.dart';
 import '../widgets/file_preview_widgets.dart';
 import 'file_picker_screen.dart';
@@ -105,51 +107,34 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: AppTheme.logoGradient,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.send_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+          const GradientIconTile(
+            icon: Icons.send_rounded,
+            size: 56,
+            radius: AppRadius.lg,
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ShaderMask(
-                  shaderCallback: (bounds) => AppTheme.logoGradient.createShader(bounds),
-                  child: const Text(
+                  shaderCallback: (bounds) =>
+                      AppTheme.logoGradient.createShader(bounds),
+                  child: Text(
                     'Quick Send',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    style:
+                        Theme.of(context).textTheme.displaySmall?.copyWith(
+                              color: Colors.white,
+                            ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                const Text(
+                const SizedBox(height: AppSpacing.xs),
+                Text(
                   'Select a device to send your files',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppTheme.textSecondary,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
@@ -160,98 +145,53 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
   }
 
   Widget _buildFileSummary() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.surfaceColor.withValues(alpha: 0.9),
-            AppTheme.cardColor.withValues(alpha: 0.7),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Show thumbnail for images/videos, icon for others
-          _buildFileIcon(),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.files.length == 1
-                      ? widget.files.first.name
-                      : '${widget.files.length} items selected',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+      child: AppCard(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Row(
+          children: [
+            // Show thumbnail for images/videos, icon for others
+            _buildFileIcon(),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.files.length == 1
+                        ? widget.files.first.name
+                        : '${widget.files.length} items selected',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.storage_rounded,
-                      size: 14,
-                      color: AppTheme.textTertiary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      ByteFormatter.format(_totalSize),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
+                  const SizedBox(height: AppSpacing.xs + 2),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.storage_rounded,
+                        size: 14,
+                        color: AppTheme.textTertiary,
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // File count badge
-          if (widget.files.length > 1)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                      const SizedBox(width: AppSpacing.xs + 2),
+                      Text(
+                        ByteFormatter.format(_totalSize),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
                   ),
                 ],
               ),
-              child: Text(
-                '${widget.files.length}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
             ),
-        ],
+            // File count badge
+            if (widget.files.length > 1)
+              StatusBadge(
+                label: '${widget.files.length}',
+                variant: BadgeVariant.primary,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -280,99 +220,60 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
       if ((isImage || isVideo) && file.path.isNotEmpty) {
         // Show thumbnail
         return ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: AppRadius.mdAll,
           child: FilePreviewWidget(
             filePath: file.path,
             fileName: file.name,
             size: 56,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.mdAll,
           ),
         );
       }
-      
+
       // Show folder icon for directories
       if (file.isDirectory) {
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: AppTheme.logoGradient,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.folder_rounded,
-            color: Colors.white,
-            size: 26,
-          ),
+        return const GradientIconTile(
+          icon: Icons.folder_rounded,
+          size: 56,
+          radius: AppRadius.md,
         );
       }
     }
-    
+
     // Default icon for multiple files or non-media files
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: AppTheme.logoGradient,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Icon(
-        widget.files.length == 1
-            ? Icons.insert_drive_file_rounded
-            : Icons.folder_copy_rounded,
-        color: Colors.white,
-        size: 26,
-      ),
+    return GradientIconTile(
+      icon: widget.files.length == 1
+          ? Icons.insert_drive_file_rounded
+          : Icons.folder_copy_rounded,
+      size: 56,
+      radius: AppRadius.md,
     );
   }
 
   Widget _buildDeviceList(List<Device> devices, bool isScanning) {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                'Available Devices',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (isScanning)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-            ],
+          SectionHeader(
+            title: 'Available Devices',
+            trailing: isScanning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: devices.isEmpty
                 ? _buildEmptyState(isScanning)
                 : ListView.separated(
                     itemCount: devices.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.md),
                     itemBuilder: (context, index) {
                       final device = devices[index];
                       return DeviceCard(
@@ -388,70 +289,30 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
   }
 
   Widget _buildEmptyState(bool isScanning) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isScanning ? Icons.radar_rounded : Icons.devices_other_rounded,
-            size: 64,
-            color: AppTheme.textTertiary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            isScanning ? 'Scanning for devices...' : 'No devices found',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Make sure other devices are on the same network',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.textTertiary,
-            ),
-          ),
-          if (!isScanning) ...[
-            const SizedBox(height: 24),
-            TextButton.icon(
+    return EmptyState(
+      icon: isScanning ? Icons.radar_rounded : Icons.devices_other_rounded,
+      title: isScanning ? 'Scanning for devices...' : 'No devices found',
+      message: 'Make sure other devices are on the same network',
+      action: isScanning
+          ? null
+          : TextButton.icon(
               onPressed: () {
                 ref.read(deviceDiscoveryProvider.notifier).startDiscovery();
               },
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Scan Again'),
             ),
-          ],
-        ],
-      ),
     );
   }
 
   Widget _buildCancelButton() {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: SizedBox(
         width: double.infinity,
         child: OutlinedButton(
           onPressed: _cancel,
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            side: BorderSide(
-              color: AppTheme.borderColor.withValues(alpha: 0.5),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: const Text('Cancel'),
         ),
       ),
     );

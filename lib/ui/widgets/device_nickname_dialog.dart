@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
+
 
 /// Dialog for editing device nickname
 class DeviceNicknameDialog extends StatefulWidget {
@@ -49,11 +51,9 @@ class _DeviceNicknameDialogState extends State<DeviceNicknameDialog> {
         children: [
           Text(
             'Original: ${widget.deviceName}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).textTheme.bodySmall?.color,
-                ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           TextField(
             controller: _controller,
             autofocus: true,

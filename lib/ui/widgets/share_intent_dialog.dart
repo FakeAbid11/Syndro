@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
+import 'common/app_widgets.dart';
 
 class ShareIntentDialog extends StatefulWidget {
   final VoidCallback onAppToApp;
@@ -38,28 +40,23 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
   Widget build(BuildContext context) {
     if (_isProcessing) {
       return Dialog(
-        backgroundColor: AppTheme.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const CircularProgressIndicator(),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xxl),
               Text(
                 'Preparing files...',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 8),
-              const Text(
+              const SizedBox(height: AppSpacing.sm),
+              Text(
                 'Please wait',
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 14,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
               ),
             ],
           ),
@@ -68,29 +65,19 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
     }
 
     return Dialog(
-      backgroundColor: AppTheme.surfaceColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.share,
-                color: AppTheme.primaryColor,
-                size: 40,
-              ),
+            const GradientIconTile(
+              icon: Icons.share,
+              size: 72,
+              iconSize: 36,
+              radius: AppRadius.xl,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
 
             // Title
             Text(
@@ -99,7 +86,7 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
 
             // Subtitle
             Text(
@@ -110,7 +97,7 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
                     color: AppTheme.textSecondary,
                   ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xxl),
 
             // Option 1: App to App
             _ShareOption(
@@ -119,7 +106,7 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
               subtitle: 'Direct transfer to nearby devices',
               onTap: () => _handleOptionTap(widget.onAppToApp),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
 
             // Option 2: Browser Share
             _ShareOption(
@@ -128,7 +115,7 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
               subtitle: 'Share via web browser',
               onTap: () => _handleOptionTap(widget.onBrowserShare),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
 
             // Cancel button
             TextButton(
@@ -162,24 +149,24 @@ class _ShareOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadius.mdAll,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
-          color: AppTheme.cardColor,
-          borderRadius: BorderRadius.circular(12),
+          color: AppTheme.surfaceContainer,
+          borderRadius: AppRadius.mdAll,
           border: Border.all(
-            color: AppTheme.primaryColor.withValues(alpha: 0.3),
+            color: AppTheme.outlineVariant,
             width: 1,
           ),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(AppSpacing.sm + 2),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: AppRadius.smAll,
               ),
               child: Icon(
                 icon,
@@ -187,25 +174,21 @@ class _ShareOption extends StatelessWidget {
                 size: 24,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: AppSpacing.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
                   ),
                 ],
               ),

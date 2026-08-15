@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
 /// Full screen image viewer with pinch-to-zoom and swipe gallery
@@ -76,11 +77,12 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
         actions: [
           // Image counter
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm - 2),
+            margin: const EdgeInsets.only(right: AppSpacing.sm),
+            decoration: const BoxDecoration(
               color: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.lgAll,
             ),
             child: Text(
               '${_currentIndex + 1} / ${widget.imagePaths.length}',
@@ -117,7 +119,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(Icons.broken_image, color: Colors.white54, size: 64),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                     Text(
                       'Cannot load image',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
@@ -186,7 +188,7 @@ class ImageGalleryGrid extends StatelessWidget {
           child: Hero(
             tag: 'image_grid_$index',
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: AppRadius.smAll,
               child: file.existsSync()
                   ? Image.file(
                       file,
@@ -194,13 +196,13 @@ class ImageGalleryGrid extends StatelessWidget {
                       cacheWidth: 200,
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
-                          color: Colors.grey[800],
+                          color: AppTheme.surfaceContainerHigh,
                           child: const Icon(Icons.broken_image, color: Colors.white54),
                         );
                       },
                     )
                   : Container(
-                      color: Colors.grey[800],
+                      color: AppTheme.surfaceContainerHigh,
                       child: const Icon(Icons.broken_image, color: Colors.white54),
                     ),
             ),

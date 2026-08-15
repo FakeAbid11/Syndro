@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 import 'main_navigation_screen.dart';
 import 'permissions_onboarding_screen.dart';
@@ -58,8 +59,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     if (_currentPage < _pages.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: AppMotion.normal,
+        curve: AppMotion.standard,
       );
     } else {
       _completeOnboarding();
@@ -119,7 +120,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Align(
                   alignment: Alignment.topRight,
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(AppSpacing.lg),
                     child: TextButton(
                       onPressed: _isLoading ? null : _skip,
                       child: const Text(
@@ -152,7 +153,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
                 // Page indicators
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
@@ -165,24 +166,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 // Next/Start button
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    24,
+                    AppSpacing.xxl,
                     0,
-                    24,
-                    _isDesktop ? 48 : 32,
+                    AppSpacing.xxl,
+                    _isDesktop ? 48 : AppSpacing.xxxl,
                   ),
                   child: SizedBox(
                     width: _isDesktop ? 180 : double.infinity,
                     height: 52,
-                    child: ElevatedButton(
+                    child: FilledButton(
                       onPressed: _isLoading ? null : _nextPage,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            AppTheme.primaryColor.withValues(alpha: 0.6),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      style: FilledButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: AppRadius.mdAll,
                         ),
                       ),
                       child: _isLoading
@@ -216,7 +212,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildPage(OnboardingPage page) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -233,7 +229,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   page.iconColor.withValues(alpha: 0.1),
                 ],
               ),
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: AppRadius.xxlAll,
               border: Border.all(
                 color: page.iconColor.withValues(alpha: 0.4),
                 width: 2,
@@ -247,7 +243,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ],
             ),
             child: Container(
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -257,7 +253,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     page.iconColor.withValues(alpha: 0.05),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: AppRadius.xlAll,
               ),
               child: Icon(
                 page.icon,
@@ -290,11 +286,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.xl),
 
           // Description
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Text(
               page.description,
               textAlign: TextAlign.center,
@@ -337,13 +333,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       label:
           'Page ${index + 1} of ${_pages.length}${isActive ? ", current" : ""}',
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        duration: AppMotion.normal,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
         width: isActive ? 24 : 8,
         height: 8,
         decoration: BoxDecoration(
           color: isActive ? AppTheme.primaryColor : AppTheme.cardColor,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: AppRadius.smAll,
         ),
       ),
     );

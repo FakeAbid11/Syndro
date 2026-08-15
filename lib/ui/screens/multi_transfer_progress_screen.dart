@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/transfer_provider.dart';
@@ -121,41 +123,27 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: AppTheme.logoGradient,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.devices,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
+          const GradientIconTile(icon: Icons.devices, size: 44),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Sending to ${widget.recipients.length} devices',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
                 Text(
                   '${widget.items.length} file${widget.items.length > 1 ? 's' : ''}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: AppSpacing.sm),
           _buildStatusBadge(),
         ],
       ),
@@ -163,58 +151,36 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
   }
 
   Widget _buildStatusBadge() {
-    Color color;
+    BadgeVariant variant;
     String text;
     IconData icon;
 
     if (_allCompleted) {
       if (_failedCount > 0 && _completedCount == 0) {
-        color = AppTheme.errorColor;
+        variant = BadgeVariant.error;
         text = 'All Failed';
         icon = Icons.error;
       } else if (_failedCount > 0) {
-        color = AppTheme.warningColor;
+        variant = BadgeVariant.warning;
         text = 'Partial';
         icon = Icons.warning;
       } else {
-        color = AppTheme.successColor;
+        variant = BadgeVariant.success;
         text = 'Complete';
         icon = Icons.check_circle;
       }
     } else {
-      color = AppTheme.primaryColor;
+      variant = BadgeVariant.primary;
       text = 'Sending...';
       icon = Icons.upload;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
+    return StatusBadge(label: text, variant: variant, icon: icon);
   }
 
   Widget _buildOverallProgress() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Column(
         children: [
           Row(
@@ -232,12 +198,11 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppRadius.smAll,
             child: LinearProgressIndicator(
               value: _overallProgress / 100,
-              backgroundColor: AppTheme.cardColor,
               valueColor: AlwaysStoppedAnimation<Color>(
                 _failedCount > 0 && _completedCount > 0
                     ? AppTheme.warningColor
@@ -246,15 +211,15 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
               minHeight: 8,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               _buildCountChip('Completed', _completedCount, AppTheme.successColor),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               _buildCountChip('Failed', _failedCount, AppTheme.errorColor),
-              const SizedBox(width: 12),
-              _buildCountChip('Remaining', 
-                  widget.transferIds.length - _completedCount - _failedCount, 
+              const SizedBox(width: AppSpacing.md),
+              _buildCountChip('Remaining',
+                  widget.transferIds.length - _completedCount - _failedCount,
                   AppTheme.textTertiary),
             ],
           ),
@@ -265,10 +230,11 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
 
   Widget _buildCountChip(String label, int count, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.mdAll,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -281,7 +247,7 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
               fontSize: 12,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppSpacing.xs),
           Text(
             label,
             style: TextStyle(
@@ -296,12 +262,12 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
 
   Widget _buildTransferList() {
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       itemCount: widget.recipients.length,
       itemBuilder: (context, index) {
         final recipient = widget.recipients[index];
-        final transferId = index < widget.transferIds.length 
-            ? widget.transferIds[index] 
+        final transferId = index < widget.transferIds.length
+            ? widget.transferIds[index]
             : null;
         final transfer = transferId != null ? _transfers[transferId] : null;
         final error = _errors[recipient.name];
@@ -318,28 +284,14 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
 
   Widget _buildDoneButton() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       child: SizedBox(
         width: double.infinity,
-        child: ElevatedButton(
+        child: FilledButton(
           onPressed: () {
             Navigator.of(context).pop();
           },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryColor,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: const Text(
-            'Done',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: const Text('Done'),
         ),
       ),
     );
@@ -365,120 +317,107 @@ class _TransferProgressCard extends StatelessWidget {
     final status = _getStatus();
     final progress = transfer?.progress.percentage ?? 0;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: status.color.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: recipient.platform.iconColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm + 2),
+                  decoration: BoxDecoration(
+                    color: recipient.platform.iconColor.withValues(alpha: 0.15),
+                    borderRadius: AppRadius.smAll,
+                  ),
+                  child: Icon(
+                    recipient.platform.icon,
+                    color: recipient.platform.iconColor,
+                    size: 20,
+                  ),
                 ),
-                child: Icon(
-                  recipient.platform.icon,
-                  color: recipient.platform.iconColor,
-                  size: 20,
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        recipient.name,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        '${items.length} file${items.length > 1 ? 's' : ''}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                _buildStatusIcon(status),
+              ],
+            ),
+            if (status != TransferItemStatus.pending) ...[
+              const SizedBox(height: AppSpacing.md),
+              ClipRRect(
+                borderRadius: AppRadius.smAll,
+                child: LinearProgressIndicator(
+                  value: status == TransferItemStatus.failed ? 0 : progress / 100,
+                  valueColor: AlwaysStoppedAnimation<Color>(status.color),
+                  minHeight: 6,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _getStatusText(status, progress),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: status.color,
+                        ),
+                  ),
+                  if (transfer != null && status == TransferItemStatus.transferring)
                     Text(
-                      recipient.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      '${transfer!.progress.bytesTransferredFormatted} / ${transfer!.progress.totalBytesFormatted}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    Text(
-                      '${items.length} file${items.length > 1 ? 's' : ''}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
+                ],
+              ),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorColor.withValues(alpha: 0.1),
+                  borderRadius: AppRadius.smAll,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 16, color: AppTheme.errorColor),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        error!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppTheme.errorColor,
+                            ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              _buildStatusIcon(status),
             ],
-          ),
-          if (status != TransferItemStatus.pending) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: status == TransferItemStatus.failed ? 0 : progress / 100,
-                backgroundColor: AppTheme.surfaceColor,
-                valueColor: AlwaysStoppedAnimation<Color>(status.color),
-                minHeight: 6,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _getStatusText(status, progress),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: status.color,
-                      ),
-                ),
-                if (transfer != null && status == TransferItemStatus.transferring)
-                  Text(
-                    '${transfer!.progress.bytesTransferredFormatted} / ${transfer!.progress.totalBytesFormatted}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textTertiary,
-                        ),
-                  ),
-              ],
-            ),
           ],
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.errorColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline, size: 16, color: AppTheme.errorColor),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      error!,
-                      style: const TextStyle(
-                        color: AppTheme.errorColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildStatusIcon(TransferItemStatus status) {
     return Container(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(AppSpacing.xs + 2),
       decoration: BoxDecoration(
         color: status.color.withValues(alpha: 0.15),
         shape: BoxShape.circle,

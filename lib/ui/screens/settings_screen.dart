@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../../core/providers/device_provider.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/providers/theme_provider.dart';
@@ -67,17 +69,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppTheme.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: AppRadius.smAll,
               ),
               child: const Icon(
                 Icons.edit_rounded,
@@ -85,7 +83,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 size: 24,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             const Text('Edit Device Name'),
           ],
         ),
@@ -99,7 +97,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     color: AppTheme.textTertiary,
                   ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: controller,
               autofocus: false, // FIXED (Bug #14): Disable autofocus to prevent keyboard trap
@@ -116,8 +114,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   icon: const Icon(Icons.clear),
                   onPressed: () => controller.clear(),
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                border: const OutlineInputBorder(
+                  borderRadius: AppRadius.mdAll,
                 ),
               ),
               onSubmitted: (_) {
@@ -126,7 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _saveNickname(dialogContext, controller.text);
               },
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               'Original name: ${currentDevice.name}',
               style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
@@ -239,10 +237,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
                 gradient: AppTheme.logoGradient,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppRadius.smAll,
               ),
               child: const Icon(
                 Icons.settings,
@@ -250,7 +248,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 size: 20,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             const Text('Settings'),
           ],
         ),
@@ -260,37 +258,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           gradient: AppTheme.backgroundGradient,
         ),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
             // ============================================
             // DEVICE SECTION
             // ============================================
             _buildSectionHeader('Device'),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
 
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.cardColor.withValues(alpha: 0.8),
-                    AppTheme.surfaceColor.withValues(alpha: 0.6),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
+            AppCard(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _buildSettingsTile(
@@ -301,15 +278,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       children: [
                         const Text('Device Name'),
                         if (hasCustomNickname) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
+                              horizontal: AppSpacing.sm,
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
                               gradient: AppTheme.logoGradient,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppRadius.smAll,
                             ),
                             child: const Text(
                               'Custom',
@@ -326,10 +303,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     subtitle: Text(displayName),
                     trailing: IconButton(
                       icon: Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppRadius.smAll,
                         ),
                         child: const Icon(Icons.edit_rounded, size: 18),
                       ),
@@ -347,10 +324,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     subtitle: Text(currentDevice.ipAddress),
                     trailing: IconButton(
                       icon: Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppRadius.smAll,
                         ),
                         child: const Icon(Icons.copy_rounded, size: 18),
                       ),
@@ -371,10 +348,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const Divider(height: 1, indent: 60),
                   SwitchListTile(
                     secondary: Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(AppSpacing.sm),
                       decoration: BoxDecoration(
                         color: AppTheme.successColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadius.mdAll,
                       ),
                       child: const Icon(
                         Icons.check_circle_outline,
@@ -416,34 +393,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxxl),
 
             // ============================================
             // APPEARANCE SECTION
             // ============================================
             _buildSectionHeader('Appearance'),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
 
-            Container(
-              decoration: BoxDecoration(
-                color: AppTheme.cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppTheme.borderColor,
-                  width: 1,
-                ),
-              ),
-              padding: const EdgeInsets.all(16),
+            AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadius.mdAll,
                         ),
                         child: const Icon(
                           Icons.palette_outlined,
@@ -451,17 +419,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           size: 22,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const Text(
+                      const SizedBox(width: AppSpacing.md),
+                      Text(
                         'Theme',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   SegmentedButton<ThemeMode>(
                     segments: const [
                       ButtonSegment<ThemeMode>(
@@ -501,8 +466,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         const BorderSide(color: AppTheme.borderColor),
                       ),
                       shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        const RoundedRectangleBorder(
+                          borderRadius: AppRadius.mdAll,
                         ),
                       ),
                     ),
@@ -511,47 +476,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxxl),
 
             // ============================================
             // TRUSTED DEVICES SECTION
             // ============================================
             _buildSectionHeader('Trusted Devices'),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
 
             _buildTrustedDevicesSection(),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxxl),
 
             // ============================================
             // ABOUT SECTION
             // ============================================
             _buildSectionHeader('About'),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
 
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.cardColor.withValues(alpha: 0.8),
-                    AppTheme.surfaceColor.withValues(alpha: 0.6),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
+            AppCard(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _buildSettingsTile(
@@ -573,14 +517,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxxl),
 
             // Developer Credit
             Center(
               child: Column(
                 children: [
                   const Divider(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -599,15 +543,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.sm,
                     ),
                     decoration: BoxDecoration(
                       gradient: AppTheme.logoGradient,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: AppRadius.xlAll,
                       // ignore: prefer_const_literals_to_create_immutables
                       boxShadow: [
                         BoxShadow(
@@ -625,7 +569,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           color: Colors.white,
                           size: 16,
                         ),
-                        SizedBox(width: 8),
+                        SizedBox(width: AppSpacing.sm),
                         Text(
                           'Built with Flutter',
                           style: TextStyle(
@@ -653,22 +597,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final transferService = ref.read(transferServiceProvider);
 
     if (trustedDevices.isEmpty) {
-      return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppTheme.cardColor.withValues(alpha: 0.8),
-              AppTheme.surfaceColor.withValues(alpha: 0.6),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: AppTheme.primaryColor.withValues(alpha: 0.15),
-            width: 1,
-          ),
-        ),
+      return AppCard(
+        padding: EdgeInsets.zero,
         child: _buildSettingsTile(
           icon: Icons.shield_outlined,
           iconColor: AppTheme.textTertiary,
@@ -682,29 +612,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.8),
-            AppTheme.surfaceColor.withValues(alpha: 0.6),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.15),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           for (int i = 0; i < trustedDevices.length; i++) ...[
@@ -739,10 +648,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       trailing: PopupMenuButton<String>(
         icon: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
             color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppRadius.smAll,
           ),
           child: const Icon(Icons.more_vert_rounded, size: 18),
         ),
@@ -778,7 +687,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Row(
               children: [
                 Icon(Icons.refresh, size: 18),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Text('Reset trust'),
               ],
             ),
@@ -788,7 +697,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Row(
               children: [
                 Icon(Icons.delete_outline, size: 18, color: AppTheme.errorColor),
-                SizedBox(width: 8),
+                SizedBox(width: AppSpacing.sm),
                 Text('Revoke trust',
                     style: TextStyle(color: AppTheme.errorColor)),
               ],
@@ -821,13 +730,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.lgAll,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(AppSpacing.sm),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -837,7 +746,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       iconColor.withValues(alpha: 0.1),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mdAll,
                   border: Border.all(
                     color: iconColor.withValues(alpha: 0.3),
                     width: 1,
@@ -849,13 +758,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   size: 22,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     title,
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     subtitle,
                   ],
                 ),
@@ -869,15 +778,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: AppTheme.primaryColor,
-            ),
-      ),
-    );
+    return SectionHeader(title: title);
   }
 } 

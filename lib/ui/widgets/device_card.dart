@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 import '../../core/models/device.dart';
 import '../../core/providers/device_nickname_provider.dart';
+import 'common/app_widgets.dart';
 import 'device_nickname_dialog.dart';
 
 /// Device card with nickname support
@@ -84,33 +86,25 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
     final displayName = nickname ?? widget.device.name;
     final hasNickname = nickname != null;
 
-    final cardColor = widget.isSelected
-        ? AppTheme.primaryColor.withValues(alpha: 0.12)
-        : AppTheme.cardColor;
-    final borderColor = widget.isSelected
-        ? AppTheme.primaryColor
-        : Colors.transparent;
+    final iconColor = widget.device.platform.iconColor;
 
     return Semantics(
       label:
           '$displayName, ${widget.device.platform.displayName}, ${widget.device.isOnline ? "Online" : "Offline"}',
       button: true,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: AppMotion.fast,
         transform: Matrix4.diagonal3Values(_isTapped ? 0.97 : 1.0, _isTapped ? 0.97 : 1.0, 1.0),
         child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                cardColor,
-                cardColor.withValues(alpha: 0.8),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
+            color: widget.isSelected
+                ? AppTheme.primaryContainer
+                : AppTheme.surfaceContainer,
+            borderRadius: AppRadius.xlAll,
             border: Border.all(
-              color: borderColor,
+              color: widget.isSelected
+                  ? AppTheme.primaryColor
+                  : AppTheme.outlineVariant,
               width: widget.isSelected ? 2 : 1,
             ),
             boxShadow: widget.isSelected
@@ -121,42 +115,29 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                       offset: const Offset(0, 8),
                     ),
                   ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                : null,
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: _handleTap,
               onLongPress: _handleLongPress,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: AppRadius.xlAll,
               splashColor: AppTheme.primaryColor.withValues(alpha: 0.15),
               highlightColor: AppTheme.primaryColor.withValues(alpha: 0.08),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Row(
                   children: [
-                    // Platform Icon with enhanced styling
+                    // Platform icon tile — tonal, keeps the platform tint.
                     Container(
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            widget.device.platform.iconColor.withValues(alpha: 0.2),
-                            widget.device.platform.iconColor.withValues(alpha: 0.08),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
+                        color: iconColor.withValues(alpha: 0.14),
+                        borderRadius: AppRadius.lgAll,
                         border: Border.all(
-                          color: widget.device.platform.iconColor.withValues(alpha: 0.3),
+                          color: iconColor.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -164,11 +145,11 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                         child: Icon(
                           widget.device.platform.icon,
                           size: 30,
-                          color: widget.device.platform.iconColor,
+                          color: iconColor,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.lg),
                     // Device Info with nickname support
                     Expanded(
                       child: Column(
@@ -192,14 +173,14 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                               ),
                               if (hasNickname)
                                 Container(
-                                  margin: const EdgeInsets.only(left: 8),
+                                  margin: const EdgeInsets.only(left: AppSpacing.sm),
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
+                                    horizontal: AppSpacing.xs + 2,
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
                                     color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: AppRadius.smAll,
                                   ),
                                   child: const Icon(
                                     Icons.edit,
@@ -211,7 +192,7 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                           ),
                           // Show original name if nickname exists
                           if (hasNickname) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: AppSpacing.xs),
                             Text(
                               widget.device.name,
                               style:
@@ -223,23 +204,23 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
-                          const SizedBox(height: 6),
+                          const SizedBox(height: AppSpacing.sm - 2),
                           // Platform name with icon
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(6),
+                                padding: const EdgeInsets.all(AppSpacing.xs),
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.surfaceContainerHigh,
+                                  borderRadius: AppRadius.smAll,
                                 ),
                                 child: Icon(
                                   widget.device.platform.icon,
                                   size: 14,
-                                  color: widget.device.platform.iconColor,
+                                  color: iconColor,
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: AppSpacing.sm - 2),
                               Text(
                                 widget.device.platform.displayName,
                                 style: Theme.of(context)
@@ -251,7 +232,7 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpacing.xs),
                           Row(
                             children: [
                               const Icon(
@@ -259,7 +240,7 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                                 size: 12,
                                 color: AppTheme.textTertiary,
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: AppSpacing.xs),
                               Text(
                                 widget.device.ipAddress,
                                 style:
@@ -272,54 +253,13 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                         ],
                       ),
                     ),
-                    // Online Indicator with enhanced styling
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: widget.device.isOnline
-                                ? AppTheme.successColor
-                                : AppTheme.textTertiary,
-                            shape: BoxShape.circle,
-                            boxShadow: widget.device.isOnline
-                                ? [
-                                    BoxShadow(
-                                      color: AppTheme.successColor.withValues(alpha: 0.5),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (widget.device.isOnline
-                                    ? AppTheme.successColor
-                                    : AppTheme.textTertiary)
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            widget.device.isOnline ? 'Online' : 'Offline',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: widget.device.isOnline
-                                  ? AppTheme.successColor
-                                  : AppTheme.textTertiary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    // Online / offline status
+                    StatusBadge(
+                      label: widget.device.isOnline ? 'Online' : 'Offline',
+                      variant: widget.device.isOnline
+                          ? BadgeVariant.success
+                          : BadgeVariant.neutral,
+                      showDot: true,
                     ),
                   ],
                 ),

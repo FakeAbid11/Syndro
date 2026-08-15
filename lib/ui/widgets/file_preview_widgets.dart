@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
 /// File type categories
@@ -114,7 +115,7 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
   @override
   Widget build(BuildContext context) {
     final fileType = FileTypeHelper.getFileType(widget.fileName);
-    final borderRadius = widget.borderRadius ?? BorderRadius.circular(12);
+    final borderRadius = widget.borderRadius ?? AppRadius.mdAll;
 
     return Container(
       width: widget.size,
@@ -286,7 +287,7 @@ class _LargeFilePreviewState extends State<LargeFilePreview> {
       final file = File(widget.filePath);
       if (file.existsSync()) {
         return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.lgAll,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: widget.maxHeight),
             child: Image.file(
@@ -307,7 +308,7 @@ class _LargeFilePreviewState extends State<LargeFilePreview> {
           height: 150,
           decoration: BoxDecoration(
             color: FileTypeHelper.getBackgroundColor(fileType),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppRadius.lgAll,
           ),
           child: const Center(
             child: CircularProgressIndicator(),
@@ -317,7 +318,7 @@ class _LargeFilePreviewState extends State<LargeFilePreview> {
 
       if (_videoThumbnail != null) {
         return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.lgAll,
           child: Stack(
             children: [
               ConstrainedBox(
@@ -359,7 +360,7 @@ class _LargeFilePreviewState extends State<LargeFilePreview> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: FileTypeHelper.getBackgroundColor(fileType),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.lgAll,
       ),
       child: Center(
         child: Column(
@@ -403,16 +404,16 @@ class FilePreviewCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Row(
           children: [
             FilePreviewWidget(
               filePath: filePath,
               fileName: fileName,
               size: 48,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: AppRadius.smAll,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

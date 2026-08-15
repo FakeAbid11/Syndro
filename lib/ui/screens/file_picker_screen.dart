@@ -7,6 +7,8 @@ import 'package:animations/animations.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_dimens.dart';
+import '../widgets/common/app_widgets.dart';
 import '../widgets/file_preview_widgets.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
@@ -590,154 +592,73 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
           // Recipient Info Card with animation
           _AnimatedCard(
             delay: const Duration(milliseconds: 100),
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.cardColor.withValues(alpha: 0.9),
-                    AppTheme.surfaceColor.withValues(alpha: 0.7),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: AppCard(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Row(
+                  children: [
+                    _AnimatedIcon(
+                      delay: const Duration(milliseconds: 200),
+                      child: GradientIconTile(
+                        icon: recipientIcon,
+                        size: 56,
+                        radius: AppRadius.lg,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Sending to',
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            recipientName,
+                            style:
+                                Theme.of(context).textTheme.titleLarge,
+                          ),
+                          if (recipientSubtitle != null) ...[
+                            const SizedBox(height: AppSpacing.xs),
+                            Row(
+                              children: [
+                                Icon(
+                                  isMultiRecipient
+                                      ? Icons.devices_rounded
+                                      : Icons.wifi_rounded,
+                                  size: 14,
+                                  color: AppTheme.textTertiary,
+                                ),
+                                const SizedBox(width: AppSpacing.xs),
+                                Expanded(
+                                  child: Text(
+                                    recipientSubtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (primaryRecipient != null) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      const StatusBadge(
+                        label: 'Online',
+                        variant: BadgeVariant.success,
+                        showDot: true,
+                      ),
+                    ],
                   ],
                 ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  _AnimatedIcon(
-                    delay: const Duration(milliseconds: 200),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.logoGradient,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        recipientIcon,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Sending to',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppTheme.textTertiary,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          recipientName,
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        if (recipientSubtitle != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                isMultiRecipient
-                                    ? Icons.devices_rounded
-                                    : Icons.wifi_rounded,
-                                size: 14,
-                                color: AppTheme.textTertiary,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  recipientSubtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: AppTheme.textTertiary,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppTheme.successColor.withValues(alpha: 0.2),
-                          AppTheme.successColor.withValues(alpha: 0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.successColor.withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.successColor,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.successColor,
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Online',
-                          style: TextStyle(
-                            color: AppTheme.successColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
@@ -763,7 +684,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     CircularProgressIndicator(),
-                    SizedBox(height: 16),
+                    SizedBox(height: AppSpacing.lg),
                     Text('Loading files...'),
                   ],
                 ),
@@ -779,7 +700,8 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                   _AnimatedCard(
                     delay: const Duration(milliseconds: 150),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -789,24 +711,10 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                                 '${_selectedFiles.length} file(s)',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  _formatSize(totalSize),
-                                  style: const TextStyle(
-                                    color: AppTheme.primaryColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                              const SizedBox(width: AppSpacing.sm),
+                              StatusBadge(
+                                label: _formatSize(totalSize),
+                                variant: BadgeVariant.primary,
                               ),
                             ],
                           ),
@@ -823,7 +731,8 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                   // File list
                   Expanded(
                     child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg),
                       itemCount: _selectedFiles.length,
                       itemBuilder: (context, index) {
                         final file = _selectedFiles[index];
@@ -845,11 +754,15 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                     delay: const Duration(milliseconds: 200),
                     slideUp: true,
                     child: Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       decoration: const BoxDecoration(
-                        color: AppTheme.cardColor,
+                        color: AppTheme.surfaceContainer,
                         borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(24),
+                          top: Radius.circular(AppRadius.xxl),
+                        ),
+                        border: Border(
+                          top: BorderSide(
+                              color: AppTheme.outlineVariant, width: 1),
                         ),
                       ),
                       child: SafeArea(
@@ -901,10 +814,10 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
             if (_isDragging && _selectedFiles.isNotEmpty)
               Positioned.fill(
                 child: Container(
-                  margin: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: AppRadius.xxlAll,
                     border: Border.all(
                       color: AppTheme.primaryColor,
                       width: 3,
@@ -915,7 +828,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(AppSpacing.xl),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryColor.withValues(alpha: 0.2),
                             shape: BoxShape.circle,
@@ -926,14 +839,13 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                             color: AppTheme.primaryColor,
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        const Text(
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
                           'Drop to add more files',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryColor,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(color: AppTheme.primaryColor),
                         ),
                       ],
                     ),
@@ -1235,18 +1147,18 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
           scale: _scaleAnimation,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(32),
+            margin: const EdgeInsets.all(AppSpacing.xxl),
+            padding: const EdgeInsets.all(AppSpacing.xxxl),
             decoration: BoxDecoration(
               color: widget.isDragging
                   ? AppTheme.primaryColor.withValues(alpha: 0.1)
-                  : AppTheme.surfaceColor.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(24),
+                  : AppTheme.surfaceContainer,
+              borderRadius: AppRadius.xxlAll,
               border: Border.all(
                 color: widget.isDragging
                     ? AppTheme.primaryColor
-                    : AppTheme.borderColor.withValues(alpha: 0.3),
-                width: widget.isDragging ? 3 : 2,
+                    : AppTheme.outlineVariant,
+                width: widget.isDragging ? 3 : 1,
               ),
             ),
             child: Column(
@@ -1282,7 +1194,7 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
                     );
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xxl),
                 Text(
                   widget.isDragging ? 'Drop files here!' : 'No files selected',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -1292,20 +1204,18 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
                         fontWeight: FontWeight.w600,
                       ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
                   child: Text(
                     widget.isDesktop
                         ? 'Drag & drop files here, or use the buttons below'
                         : 'Select files or folders to send',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textTertiary,
-                        ),
+                    style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: AppSpacing.xxxl),
                 // Animated buttons
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -1337,14 +1247,14 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
 
                     if (isNarrow) {
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(width: double.infinity, child: fileButton),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: AppSpacing.md),
                             SizedBox(width: double.infinity, child: mediaButton),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: AppSpacing.md),
                             SizedBox(
                                 width: double.infinity, child: folderButton),
                           ],
@@ -1356,9 +1266,9 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         fileButton,
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppSpacing.md),
                         mediaButton,
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppSpacing.md),
                         folderButton,
                       ],
                     );
@@ -1433,27 +1343,15 @@ class _AnimatedButtonState extends State<_AnimatedButton>
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: widget.isPrimary
-            ? ElevatedButton.icon(
+            ? FilledButton.icon(
                 onPressed: widget.onPressed,
                 icon: Icon(widget.icon),
                 label: Text(widget.label),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                ),
               )
             : OutlinedButton.icon(
                 onPressed: widget.onPressed,
                 icon: Icon(widget.icon),
                 label: Text(widget.label),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                ),
               ),
       ),
     );
@@ -1476,7 +1374,7 @@ class _AnimatedSendButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      child: ElevatedButton.icon(
+      child: FilledButton.icon(
         onPressed: isSending ? null : onPressed,
         icon: isSending
             ? const SizedBox(
@@ -1495,11 +1393,7 @@ class _AnimatedSendButton extends StatelessWidget {
             key: ValueKey(isSending),
           ),
         ),
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 28,
-            vertical: 16,
-          ),
+        style: FilledButton.styleFrom(
           backgroundColor:
               isSending ? AppTheme.primaryColor.withValues(alpha: 0.7) : null,
         ),
@@ -1528,156 +1422,105 @@ class _FileListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final fileType = FileTypeHelper.getFileType(file.name);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.cardColor.withValues(alpha: 0.9),
-            AppTheme.surfaceColor.withValues(alpha: 0.7),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.1),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          splashColor: AppTheme.primaryColor.withValues(alpha: 0.1),
-          highlightColor: AppTheme.primaryColor.withValues(alpha: 0.05),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                // File preview
-                Hero(
-                  tag: 'file_preview_${file.path}',
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          FileTypeHelper.getIconColor(fileType).withValues(alpha: 0.2),
-                          FileTypeHelper.getIconColor(fileType).withValues(alpha: 0.1),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: FileTypeHelper.getIconColor(fileType).withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: FilePreviewWidget(
-                      filePath: file.path,
-                      fileName: file.name,
-                      size: 44,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            // File preview
+            Hero(
+              tag: 'file_preview_${file.path}',
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.sm + 2),
+                decoration: BoxDecoration(
+                  color: FileTypeHelper.getIconColor(fileType)
+                      .withValues(alpha: 0.15),
+                  borderRadius: AppRadius.mdAll,
+                  border: Border.all(
+                    color: FileTypeHelper.getIconColor(fileType)
+                        .withValues(alpha: 0.3),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(width: 14),
+                child: FilePreviewWidget(
+                  filePath: file.path,
+                  fileName: file.name,
+                  size: 44,
+                  borderRadius: AppRadius.smAll,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
 
-                // File info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // File info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.name,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppTheme.textPrimary,
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
                     children: [
-                      Text(
-                        file.name,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      // File type badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: FileTypeHelper.getBackgroundColor(fileType),
+                          borderRadius: AppRadius.smAll,
+                        ),
+                        child: Text(
+                          FileTypeHelper.getFileExtension(file.name)
+                              .toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: FileTypeHelper.getIconColor(fileType),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(width: AppSpacing.md),
+                      // File size
                       Row(
                         children: [
-                          // File type badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  FileTypeHelper.getBackgroundColor(fileType),
-                                  FileTypeHelper.getBackgroundColor(fileType).withValues(alpha: 0.7),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              FileTypeHelper.getFileExtension(file.name)
-                                  .toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: FileTypeHelper.getIconColor(fileType),
-                              ),
-                            ),
+                          const Icon(
+                            Icons.storage_rounded,
+                            size: 12,
+                            color: AppTheme.textTertiary,
                           ),
-                          const SizedBox(width: 10),
-                          // File size
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.storage_rounded,
-                                size: 12,
-                                color: AppTheme.textTertiary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                file.sizeFormatted,
-                                style:
-                                    Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          color: AppTheme.textTertiary,
-                                        ),
-                              ),
-                            ],
+                          const SizedBox(width: AppSpacing.xs),
+                          Text(
+                            file.sizeFormatted,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),
                     ],
                   ),
-                ),
-
-                // Remove button
-                if (onRemove != null)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: onRemove,
-                      color: AppTheme.textTertiary,
-                      tooltip: 'Remove file',
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
+
+            // Remove button
+            if (onRemove != null)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20),
+                onPressed: onRemove,
+                color: AppTheme.textTertiary,
+                tooltip: 'Remove file',
+              ),
+          ],
         ),
       ),
     );
@@ -1701,9 +1544,9 @@ class _FileDetailsSheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1712,11 +1555,11 @@ class _FileDetailsSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppTheme.textTertiary,
+              color: AppTheme.borderColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // Large preview with Hero
           Hero(
@@ -1727,19 +1570,17 @@ class _FileDetailsSheet extends StatelessWidget {
               maxHeight: 200,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // File name
           Text(
             file.name,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(context).textTheme.titleMedium,
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
 
           // File info chips
           Row(
@@ -1749,7 +1590,7 @@ class _FileDetailsSheet extends StatelessWidget {
                 icon: Icons.storage_rounded,
                 label: file.sizeFormatted,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               _InfoChip(
                 icon: FileTypeHelper.getIcon(fileType),
                 label: FileTypeHelper.getFileExtension(file.name).toUpperCase(),
@@ -1757,16 +1598,11 @@ class _FileDetailsSheet extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
 
           // Path info
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
+          AppCard(
+            padding: const EdgeInsets.all(AppSpacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1777,16 +1613,14 @@ class _FileDetailsSheet extends StatelessWidget {
                       size: 16,
                       color: AppTheme.textTertiary,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       'Location',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   file.path,
                   style: Theme.of(context).textTheme.bodySmall,
@@ -1796,7 +1630,7 @@ class _FileDetailsSheet extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
         ],
       ),
     );
@@ -1820,16 +1654,17 @@ class _InfoChip extends StatelessWidget {
     final chipColor = color ?? AppTheme.textTertiary;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
         color: chipColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.pillAll,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: chipColor),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Text(
             label,
             style: TextStyle(
