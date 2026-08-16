@@ -1558,8 +1558,19 @@ class TransferService {
       _pendingRequestsController.add(_pendingRequests.values.toList());
     }
 
-    // Dismiss notification if shown
-    BackgroundTransferService.dismissTransferRequest();
+    // Bridge the vulnerable window right after approval: the sender's upload
+    // arrives a moment from now, but on Android (esp. MIUI/HyperOS) backgrounding
+    // the app can freeze the isolate hosting our HTTP server, so the upload
+    // connection gets refused. Bringing up the progress foreground service now
+    // acquires CPU + Wi-Fi locks and keeps us alive until the upload starts.
+    // On other platforms this just clears the request notification.
+    if (Platform.isAndroid) {
+      await BackgroundTransferService.startBackgroundTransfer(
+        title: 'Receiving files...',
+      );
+    } else {
+      BackgroundTransferService.dismissTransferRequest();
+    }
 
     if (trustSender) {
       _trustedDevices[pending.senderId] = TrustedDevice(

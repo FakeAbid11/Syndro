@@ -11,8 +11,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
@@ -63,6 +67,77 @@ class TransferService : Service() {
     private var lastFilePath: String? = null
     private var lastFileName: String? = null
 
+    // Held for the duration of a transfer / pending receive so MIUI-style
+    // battery managers can't freeze the isolate that hosts the HTTP server
+    // (which would make incoming upload connections be refused).
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private var idleStopRunnable: Runnable? = null
+
+    // Safety net: if a transfer we kept the service alive for never actually
+    // starts (e.g. sender went away after we accepted), stop after this delay
+    // instead of holding locks forever.
+    private val pendingReceiveTimeoutMs = 90_000L
+
+    /** Acquire CPU + Wi-Fi locks (idempotent). */
+    private fun acquireLocks() {
+        try {
+            if (wakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "syndro:transfer"
+                )
+            }
+            if (wakeLock?.isHeld == false) wakeLock?.acquire(30 * 60 * 1000L)
+
+            if (wifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+                wifiLock = wm.createWifiLock(mode, "syndro:transfer")
+            }
+            if (wifiLock?.isHeld == false) wifiLock?.acquire()
+        } catch (e: Exception) {
+            Log.w("TransferService", "Could not acquire transfer locks: $e")
+        }
+    }
+
+    /** Release CPU + Wi-Fi locks (idempotent). */
+    private fun releaseLocks() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (e: Exception) {
+            Log.w("TransferService", "Error releasing wake lock: $e")
+        }
+        try {
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+        } catch (e: Exception) {
+            Log.w("TransferService", "Error releasing wifi lock: $e")
+        }
+    }
+
+    private fun cancelIdleStop() {
+        idleStopRunnable?.let { idleHandler.removeCallbacks(it) }
+        idleStopRunnable = null
+    }
+
+    private fun scheduleIdleStop() {
+        cancelIdleStop()
+        val r = Runnable {
+            releaseLocks()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        idleStopRunnable = r
+        idleHandler.postDelayed(r, pendingReceiveTimeoutMs)
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
@@ -73,10 +148,19 @@ class TransferService : Service() {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "Transferring files..."
                 val fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: ""
+                cancelIdleStop()
+                acquireLocks()
+                // Clear any incoming-request notification now that we're receiving.
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .cancel(NOTIFICATION_REQUEST)
+                currentRequestId = null
                 startForeground(
                     NOTIFICATION_PROGRESS,
                     createProgressNotification(title, fileName, 0, null, null)
                 )
+                // Safety net in case this was a "receiving..." bridge and the
+                // upload never actually arrives.
+                scheduleIdleStop()
             }
 
             ACTION_UPDATE -> {
@@ -85,10 +169,14 @@ class TransferService : Service() {
                 val progress = intent.getIntExtra(EXTRA_PROGRESS, 0)
                 val speed = intent.getStringExtra(EXTRA_SPEED)
                 val timeRemaining = intent.getStringExtra(EXTRA_TIME_REMAINING)
+                cancelIdleStop()
+                acquireLocks()
                 updateProgressNotification(title, fileName, progress, speed, timeRemaining)
             }
 
             ACTION_STOP -> {
+                cancelIdleStop()
+                releaseLocks()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -96,6 +184,8 @@ class TransferService : Service() {
             ACTION_CANCEL -> {
                 val cancelIntent = Intent("com.syndro.app.TRANSFER_CANCELLED")
                 sendBroadcast(cancelIntent)
+                cancelIdleStop()
+                releaseLocks()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -117,7 +207,22 @@ class TransferService : Service() {
                     }
                     sendBroadcast(acceptIntent)
                 }
-                dismissRequestNotification()
+                currentRequestId = null
+                // Do NOT stop the service here. The incoming upload arrives a
+                // moment after we accept; if we drop to background now, MIUI /
+                // aggressive battery managers can freeze the isolate hosting the
+                // HTTP server and the sender's upload connection gets refused.
+                // Keep a foreground "receiving" notification + locks alive until
+                // the real progress notification (ACTION_START) takes over, or
+                // the idle timeout fires.
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_REQUEST)
+                acquireLocks()
+                startForeground(
+                    NOTIFICATION_PROGRESS,
+                    createProgressNotification("Receiving files...", "", 0, null, null)
+                )
+                scheduleIdleStop()
             }
 
             ACTION_REJECT_TRANSFER -> {
@@ -142,6 +247,8 @@ class TransferService : Service() {
                 val thumbnailPath = intent.getStringExtra(EXTRA_THUMBNAIL_PATH)
                 lastFilePath = filePath
                 lastFileName = fileName
+                cancelIdleStop()
+                releaseLocks()
                 showCompletionNotification(fileName, filePath, fileCount, totalSize, thumbnailPath)
                 stopForeground(STOP_FOREGROUND_REMOVE)
             }
@@ -163,6 +270,12 @@ class TransferService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        cancelIdleStop()
+        releaseLocks()
+        super.onDestroy()
+    }
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -357,6 +470,8 @@ class TransferService : Service() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_REQUEST)
         currentRequestId = null
+        cancelIdleStop()
+        releaseLocks()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
