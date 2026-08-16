@@ -54,7 +54,22 @@ jobs:
 
       - name: Decode Keystore
         if: ${{ inputs.build_type == 'release' || inputs.build_type == 'both' }}
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          # Strip any whitespace/newlines the secret may carry (Windows CRLF, wrapping,
+          # BOM), then decode. -d exits non-zero on invalid base64 so a bad secret
+          # fails HERE with a clear message instead of a cryptic packaging error later.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > android/app/keystore.jks
+          # Verify the decoded file is actually a readable keystore before building.
+          keytool -list \
+            -keystore android/app/keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias "${KEY_ALIAS:-syndro}" > /dev/null
+          echo "Keystore decoded and verified."
 
       - name: Build Debug APK
         if: ${{ inputs.build_type == 'debug' || inputs.build_type == 'both' }}
