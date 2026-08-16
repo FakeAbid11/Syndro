@@ -273,32 +273,42 @@ jobs:
           fi
 
           OUT=android/app/keystore.jks
+          TMP=$(mktemp)
+          trap 'rm -f "$TMP" "$TMP.inner"' EXIT
+
+          # The secret is base64 (optionally URL-safe) of the keystore file.
           normalized=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | tr '_-' '/+')
 
           decode_ok=""
-          try_decode() {
-            if base64 -d > "$OUT" 2>/dev/null && \
-               keytool -list -keystore "$OUT" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
-              echo "Keystore decoded via: $1"
-              decode_ok="yes"
-              return 0
-            fi
-            return 1
-          }
+          # Attempt 1: the secret is a single base64-encoded keystore.
+          # Note: decode to a temp file and verify with keytool BEFORE writing
+          # the final path, so a failed attempt never truncates a good keystore.
+          if printf '%s' "$normalized" | base64 -d > "$TMP" 2>/dev/null && \
+             keytool -list -keystore "$TMP" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "Keystore decoded via: single base64"
+            decode_ok="yes"
+          fi
 
-          printf '%s' "$normalized" | try_decode "single base64" || true
+          # Attempt 2: the secret may be base64-of-base64 (double encoded).
           if [ -z "$decode_ok" ]; then
-            inner=$(printf '%s' "$normalized" | base64 -d 2>/dev/null | tr -d '[:space:]' | tr '_-' '/+')
-            if [ -n "$inner" ]; then
-              printf '%s' "$inner" | try_decode "double base64" || true
+            if printf '%s' "$normalized" | base64 -d > "$TMP.inner" 2>/dev/null && \
+               [ -s "$TMP.inner" ] && \
+               tr -d '[:space:]' < "$TMP.inner" | tr '_-' '/+' | base64 -d > "$TMP" 2>/dev/null && \
+               keytool -list -keystore "$TMP" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+              echo "Keystore decoded via: double base64"
+              decode_ok="yes"
             fi
           fi
 
           if [ -z "$decode_ok" ]; then
-            size=$(wc -c < "$OUT" 2>/dev/null || echo 0)
-            echo "::error::Could not obtain a keystore that opens with KEYSTORE_PASSWORD (decoded ${size} bytes)."
+            size=$(wc -c < "$TMP" 2>/dev/null || echo 0)
+            echo "::debug::keytool output for the failed attempt:"
+            keytool -list -keystore "$TMP" -storepass "$KEYSTORE_PASSWORD" 2>&1 | sed 's/^/  /' || true
+            echo "::error::Could not obtain a keystore that opens with KEYSTORE_PASSWORD (decoded ${size} bytes). Check the KEYSTORE_BASE64 and KEYSTORE_PASSWORD secrets."
             exit 1
           fi
+
+          cp "$TMP" "$OUT"
 
           WANT_ALIAS="${KEY_ALIAS:-syndro}"
           if ! keytool -list -keystore "$OUT" -storepass "$KEYSTORE_PASSWORD" \
