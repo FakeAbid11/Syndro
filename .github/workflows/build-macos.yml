@@ -31,6 +31,9 @@ jobs:
         run: |
           rm -rf macos
           flutter create --platforms=macos --project-name=syndro .
+          # `flutter create` regenerates the default counter-app test/widget_test.dart
+          # (referencing a `MyApp` class this project doesn't have), which breaks analyze.
+          rm -f test/widget_test.dart
 
       - name: Update deployment target
         run: |

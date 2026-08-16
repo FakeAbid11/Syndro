@@ -38,6 +38,10 @@ jobs:
         run: |
           Remove-Item -Recurse -Force windows
           flutter create . --platforms=windows --project-name=syndro
+          # `flutter create` regenerates the default counter-app test/widget_test.dart
+          # (referencing a `MyApp` class this project doesn't have), which breaks
+          # `flutter analyze`. Remove it so analysis/tests use only the real suite.
+          if (Test-Path test/widget_test.dart) { Remove-Item -Force test/widget_test.dart }
           (Get-Content windows/runner/Runner.rc) -replace 'VALUE "ProductName", "syndro"', 'VALUE "ProductName", "Syndro"' | Set-Content windows/runner/Runner.rc
           (Get-Content windows/runner/Runner.rc) -replace 'VALUE "FileDescription", "syndro"', 'VALUE "FileDescription", "Syndro"' | Set-Content windows/runner/Runner.rc
 

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as path;
 
 import '../../../utils/app_logger.dart';
@@ -375,6 +377,8 @@ class ReceiveServer {
     // Route requests
     if (requestPath == '/' || requestPath == '/index.html') {
       await _serveIndexPage(request);
+    } else if (request.method == 'GET' && requestPath == '/logo.png') {
+      await _serveLogo(request);
     } else if (request.method == 'POST' && requestPath == '/upload') {
       await _handleFileUpload(request);
     } else {
@@ -392,7 +396,24 @@ class ReceiveServer {
     await request.response.close();
   }
 
-  /// Handle file upload - saves to TEMP location (not final)
+  /// Cached app-logo bytes (loaded once from the bundled asset).
+  static Uint8List? _logoBytes;
+
+  /// Serve the app logo (used as the header icon on the receive web page).
+  Future<void> _serveLogo(HttpRequest request) async {
+    try {
+      _logoBytes ??=
+          (await rootBundle.load('assets/icon/app_icon.png')).buffer.asUint8List();
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.headers.add('Cache-Control', 'public, max-age=86400');
+      request.response.add(_logoBytes!);
+      await request.response.close();
+    } catch (e) {
+      AppLogger.error('Error serving logo: $e');
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+    }
+  }
   Future<void> _handleFileUpload(HttpRequest request) async {
     if (_tempDirectory == null) {
       request.response.statusCode = HttpStatus.internalServerError;

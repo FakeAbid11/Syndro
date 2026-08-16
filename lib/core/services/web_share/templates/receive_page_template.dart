@@ -51,6 +51,13 @@ class ReceivePageTemplate {
             fill: #7B5EF2;
         }
 
+        .logo img {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            object-fit: contain;
+        }
+
         h1 {
             font-size: 28px;
             margin-bottom: 8px;
@@ -749,7 +756,7 @@ class ReceivePageTemplate {
     <div class="container">
         <div class="header">
             <div class="logo">
-                <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+                <img src="/logo.png" alt="Syndro">
             </div>
             <h1>Send Files</h1>
             <p class="subtitle">Select files to send automatically</p>

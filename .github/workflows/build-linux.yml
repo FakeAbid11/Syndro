@@ -36,7 +36,11 @@ jobs:
         run: rm -rf linux
 
       - name: Regenerate Linux platform files
-        run: flutter create --platforms=linux --project-name=syndro .
+        run: |
+          flutter create --platforms=linux --project-name=syndro .
+          # `flutter create` regenerates the default counter-app test/widget_test.dart
+          # (referencing a `MyApp` class this project doesn't have), which breaks analyze.
+          rm -f test/widget_test.dart
 
       - name: Copy app icon to Linux folder
         run: |

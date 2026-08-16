@@ -297,8 +297,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
         ),
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: Column(
+        padding: EdgeInsets.only(
+          left: AppSpacing.xxl,
+          right: AppSpacing.xxl,
+          top: AppSpacing.xxl,
+          bottom: AppSpacing.xxl + MediaQuery.of(sheetContext).padding.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
@@ -366,6 +372,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
+        ),
         ),
       ),
     );

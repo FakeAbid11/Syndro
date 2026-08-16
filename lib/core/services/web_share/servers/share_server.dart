@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as path;
 
 import '../../../utils/app_logger.dart';
@@ -541,6 +543,8 @@ class ShareServer {
     } else if (requestPath == '/api/connected-clients') {
       // NEW: Serve all connected clients
       await _serveConnectedClients(request);
+    } else if (requestPath == '/logo.png') {
+      await _serveLogo(request);
     } else if (requestPath.startsWith('/thumbnail/')) {
       await _serveThumbnail(request, requestPath);
     } else if (requestPath.startsWith('/download/')) {
@@ -558,6 +562,25 @@ class ShareServer {
     request.response.headers.contentType = ContentType.html;
     request.response.write(html);
     await request.response.close();
+  }
+
+  /// Cached app-logo bytes (loaded once from the bundled asset).
+  static Uint8List? _logoBytes;
+
+  /// Serve the app logo (used as the header icon on the share web page).
+  Future<void> _serveLogo(HttpRequest request) async {
+    try {
+      _logoBytes ??=
+          (await rootBundle.load('assets/icon/app_icon.png')).buffer.asUint8List();
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.headers.add('Cache-Control', 'public, max-age=86400');
+      request.response.add(_logoBytes!);
+      await request.response.close();
+    } catch (e) {
+      AppLogger.error('Error serving logo: $e');
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+    }
   }
 
   /// NEW: Serve client info (IP address)
