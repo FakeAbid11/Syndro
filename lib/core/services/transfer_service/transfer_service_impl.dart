@@ -2509,9 +2509,19 @@ class TransferService {
           senderId: sender.id,
         );
 
-        if (!approved) {
+        if (!approved.approved) {
           throw TransferException('Transfer rejected or timed out',
               code: 'REJECTED');
+        }
+
+        // In the manual-approval flow the receiver only performs key exchange
+        // once the user approves, so the encryption negotiation is finalized
+        // here (not in the initiate response). Adopt the session established
+        // during approval; otherwise we would send plaintext to a receiver
+        // that now expects encryption and get rejected mid-upload.
+        if (approved.sharedSecret != null) {
+          useEncryption = true;
+          sharedSecret = approved.sharedSecret;
         }
       }
 
@@ -2843,7 +2853,7 @@ class TransferService {
     }
   }
 
-  Future<bool> _waitForApproval({
+  Future<({bool approved, SecretKey? sharedSecret})> _waitForApproval({
     required Device receiver,
     required String requestId,
     required Duration timeout,
@@ -2868,8 +2878,14 @@ class TransferService {
             final status = data['status'] as String? ?? '';
 
             if (status == 'approved') {
+              // Follow the RECEIVER's decision: it only sets up an encryption
+              // session (and expects encrypted uploads) when it advertises
+              // encryption. Basing this on the sender's own setting caused a
+              // mismatch where the receiver created a session but the sender
+              // sent plaintext, which the B4 guard then rejected mid-upload.
+              final receiverEncryption = data['encryption'] as bool? ?? false;
               final publicKeyList = data['publicKey'] as List?;
-              if (publicKeyList != null && encryptionEnabled) {
+              if (receiverEncryption && publicKeyList != null) {
                 try {
                   final publicKey =
                       Uint8List.fromList(publicKeyList.cast<int>());
@@ -2882,6 +2898,7 @@ class TransferService {
                   );
 
                   AppLogger.info('🔐 Key exchange completed on approval');
+                  return (approved: true, sharedSecret: sharedSecret);
                 } catch (e) {
                   // B4: refuse to proceed unencrypted after a failed exchange.
                   AppLogger.error('❌ Key exchange failed: $e');
@@ -2891,9 +2908,9 @@ class TransferService {
                   );
                 }
               }
-              return true;
+              return (approved: true, sharedSecret: null);
             } else if (status == 'rejected' || status == 'expired') {
-              return false;
+              return (approved: false, sharedSecret: null);
             }
           }
         }
@@ -2908,7 +2925,7 @@ class TransferService {
       await Future.delayed(const Duration(milliseconds: 500)); // FIX: Faster polling (was 2 seconds)
     }
 
-    return false;
+    return (approved: false, sharedSecret: null);
   }
 
   Future<http.Response> _retryRequest(
