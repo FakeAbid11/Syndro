@@ -1365,6 +1365,35 @@ class TransferService {
         return;
       }
 
+      // Idempotency: a retried or duplicated /transfer/initiate for a transfer
+      // we've already seen must NOT spawn a second approval prompt. This guards
+      // against the sender's retry logic (or a double send) re-initiating —
+      // especially after the user already approved, which would otherwise
+      // recreate a pending request and pop the sheet a second time.
+      if (_activeTransfers.containsKey(requestId)) {
+        // Already approved / in-flight — report the approved state so a retried
+        // initiate can resume instead of prompting again.
+        final myPublicKey = await getPublicKey();
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'accepted',
+          'transferId': requestId,
+          'authorized': true,
+          'encryption': encryptionEnabled,
+          'publicKey': myPublicKey?.toList(),
+        });
+        return;
+      }
+      if (_pendingRequests.containsKey(requestId)) {
+        // Still awaiting the user's decision — re-report pending without adding
+        // another PendingTransferRequest (which would re-emit and re-show).
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'pending_approval',
+          'requestId': requestId,
+          'message': 'Waiting for receiver approval',
+        });
+        return;
+      }
+
       final trustedDevice = _trustedDevices[senderId];
       
       // Check if auto-accept is enabled for trusted devices
