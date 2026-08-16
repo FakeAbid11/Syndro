@@ -1,12 +1,18 @@
 name: Release
 
-# Unified release pipeline. On a `v*` tag it builds the Windows desktop app and
-# the Android APK(s) and attaches them to the GitHub Release for that tag.
-# Can also be run manually (workflow_dispatch) for a dry run — it will build and
-# upload workflow artifacts, and only touch the Release when run from a tag.
+# Unified release pipeline.
+#   • Push a v* tag  → builds Windows + Android and publishes them to that release.
+#   • Run manually (Actions ▸ Release ▸ Run workflow) and type a version, e.g.
+#     1.1.0 → it bumps pubspec.yaml, commits, creates the v1.1.0 tag, then builds
+#     and publishes the release. Leave the version blank for a build-only dry run.
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, e.g. 1.1.0 (blank = build-only dry run, no release)'
+        required: false
+        default: ''
   push:
     tags:
       - 'v*'
@@ -15,19 +21,107 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 env:
   SQLITE_VERSION: '3450000'
   SQLITE_SHA256: '9778943E830EEAAB3557119E531DFF51BC6A0C4B153CF6256FC806369F5F8023'
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────
+  # Resolve the version/tag and (for manual runs with a version) bump
+  # pubspec.yaml + create the tag, so the build jobs check out a ready ref.
+  # ──────────────────────────────────────────────────────────────────────
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      do_release: ${{ steps.resolve.outputs.do_release }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      checkout_ref: ${{ steps.resolve.outputs.checkout_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version & tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Triggered by a v* tag push — use the tag as-is.
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#v}"
+            {
+              echo "do_release=true"
+              echo "tag=$TAG"
+              echo "version=$VERSION"
+              echo "checkout_ref=$TAG"
+              echo "bump=false"
+            } >> "$GITHUB_OUTPUT"
+          else
+            IN="${{ github.event.inputs.version }}"
+            if [ -n "$IN" ]; then
+              VERSION="${IN#v}"
+              if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "::error::Version '$IN' must look like 1.2.3"
+                exit 1
+              fi
+              TAG="v$VERSION"
+              {
+                echo "do_release=true"
+                echo "tag=$TAG"
+                echo "version=$VERSION"
+                echo "checkout_ref=$TAG"
+                echo "bump=true"
+              } >> "$GITHUB_OUTPUT"
+            else
+              # Manual run with no version = build-only dry run (no tag, no release).
+              {
+                echo "do_release=false"
+                echo "tag="
+                echo "version=dev"
+                echo "checkout_ref=${{ github.ref }}"
+                echo "bump=false"
+              } >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Bump pubspec, commit & tag
+        if: ${{ steps.resolve.outputs.bump == 'true' }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.resolve.outputs.version }}"
+          TAG="${{ steps.resolve.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists — pick a new version."
+            exit 1
+          fi
+          # version name from input, build number from the run number.
+          sed -i -E "s/^version:.*/version: ${VERSION}+${{ github.run_number }}/" pubspec.yaml
+          echo "pubspec version → $(grep '^version:' pubspec.yaml)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pubspec.yaml
+          git commit -m "ci: release $TAG"
+          git tag "$TAG"
+          # Pushes made with GITHUB_TOKEN do not re-trigger workflows, so no loop.
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "$TAG"
+
+  # ──────────────────────────────────────────────────────────────────────
   # Windows desktop
   # ──────────────────────────────────────────────────────────────────────
   windows:
+    needs: prepare
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -92,8 +186,8 @@ jobs:
       # no nested folder and no zip-inside-a-zip.
       - name: Create ZIP archive
         run: |
-          $tag = "${{ github.ref_name }}"
-          Compress-Archive -Path syndro-windows\* -DestinationPath "Syndro-Windows-$tag.zip"
+          $ver = "${{ needs.prepare.outputs.version }}"
+          Compress-Archive -Path syndro-windows\* -DestinationPath "Syndro-Windows-$ver.zip"
 
       # Upload the raw folder as the workflow artifact. GitHub zips artifacts once
       # on download, so this also extracts in a single unzip (avoids double-zip).
@@ -105,9 +199,11 @@ jobs:
           retention-days: 90
 
       - name: Attach Windows build to Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ needs.prepare.outputs.do_release == 'true' }}
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Syndro ${{ needs.prepare.outputs.tag }}
           files: Syndro-Windows-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,10 +212,13 @@ jobs:
   # Android APK (debug always; release when signing secrets are configured)
   # ──────────────────────────────────────────────────────────────────────
   android:
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -220,15 +319,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release --build-number=${{ github.run_number }}
 
-      # Rename APKs with the tag so release assets are self-describing.
+      # Rename APKs with the version so release assets are self-describing.
       - name: Rename APKs
         run: |
           set -e
-          TAG="${{ github.ref_name }}"
+          VER="${{ needs.prepare.outputs.version }}"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-debug.apk "dist/Syndro-${TAG}-debug.apk"
+          cp build/app/outputs/flutter-apk/app-debug.apk "dist/Syndro-${VER}-debug.apk"
           if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk "dist/Syndro-${TAG}.apk"
+            cp build/app/outputs/flutter-apk/app-release.apk "dist/Syndro-${VER}.apk"
           fi
 
       - name: Upload Debug APK artifact
@@ -243,14 +342,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: syndro-android-release-${{ github.run_number }}
-          path: dist/Syndro-${{ github.ref_name }}.apk
+          path: dist/Syndro-${{ needs.prepare.outputs.version }}.apk
           retention-days: 90
 
       - name: Attach APKs to Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ needs.prepare.outputs.do_release == 'true' }}
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Syndro ${{ needs.prepare.outputs.tag }}
           files: dist/Syndro-*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
