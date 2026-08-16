@@ -200,8 +200,7 @@ Automated builds are available via GitHub Actions:
 
 | Workflow | Output |
 |----------|--------|
-| `build-android.yml` | Android APK artifact |
-| `build-windows.yml` | Windows EXE artifact |
+| `release.yml` | On a `v*` tag: Windows zip + Android debug/release APKs attached to the GitHub Release |
 | `build-linux.yml` | Linux bundle artifact |
 | `build-macos.yml` | macOS app artifact |
 
