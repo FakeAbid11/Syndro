@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
+import '../../core/services/update_service.dart';
+import '../../core/widgets/update_dialog.dart';
 import 'home_screen.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
@@ -18,6 +20,25 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 
 class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Silent, non-blocking update check on launch. Any failure is swallowed.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final info = await UpdateService.checkForUpdate();
+      if (info == null || !mounted) return;
+      if (await UpdateService.isSkipped(info.version)) return;
+      if (!mounted) return;
+      await showUpdateDialog(context, info, allowSkip: true);
+    } catch (_) {
+      // Startup update check is best-effort; never surface errors here.
+    }
+  }
 
   final List<Widget> _screens = const [
     HomeScreen(),

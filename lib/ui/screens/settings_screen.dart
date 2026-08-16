@@ -10,6 +10,8 @@ import '../../core/providers/device_provider.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/update_service.dart';
+import '../../core/widgets/update_dialog.dart';
 import '../../core/services/transfer_service/models.dart';
 import '../../core/services/transfer_service/transfer_service_impl.dart';
 
@@ -23,6 +25,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _version = 'Loading...';
   bool _autoAcceptTrusted = false;
+  bool _checkingUpdate = false;
   final AppSettingsService _settingsService = AppSettingsService();
 
   @override
@@ -38,6 +41,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() {
         _autoAcceptTrusted = autoAccept;
       });
+    }
+  }
+
+  Future<void> _handleCheckForUpdates() async {
+    setState(() => _checkingUpdate = true);
+    UpdateInfo? info;
+    var failed = false;
+    try {
+      info = await UpdateService.checkForUpdate();
+    } catch (_) {
+      failed = true;
+    }
+    if (!mounted) return;
+    setState(() => _checkingUpdate = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (failed) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't check for updates")),
+      );
+    } else if (info != null) {
+      await showUpdateDialog(context, info);
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("You're on the latest version")),
+      );
     }
   }
 
@@ -504,6 +533,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
                     title: const Text('Version'),
                     subtitle: Text(_version),
+                  ),
+                  const Divider(height: 1, indent: 60),
+                  _buildSettingsTile(
+                    icon: Icons.system_update,
+                    iconColor: AppTheme.primaryColor,
+                    iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+                    title: const Text('Check for updates'),
+                    subtitle: Text(
+                      _checkingUpdate ? 'Checking…' : 'Get the latest version',
+                    ),
+                    trailing: _checkingUpdate
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.chevron_right,
+                            color: AppTheme.textTertiary),
+                    onTap: _checkingUpdate ? null : _handleCheckForUpdates,
                   ),
                   const Divider(height: 1, indent: 60),
                   _buildSettingsTile(
