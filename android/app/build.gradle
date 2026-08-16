@@ -76,9 +76,21 @@ android {
                 logger.warn("WARNING: release build is DEBUG-SIGNED (allowDebugSigning=true). Do not distribute this artifact.")
                 signingConfig signingConfigs.debug
             } else {
-                throw new GradleException(
-                    "No release keystore configured. Set KEYSTORE_PASSWORD and provide " +
-                    "android/app/keystore.jks, or pass -PallowDebugSigning=true for local testing only.")
+                // Do NOT throw here: this block runs during project *configuration*
+                // for every task (including debug builds), so throwing now breaks
+                // `flutter build apk --debug`. Instead fail only if a release build
+                // is actually being assembled, checked once the task graph is ready.
+                gradle.taskGraph.whenReady { graph ->
+                    def assemblingRelease = graph.allTasks.any {
+                        it.project == project &&
+                        it.name.toLowerCase().contains("release")
+                    }
+                    if (assemblingRelease) {
+                        throw new GradleException(
+                            "No release keystore configured. Set KEYSTORE_PASSWORD and provide " +
+                            "android/app/keystore.jks, or pass -PallowDebugSigning=true for local testing only.")
+                    }
+                }
             }
             minifyEnabled true
             shrinkResources true
