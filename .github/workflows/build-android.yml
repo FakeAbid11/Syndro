@@ -60,15 +60,42 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
-          # Strip any whitespace/newlines the secret may carry (Windows CRLF, wrapping,
-          # BOM), then decode. -d exits non-zero on invalid base64 so a bad secret
-          # fails HERE with a clear message instead of a cryptic packaging error later.
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > android/app/keystore.jks
-          # Verify the decoded file is actually a readable keystore before building.
-          keytool -list \
-            -keystore android/app/keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -alias "${KEY_ALIAS:-syndro}" > /dev/null
+
+          # 1) Secret present?
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is empty or not set."
+            exit 1
+          fi
+          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+            echo "::error::KEYSTORE_PASSWORD secret is empty or not set."
+            exit 1
+          fi
+
+          # 2) Decode. Strip whitespace/BOM/CRLF the secret may carry, then decode.
+          #    base64 -d exits non-zero on invalid input, so a malformed secret
+          #    fails HERE rather than deep inside Gradle packaging.
+          if ! printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > android/app/keystore.jks; then
+            echo "::error::base64 decode of KEYSTORE_BASE64 failed - the secret is not valid base64. Re-encode with: base64 -w0 keystore.jks"
+            exit 1
+          fi
+
+          # 3) Non-empty output?
+          size=$(wc -c < android/app/keystore.jks)
+          echo "Decoded keystore size: ${size} bytes"
+          if [ "$size" -lt 100 ]; then
+            echo "::error::Decoded keystore is only ${size} bytes - the secret is truncated or wrong."
+            exit 1
+          fi
+
+          # 4) Actually readable as a keystore with this password + alias?
+          #    (Only stderr surfaces; the cert listing stays out of the log.)
+          if ! keytool -list \
+                -keystore android/app/keystore.jks \
+                -storepass "$KEYSTORE_PASSWORD" \
+                -alias "${KEY_ALIAS:-syndro}" > /dev/null; then
+            echo "::error::keytool could not read the keystore. Either the .jks is corrupt (regenerate it), the store password is wrong, or alias '${KEY_ALIAS:-syndro}' does not exist."
+            exit 1
+          fi
           echo "Keystore decoded and verified."
 
       - name: Build Debug APK
