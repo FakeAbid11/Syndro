@@ -100,6 +100,11 @@ class TransferService {
   /// Storage key holding the 32-byte X25519 private seed (base64) for this
   /// device's persistent long-term identity used in TOFU pinning.
   static const String _identityKeyStorageKey = 'syndro.identity.privkey';
+  /// Storage key holding this device's persistent auth token. The token
+  /// authenticates us to peers that have trusted us; it MUST survive app
+  /// restarts, otherwise a restart makes trusted-device auto-accept fail
+  /// (the presented token would no longer match the peer's stored record).
+  static const String _deviceTokenStorageKey = 'syndro.device.token';
   final AppSettingsService _settingsService = AppSettingsService();
 
   final Map<String, TrustedDevice> _trustedDevices = {};
@@ -223,6 +228,34 @@ class TransferService {
       if (kDebugMode) AppLogger.error('❌ Failed to initialize encryption: $e');
       _encryptionKeyPair = null;
       encryptionEnabled = false;
+    }
+  }
+
+  /// Load this device's persistent auth token from secure storage, or
+  /// generate and persist one on first run. Keeping the token stable across
+  /// launches is what allows trusted-device auto-accept to survive a restart:
+  /// peers store this token in their trusted-device record and compare against
+  /// it (directly, or via the pinned bound token) on every later transfer.
+  Future<void> _loadOrCreateDeviceToken() async {
+    if (_deviceToken.isNotEmpty) return;
+    try {
+      final stored = await _secureStorage.read(key: _deviceTokenStorageKey);
+      if (stored != null && stored.isNotEmpty) {
+        _deviceToken = stored;
+        return;
+      }
+    } catch (e) {
+      if (kDebugMode) AppLogger.warn('⚠️ Could not read device token: $e');
+    }
+
+    _deviceToken = _generateSecureToken();
+    try {
+      await _secureStorage.write(
+        key: _deviceTokenStorageKey,
+        value: _deviceToken,
+      );
+    } catch (e) {
+      if (kDebugMode) AppLogger.warn('⚠️ Could not persist device token: $e');
     }
   }
 
@@ -771,7 +804,7 @@ class TransferService {
       _deviceName = name;
     }
 
-    _deviceToken = _generateSecureToken();
+    await _loadOrCreateDeviceToken();
   }
 
   Future<void> updateDeviceName() async {
@@ -817,7 +850,7 @@ class TransferService {
       _devicePlatform = Platform.operatingSystem;
     }
     if (_deviceToken.isEmpty) {
-      _deviceToken = _generateSecureToken();
+      await _loadOrCreateDeviceToken();
     }
 
     if (_encryptionKeyPair == null && encryptionEnabled) {
