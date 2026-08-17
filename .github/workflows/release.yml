@@ -181,13 +181,22 @@ jobs:
           New-Item -ItemType Directory -Path syndro-windows -Force
           Copy-Item -Path build\windows\x64\runner\Release\* -Destination syndro-windows\ -Recurse
 
-      # Zip the *contents* of the folder (syndro-windows\*), NOT the folder itself,
-      # so the archive extracts straight to Syndro.exe + DLLs in a single unzip —
-      # no nested folder and no zip-inside-a-zip.
-      - name: Create ZIP archive
+      # Compile a per-user Inno Setup installer (installer/SyndroInstaller.iss)
+      # from the built release folder. Output: dist/Syndro-Setup-<ver>.exe.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile Windows installer
         run: |
           $ver = "${{ needs.prepare.outputs.version }}"
-          Compress-Archive -Path syndro-windows\* -DestinationPath "Syndro-Windows-$ver.zip"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion=$ver `
+            "/DReleaseDir=$PWD\syndro-windows" `
+            "/O$PWD\dist" `
+            installer\SyndroInstaller.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist
 
       # Upload the raw folder as the workflow artifact. GitHub zips artifacts once
       # on download, so this also extracts in a single unzip (avoids double-zip).
@@ -198,13 +207,13 @@ jobs:
           path: syndro-windows/**
           retention-days: 90
 
-      - name: Attach Windows build to Release
+      - name: Attach Windows installer to Release
         if: ${{ needs.prepare.outputs.do_release == 'true' }}
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: Syndro ${{ needs.prepare.outputs.tag }}
-          files: Syndro-Windows-*.zip
+          files: dist/Syndro-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
