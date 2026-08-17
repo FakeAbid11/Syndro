@@ -268,6 +268,10 @@ class MainActivity : FlutterActivity() {
                         val requestId = intent.getStringExtra(TransferService.EXTRA_REQUEST_ID)
                         eventSink?.success(mapOf("event" to "accepted", "requestId" to requestId))
                     }
+                    "com.syndro.app.TRANSFER_ACCEPTED_TRUSTED" -> {
+                        val requestId = intent.getStringExtra(TransferService.EXTRA_REQUEST_ID)
+                        eventSink?.success(mapOf("event" to "accepted_trusted", "requestId" to requestId))
+                    }
                     "com.syndro.app.TRANSFER_REJECTED" -> {
                         val requestId = intent.getStringExtra(TransferService.EXTRA_REQUEST_ID)
                         eventSink?.success(mapOf("event" to "rejected", "requestId" to requestId))
@@ -279,6 +283,7 @@ class MainActivity : FlutterActivity() {
         val filter = IntentFilter().apply {
             addAction("com.syndro.app.TRANSFER_CANCELLED")
             addAction("com.syndro.app.TRANSFER_ACCEPTED")
+            addAction("com.syndro.app.TRANSFER_ACCEPTED_TRUSTED")
             addAction("com.syndro.app.TRANSFER_REJECTED")
         }
 

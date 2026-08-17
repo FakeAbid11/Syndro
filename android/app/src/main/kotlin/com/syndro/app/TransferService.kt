@@ -41,6 +41,7 @@ class TransferService : Service() {
         const val ACTION_CANCEL = "com.syndro.app.CANCEL_TRANSFER"
         const val ACTION_SHOW_REQUEST = "com.syndro.app.SHOW_REQUEST"
         const val ACTION_ACCEPT_TRANSFER = "com.syndro.app.ACCEPT_TRANSFER"
+        const val ACTION_ACCEPT_TRUSTED_TRANSFER = "com.syndro.app.ACCEPT_TRUSTED_TRANSFER"
         const val ACTION_REJECT_TRANSFER = "com.syndro.app.REJECT_TRANSFER"
         const val ACTION_SHOW_COMPLETE = "com.syndro.app.SHOW_COMPLETE"
         const val ACTION_OPEN_FILE = "com.syndro.app.OPEN_FILE"
@@ -215,6 +216,24 @@ class TransferService : Service() {
                 // Keep a foreground "receiving" notification + locks alive until
                 // the real progress notification (ACTION_START) takes over, or
                 // the idle timeout fires.
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_REQUEST)
+                acquireLocks()
+                startForeground(
+                    NOTIFICATION_PROGRESS,
+                    createProgressNotification("Receiving files...", "", 0, null, null)
+                )
+                scheduleIdleStop()
+            }
+
+            ACTION_ACCEPT_TRUSTED_TRANSFER -> {
+                currentRequestId?.let { requestId ->
+                    val acceptTrustedIntent = Intent("com.syndro.app.TRANSFER_ACCEPTED_TRUSTED").apply {
+                        putExtra(EXTRA_REQUEST_ID, requestId)
+                    }
+                    sendBroadcast(acceptTrustedIntent)
+                }
+                currentRequestId = null
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_REQUEST)
                 acquireLocks()
@@ -418,6 +437,14 @@ class TransferService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val acceptTrustedIntent = Intent(this, TransferService::class.java).apply {
+            action = ACTION_ACCEPT_TRUSTED_TRANSFER
+        }
+        val acceptTrustedPendingIntent = PendingIntent.getService(
+            this, 4, acceptTrustedIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val sizeText = formatBytes(totalSize)
         val filesText = if (fileCount == 1) "1 file" else "$fileCount files"
 
@@ -431,6 +458,7 @@ class TransferService : Service() {
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_accept, "Accept", acceptPendingIntent)
+            .addAction(R.drawable.ic_accept, "Trust & Accept", acceptTrustedPendingIntent)
             .addAction(R.drawable.ic_reject, "Reject", rejectPendingIntent)
             .setAutoCancel(false)
             .setOngoing(true)

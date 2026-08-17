@@ -113,7 +113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         builder: (bottomSheetContext) {
           return _TransferRequestSheetContent(
             request: request,
-            onAccept: () async {
+            onAccept: (bool trustSender) async {
               if (!mounted) return;
               Navigator.of(bottomSheetContext).pop();
               if (!mounted) return;
@@ -122,7 +122,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
               try {
                 final transferService = ref.read(transferServiceProvider);
-                await transferService.approveTransfer(request.requestId);
+                await transferService.approveTransfer(
+                  request.requestId,
+                  trustSender: trustSender,
+                );
 
                 if (!mounted) return;
                 scaffoldMessenger.showSnackBar(
@@ -1140,9 +1143,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 }
 
-class _TransferRequestSheetContent extends StatelessWidget {
+class _TransferRequestSheetContent extends StatefulWidget {
   final PendingTransferRequest request;
-  final VoidCallback onAccept;
+  final ValueChanged<bool> onAccept;
   final VoidCallback onReject;
 
   const _TransferRequestSheetContent({
@@ -1152,7 +1155,17 @@ class _TransferRequestSheetContent extends StatelessWidget {
   });
 
   @override
+  State<_TransferRequestSheetContent> createState() =>
+      _TransferRequestSheetContentState();
+}
+
+class _TransferRequestSheetContentState
+    extends State<_TransferRequestSheetContent> {
+  bool _trustSender = false;
+
+  @override
   Widget build(BuildContext context) {
+    final request = widget.request;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xxl),
       decoration: const BoxDecoration(
@@ -1196,12 +1209,42 @@ class _TransferRequestSheetContent extends StatelessWidget {
                   color: AppTheme.textTertiary,
                 ),
           ),
-          const SizedBox(height: AppSpacing.xxl),
+          const SizedBox(height: AppSpacing.lg),
+          if (request.isTrusted)
+            _TrustedDeviceBadge()
+          else
+            CheckboxListTile(
+              value: _trustSender,
+              onChanged: (value) =>
+                  setState(() => _trustSender = value ?? false),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              activeColor: AppTheme.primaryColor,
+              checkColor: Colors.white,
+              side: const BorderSide(color: AppTheme.borderColor),
+              title: const Text(
+                'Trust this device',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: const Text(
+                'Future transfers from this device will auto-accept',
+                style: TextStyle(
+                  color: AppTheme.textTertiary,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          const SizedBox(height: AppSpacing.lg),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: onReject,
+                  onPressed: widget.onReject,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.errorColor,
                     side: const BorderSide(color: AppTheme.errorColor),
@@ -1214,7 +1257,7 @@ class _TransferRequestSheetContent extends StatelessWidget {
               const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: FilledButton(
-                  onPressed: onAccept,
+                  onPressed: () => widget.onAccept(_trustSender),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.successColor,
                     foregroundColor: Colors.white,
@@ -1239,5 +1282,29 @@ class _TransferRequestSheetContent extends StatelessWidget {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+}
+
+class _TrustedDeviceBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(
+          Icons.verified_user_rounded,
+          size: 16,
+          color: AppTheme.successColor,
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          'Trusted device — transfers auto-accept',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppTheme.successColor,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+      ],
+    );
   }
 }

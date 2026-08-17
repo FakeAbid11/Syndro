@@ -708,6 +708,17 @@ class TransferService {
             }
           }
           break;
+        case 'accepted_trusted':
+          AppLogger.info('📱 Transfer accepted + trusted from notification: $requestId');
+          if (requestId != null) {
+            // FIX: Check if request still exists before approving
+            if (_pendingRequests.containsKey(requestId)) {
+              approveTransfer(requestId, trustSender: true);
+            } else {
+              AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
+            }
+          }
+          break;
         case 'rejected':
           AppLogger.info('📱 Transfer rejected from notification: $requestId');
           if (requestId != null) {
