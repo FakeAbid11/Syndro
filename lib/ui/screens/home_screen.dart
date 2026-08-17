@@ -175,17 +175,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
         try {
           if (!mounted) return;
-          final pendingRequests =
-              ref.read(transferServiceProvider).pendingRequests;
-          if (pendingRequests.isNotEmpty) {
-            // FIX (Bug #6): Store timer reference for cancellation on dispose
-            _pendingRequestTimer?.cancel();
-            _pendingRequestTimer = Timer(const Duration(milliseconds: 300), () {
-              if (mounted && !_isShowingRequestSheet) {
-                _showTransferRequestSheet(pendingRequests.first);
-              }
-            });
-          }
+          // FIX (Bug #6): Store timer reference for cancellation on dispose.
+          // Re-read the pending list INSIDE the timer: the snapshot taken at
+          // dismissal time may still contain the request the user just handled
+          // (accept/reject remove it a beat later), which used to re-show the
+          // same "Incoming Transfer" sheet a second time.
+          _pendingRequestTimer?.cancel();
+          _pendingRequestTimer = Timer(const Duration(milliseconds: 300), () {
+            if (!mounted || _isShowingRequestSheet) return;
+            final pendingRequests =
+                ref.read(transferServiceProvider).pendingRequests;
+            if (pendingRequests.isNotEmpty) {
+              _showTransferRequestSheet(pendingRequests.first);
+            }
+          });
         } catch (e) {
           debugPrint('Error checking pending requests: $e');
         }
