@@ -24,6 +24,7 @@ import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/quick_send_screen.dart';
 import 'ui/screens/browser_share_screen.dart';
+import 'ui/screens/text_share_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 void main(List<String> args) async {
@@ -157,10 +158,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
   // Share intent state
   List<SharedFile>? _sharedFilesFromIntent;
   List<File>? _browserShareFiles;
+  String? _sharedTextFromIntent;
   bool _hasShareIntent = false;
   AndroidShareMode _shareMode = AndroidShareMode.appToApp;
   StreamSubscription<List<SharedFile>>? _sharedFilesSubscription;
   StreamSubscription<AndroidShareMode>? _shareModeSubscription;
+  StreamSubscription<String>? _sharedTextSubscription;
   bool _shareIntentHandled = false;
 
   @override
@@ -188,6 +191,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     // Cancel share intent stream subscriptions
     _sharedFilesSubscription?.cancel();
     _shareModeSubscription?.cancel();
+    _sharedTextSubscription?.cancel();
 
     // Only remove listener if we added it
     if (_windowListenerAdded) {
@@ -255,6 +259,19 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
             debugPrint('📱 Share mode changed to: $mode');
             setState(() {
               _shareMode = mode;
+            });
+          }
+        });
+
+        // Listen for shared text (text/plain share intents)
+        _sharedTextSubscription =
+            shareIntentService.sharedTextStream.listen((text) {
+          if (text.isNotEmpty && mounted) {
+            debugPrint('📝 Received shared text');
+            setState(() {
+              _sharedTextFromIntent = text;
+              _hasShareIntent = true;
+              _shareMode = AndroidShareMode.textShare;
             });
           }
         });
@@ -493,9 +510,26 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         if (mounted) {
           if (_shareMode == AndroidShareMode.browserShare) {
             _handleBrowserShare();
+          } else if (_shareMode == AndroidShareMode.textShare) {
+            _handleTextShare();
           } else {
             _handleAppToAppShare();
           }
+        }
+      });
+      return _buildShareIntentScreen();
+    }
+
+    // Show text share picker if a text/plain intent was received
+    if (_hasShareIntent &&
+        _shareMode == AndroidShareMode.textShare &&
+        _sharedTextFromIntent != null &&
+        _initialized &&
+        !_shareIntentHandled) {
+      _shareIntentHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _handleTextShare();
         }
       });
       return _buildShareIntentScreen();
@@ -614,6 +648,38 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         _hasShareIntent = false;
       });
     }
+  }
+
+  void _handleTextShare() {
+    debugPrint('📝 Text share selected');
+    final text = _sharedTextFromIntent;
+    if (text == null || text.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _hasShareIntent = false;
+          _shareIntentHandled = false;
+        });
+      }
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) => TextShareScreen(
+          text: text,
+          onComplete: () async {
+            ShareIntentService().clearSharedFiles();
+            if (mounted) {
+              setState(() {
+                _hasShareIntent = false;
+                _sharedTextFromIntent = null;
+              });
+            }
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+        ),
+      ),
+    );
   }
 
   void _handleBrowserShare() async {

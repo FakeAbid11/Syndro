@@ -34,6 +34,7 @@ class SharedFile {
 enum AndroidShareMode {
   appToApp,
   browserShare,
+  textShare,
 }
 
 /// Service to handle share intents from other apps
@@ -51,11 +52,18 @@ class ShareIntentService {
   final StreamController<AndroidShareMode> _shareModeController =
       StreamController<AndroidShareMode>.broadcast();
 
+  final StreamController<String> _sharedTextController =
+      StreamController<String>.broadcast();
+
   Stream<List<SharedFile>> get sharedFilesStream => _sharedFilesController.stream;
   Stream<AndroidShareMode> get shareModeStream => _shareModeController.stream;
+  Stream<String> get sharedTextStream => _sharedTextController.stream;
 
   List<SharedFile>? _lastSharedFiles;
   List<SharedFile>? get lastSharedFiles => _lastSharedFiles;
+
+  String? _lastSharedText;
+  String? get lastSharedText => _lastSharedText;
 
   AndroidShareMode _lastShareMode = AndroidShareMode.appToApp;
   AndroidShareMode get lastShareMode => _lastShareMode;
@@ -84,7 +92,9 @@ class ShareIntentService {
   AndroidShareMode _parseShareMode(dynamic arguments) {
     if (arguments is Map && arguments['mode'] != null) {
       final mode = arguments['mode'] as String;
-      return mode == 'browser_share' ? AndroidShareMode.browserShare : AndroidShareMode.appToApp;
+      if (mode == 'browser_share') return AndroidShareMode.browserShare;
+      if (mode == 'text_share') return AndroidShareMode.textShare;
+      return AndroidShareMode.appToApp;
     }
     return AndroidShareMode.appToApp;
   }
@@ -109,11 +119,32 @@ class ShareIntentService {
     return null;
   }
 
+  /// Check if the pending share intent carries text (not files)
+  Future<String?> checkForSharedText() async {
+    try {
+      final result =
+          await _channel.invokeMethod<String>('getSharedText');
+      if (result != null && result.trim().isNotEmpty) {
+        _lastSharedText = result;
+        _sharedTextController.add(result);
+        return result;
+      }
+    } on PlatformException catch (e) {
+      debugPrint('Error checking for shared text: ${e.message}');
+    }
+    return null;
+  }
+
   /// Handle incoming share intent
   Future<void> _handleShareIntentReceived(AndroidShareMode mode) async {
     _lastShareMode = mode;
     _shareModeController.add(mode);
-    
+
+    if (mode == AndroidShareMode.textShare) {
+      await checkForSharedText();
+      return;
+    }
+
     final files = await checkForSharedFiles();
     if (files != null && files.isNotEmpty) {
       _sharedFilesController.add(files);
@@ -125,6 +156,7 @@ class ShareIntentService {
     try {
       await _channel.invokeMethod('clearSharedFiles');
       _lastSharedFiles = null;
+      _lastSharedText = null;
     } on PlatformException catch (e) {
       debugPrint('Error clearing shared files: ${e.message}');
     }
@@ -157,5 +189,6 @@ class ShareIntentService {
   void dispose() {
     _sharedFilesController.close();
     _shareModeController.close();
+    _sharedTextController.close();
   }
 }

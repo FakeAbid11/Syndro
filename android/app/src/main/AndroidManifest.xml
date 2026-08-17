@@ -97,6 +97,13 @@
                 <data android:mimeType="audio/*"/>
             </intent-filter>
 
+            <!-- Share Intent - Text (messages, links, notes) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+
             <!-- Share Intent - Any file -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>

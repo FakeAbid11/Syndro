@@ -36,6 +36,9 @@ class PendingTransferRequest {
   /// Whether the sender is a trusted device
   final bool isTrusted;
 
+  /// Text content for text-message transfers (null for file transfers)
+  final String? textContent;
+
   PendingTransferRequest({
     required this.requestId,
     required this.senderId,
@@ -47,10 +50,31 @@ class PendingTransferRequest {
     this.isParallelTransfer = false,
     this.parallelData,
     this.isTrusted = false,
+    this.textContent,
   });
+
+  /// Whether this request is a text message (not a file transfer)
+  bool get isText => textContent != null;
 
   int get fileCount => items.length;
   int get totalSize => items.fold<int>(0, (sum, item) => sum + item.size);
+}
+
+/// A text message received from another device (delivered after approval).
+class ReceivedTextMessage {
+  final String senderId;
+  final String senderName;
+  final String text;
+  final String filePath;
+  final DateTime timestamp;
+
+  const ReceivedTextMessage({
+    required this.senderId,
+    required this.senderName,
+    required this.text,
+    required this.filePath,
+    required this.timestamp,
+  });
 }
 
 /// Trusted device with verification token and optional TOFU pin

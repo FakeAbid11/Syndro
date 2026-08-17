@@ -110,8 +110,15 @@ class TransferService {
   final Map<String, TrustedDevice> _trustedDevices = {};
   final Map<String, PendingTransferRequest> _pendingRequests = {};
 
+  /// Per-transfer gate: when present the transfer is paused and its chunk
+  /// loop awaits the completer before sending more data.
+  final Map<String, Completer<void>> _pauseGates = {};
+
   final _pendingRequestsController =
       StreamController<List<PendingTransferRequest>>.broadcast();
+
+  final _receivedTextController =
+      StreamController<ReceivedTextMessage>.broadcast();
 
   HttpServer? _server;
 
@@ -127,6 +134,7 @@ class TransferService {
   // OPTIMIZED: Support files up to 100GB for low-end devices
   // Using streaming transfer, only one chunk is loaded in memory at a time
   static const int _maxFileSizeBytes = 100 * 1024 * 1024 * 1024; // 100GB limit
+  static const int _maxTextLengthBytes = 64 * 1024; // 64KB text-message limit
 
   static const Duration _sessionMaxAge = Duration(hours: 1);
   Timer? _sessionCleanupTimer;
@@ -187,6 +195,8 @@ class TransferService {
       _pendingRequests.values.toList();
   Stream<List<PendingTransferRequest>> get pendingRequestsStream =>
       _pendingRequestsController.stream;
+  Stream<ReceivedTextMessage> get receivedTextStream =>
+      _receivedTextController.stream;
   List<TrustedDevice> get trustedDevices => _trustedDevices.values.toList();
   bool get isEncryptionReady => _encryptionKeyPair != null;
 
@@ -1014,6 +1024,11 @@ class TransferService {
         return;
       }
 
+      if (method == 'POST' && path == '/transfer/text') {
+        await _handleTextTransfer(request);
+        return;
+      }
+
       if (method == 'GET' && path.startsWith('/transfer/approval/')) {
         final requestId = path.split('/').last;
         await _handleApprovalCheck(request, requestId);
@@ -1505,6 +1520,180 @@ class TransferService {
     }
   }
 
+  bool _validateTextData(Map<String, dynamic> data) {
+    if (!data.containsKey('senderId') || data['senderId'] is! String) {
+      return false;
+    }
+    if (!data.containsKey('id') || data['id'] is! String) return false;
+    if (!data.containsKey('senderToken') || data['senderToken'] is! String) {
+      return false;
+    }
+
+    final text = data['text'];
+    if (text is! String || text.trim().isEmpty) return false;
+    if (text.length > _maxTextLengthBytes) return false;
+
+    final senderId = data['senderId'] as String;
+    if (senderId.isEmpty || senderId.length > 100) return false;
+
+    return true;
+  }
+
+  /// Handles an incoming text-message transfer (`POST /transfer/text`).
+  ///
+  /// Text rides the same approval pipeline as files: an unknown sender is
+  /// queued for manual approval (sheet, notification actions, trust checkbox
+  /// all apply unchanged), while a trusted sender with a valid token and
+  /// auto-accept enabled gets the message delivered immediately.
+  Future<void> _handleTextTransfer(HttpRequest request) async {
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      final data = _validateAndParseJson(body);
+
+      if (data == null) {
+        await _sendBadRequest(request, 'Invalid JSON format');
+        return;
+      }
+
+      if (!_validateTextData(data)) {
+        await _sendBadRequest(request, 'Missing or invalid required fields');
+        return;
+      }
+
+      final senderId = data['senderId'] as String;
+      final senderName = data['senderName'] as String? ?? 'Unknown Device';
+      final senderToken = data['senderToken'] as String;
+      final requestId = data['id'] as String;
+      final text = (data['text'] as String).trim();
+
+      // Idempotency: a retried /transfer/text for a request we already saw
+      // must not queue a second prompt or deliver twice.
+      if (_activeTransfers.containsKey(requestId)) {
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'accepted',
+          'transferId': requestId,
+        });
+        return;
+      }
+      if (_pendingRequests.containsKey(requestId)) {
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'pending_approval',
+          'requestId': requestId,
+          'message': 'Waiting for receiver approval',
+        });
+        return;
+      }
+
+      final trustedDevice = _trustedDevices[senderId];
+      final autoAcceptTrusted = await _settingsService.getAutoAcceptTrusted();
+
+      if (trustedDevice != null &&
+          await _verifyDeviceToken(
+            senderId: senderId,
+            presentedToken: senderToken,
+          ) &&
+          autoAcceptTrusted) {
+        await _deliverText(
+          senderId: senderId,
+          senderName: senderName,
+          text: text,
+          requestId: requestId,
+        );
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'accepted',
+          'transferId': requestId,
+        });
+        return;
+      }
+
+      _pendingRequests[requestId] = PendingTransferRequest(
+        requestId: requestId,
+        senderId: senderId,
+        senderName: senderName,
+        senderToken: senderToken,
+        items: const [],
+        timestamp: DateTime.now(),
+        textContent: text,
+        isTrusted: trustedDevice != null,
+      );
+
+      if (!_pendingRequestsController.isClosed) {
+        _pendingRequestsController.add(_pendingRequests.values.toList());
+      }
+
+      await _sendResponse(request, HttpStatus.ok, {
+        'status': 'pending_approval',
+        'requestId': requestId,
+        'message': 'Waiting for receiver approval',
+      });
+    } catch (e, stackTrace) {
+      if (kDebugMode) AppLogger.error('Error receiving text: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
+      await _sendError(request, 'Error receiving text');
+    }
+  }
+
+  /// Saves the message as a `.txt` note, records it in history/active
+  /// transfers (so approval polls report "approved") and streams it to the UI.
+  Future<void> _deliverText({
+    required String senderId,
+    required String senderName,
+    required String text,
+    required String requestId,
+  }) async {
+    final timestamp = DateTime.now();
+    final safeSenderName = _fileService.sanitizeFilename(senderName);
+    final fileName = '${safeSenderName.isEmpty ? 'device' : safeSenderName}-${timestamp.millisecondsSinceEpoch}.txt';
+
+    final downloadDir = await _fileService.getDownloadDirectory();
+    final notesDir =
+        Directory('$downloadDir${Platform.pathSeparator}Syndro Notes');
+    if (!await notesDir.exists()) {
+      await notesDir.create(recursive: true);
+    }
+    final filePath = '${notesDir.path}${Platform.pathSeparator}$fileName';
+    await File(filePath).writeAsString(text);
+
+    if (!_receivedTextController.isClosed) {
+      _receivedTextController.add(ReceivedTextMessage(
+        senderId: senderId,
+        senderName: senderName,
+        text: text,
+        filePath: filePath,
+        timestamp: timestamp,
+      ));
+    }
+
+    final transfer = Transfer(
+      id: requestId,
+      senderId: senderId,
+      receiverId: _deviceId,
+      items: [
+        TransferItem(name: fileName, path: filePath, size: text.length),
+      ],
+      status: TransferStatus.completed,
+      progress: TransferProgress(
+        bytesTransferred: text.length,
+        totalBytes: text.length,
+      ),
+      createdAt: timestamp,
+    );
+
+    _activeTransfers[requestId] = transfer;
+    if (!_transferController.isClosed) {
+      _transferController.add(transfer);
+    }
+
+    await DatabaseHelper.instance.insertTransfer(transfer, null, null);
+
+    await BackgroundTransferService.showTransferComplete(
+      fileName: fileName,
+      filePath: filePath,
+      fileCount: 1,
+      totalSize: text.length,
+    );
+  }
+
   Future<void> _handleApprovalCheck(
       HttpRequest request, String requestId) async {
     if (requestId.isEmpty || requestId.length > 100) {
@@ -1606,6 +1795,19 @@ class TransferService {
       } catch (e) {
         AppLogger.error('❌ Key exchange failed on approval: $e');
       }
+    }
+
+    // FIX: Handle parallel transfer approval differently
+    if (pending.isText) {
+      // Text messages need no upload phase — deliver straight from the
+      // content carried in the request (saved as a .txt note + streamed UI).
+      await _deliverText(
+        senderId: pending.senderId,
+        senderName: pending.senderName,
+        text: pending.textContent!,
+        requestId: pending.requestId,
+      );
+      return;
     }
 
     // FIX: Handle parallel transfer approval differently
@@ -2390,6 +2592,7 @@ class TransferService {
           totalBytes: totalSize,
         ),
         createdAt: DateTime.now(),
+        isParallel: true,
       );
 
       _activeTransfers[transferId] = parallelTransfer;
@@ -2707,6 +2910,16 @@ class TransferService {
 
       await BackgroundTransferService.stopBackgroundTransfer();
 
+      // A user-initiated cancellation (e.g. while paused) already updated
+      // the state — don't overwrite it with "failed".
+      if (_activeTransfers[transferId]?.status == TransferStatus.cancelled) {
+        if (kDebugMode) {
+          AppLogger.info('Transfer cancelled by user: $transferId');
+        }
+        _cleanupCompletedTransfers();
+        return;
+      }
+
       final failedTransfer = transfer.copyWith(
         status: TransferStatus.failed,
         errorMessage: e.toString(),
@@ -2775,6 +2988,7 @@ class TransferService {
         buffer.addAll(chunk);
 
         while (buffer.length >= chunkSize) {
+          await _checkPauseGate(transferId);
           final plainChunk = Uint8List.fromList(buffer.sublist(0, chunkSize));
           buffer = buffer.sublist(chunkSize);
 
@@ -2887,6 +3101,7 @@ class TransferService {
 
     try {
       await for (final chunk in fileStream) {
+        await _checkPauseGate(transferId);
         request.sink.add(chunk);
         bytesSent += chunk.length;
 
@@ -3055,6 +3270,141 @@ class TransferService {
     return false;
   }
 
+  /// Sends a text message (note/link/clipboard text) to [receiver].
+  ///
+  /// Mirrors the file flow: POST `/transfer/text`, then wait for approval if
+  /// the receiver queues it for manual acceptance. Returns the transfer id.
+  /// Throws [TransferException] on rejection, timeout or network failure.
+  Future<String> sendText(Device receiver, String text,
+      {String? transferId}) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      throw TransferException('Text is empty', code: 'EMPTY_TEXT');
+    }
+    if (trimmed.length > _maxTextLengthBytes) {
+      throw TransferException('Text is too long (max 64 KB)',
+          code: 'TEXT_TOO_LONG');
+    }
+
+    final id = transferId ?? _uuid.v4();
+    final senderToken = await _getSenderTokenForDevice(receiver.id);
+    final textBytes = utf8.encode(trimmed).length;
+
+    final transfer = Transfer(
+      id: id,
+      senderId: _deviceId,
+      receiverId: receiver.id,
+      items: [
+        TransferItem(name: 'Message', path: '', size: textBytes),
+      ],
+      status: TransferStatus.connecting,
+      progress: TransferProgress(
+        bytesTransferred: 0,
+        totalBytes: textBytes,
+      ),
+      createdAt: DateTime.now(),
+    );
+    _activeTransfers[id] = transfer;
+    if (!_transferController.isClosed) {
+      _transferController.add(transfer);
+    }
+
+    try {
+      final response = await _retryRequest(
+        () => http
+            .post(
+              Uri.parse(
+                  'http://${receiver.ipAddress}:${receiver.port}/transfer/text'),
+              headers: {
+                'Content-Type': 'application/json',
+                'x-device-id': _deviceId,
+              },
+              body: jsonEncode({
+                'id': id,
+                'senderId': _deviceId,
+                'senderName': _deviceName,
+                'senderToken': senderToken,
+                'text': trimmed,
+              }),
+            )
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () =>
+                  throw TimeoutException('Text send timeout'),
+            ),
+      );
+
+      if (response.statusCode != 200) {
+        throw TransferException('Failed to send text',
+            code: 'TEXT_SEND_FAILED_${response.statusCode}');
+      }
+
+      final data = _validateAndParseJson(response.body);
+      if (data == null) {
+        throw TransferException('Invalid response from receiver',
+            code: 'INVALID_RESPONSE');
+      }
+
+      final status = data['status'] as String? ?? '';
+      if (status == 'pending_approval') {
+        _activeTransfers[id] =
+            transfer.copyWith(status: TransferStatus.pending);
+        if (!_transferController.isClosed) {
+          _transferController.add(_activeTransfers[id]!);
+        }
+
+        final approved = await _waitForApproval(
+          receiver: receiver,
+          requestId: id,
+          timeout: const Duration(minutes: 5),
+          senderId: _deviceId,
+        );
+        if (!approved.approved) {
+          throw TransferException('Message rejected or timed out',
+              code: 'REJECTED');
+        }
+      } else if (status != 'accepted') {
+        throw TransferException('Unexpected receiver status: $status',
+            code: 'UNEXPECTED_STATUS');
+      }
+
+      final completedTransfer = transfer.copyWith(
+        status: TransferStatus.completed,
+        progress: TransferProgress(
+          bytesTransferred: textBytes,
+          totalBytes: textBytes,
+        ),
+      );
+      _activeTransfers[id] = completedTransfer;
+      if (!_transferController.isClosed) {
+        _transferController.add(completedTransfer);
+      }
+
+      await DatabaseHelper.instance
+          .insertTransfer(completedTransfer, null, null);
+
+      _cleanupCompletedTransfers();
+      return id;
+    } catch (e, stackTrace) {
+      if (kDebugMode) AppLogger.error('Error sending text: $e');
+      if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
+
+      final failedTransfer = transfer.copyWith(
+        status: TransferStatus.failed,
+        errorMessage: e.toString(),
+      );
+      _activeTransfers[id] = failedTransfer;
+      if (!_transferController.isClosed) {
+        _transferController.add(failedTransfer);
+      }
+      await DatabaseHelper.instance
+          .insertTransfer(failedTransfer, null, null);
+
+      if (e is TransferException) rethrow;
+      throw TransferException('Text transfer failed', originalError: e);
+    }
+  }
+
   void cancelTransfer(String transferId) {
     final transfer = _activeTransfers[transferId];
     if (transfer != null) {
@@ -3069,6 +3419,65 @@ class TransferService {
         AppLogger.warn(
             'Warning: Attempted to cancel non-existent transfer: $transferId');
       }
+    }
+
+    // Release the pause gate so a paused loop wakes up and aborts.
+    final gate = _pauseGates.remove(transferId);
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
+  }
+
+  /// Pauses an in-flight sequential transfer. Parallel transfers and
+  /// terminal transfers are ignored (the UI hides the control for those).
+  void pauseTransfer(String transferId) {
+    final transfer = _activeTransfers[transferId];
+    if (transfer == null ||
+        transfer.status.isTerminal ||
+        transfer.isParallel == true) {
+      return;
+    }
+    if (_pauseGates.containsKey(transferId)) return;
+
+    _pauseGates[transferId] = Completer<void>();
+    _activeTransfers[transferId] =
+        transfer.copyWith(status: TransferStatus.paused);
+    _transferController.add(_activeTransfers[transferId]!);
+    BackgroundTransferService.stopBackgroundTransfer();
+  }
+
+  /// Resumes a paused transfer.
+  void resumeTransfer(String transferId) {
+    final gate = _pauseGates.remove(transferId);
+    if (gate == null || gate.isCompleted) return;
+
+    final transfer = _activeTransfers[transferId];
+    if (transfer == null || transfer.status != TransferStatus.paused) return;
+
+    gate.complete();
+    _activeTransfers[transferId] =
+        transfer.copyWith(status: TransferStatus.transferring);
+    _transferController.add(_activeTransfers[transferId]!);
+    BackgroundTransferService.startBackgroundTransfer(
+      title: 'Sending files...',
+      fileName: '',
+    );
+  }
+
+  /// Blocks while [transferId] is paused; throws when the transfer was
+  /// cancelled so the sending loop aborts cleanly. The cancelled check runs
+  /// before AND after the gate: a cancellation that lands while the loop is
+  /// blocked elsewhere (e.g. in a full socket buffer) still aborts it at the
+  /// next chunk boundary, even though the gate is already released.
+  Future<void> _checkPauseGate(String transferId) async {
+    if (_activeTransfers[transferId]?.status == TransferStatus.cancelled) {
+      throw TransferException('Transfer cancelled', code: 'CANCELLED');
+    }
+    final gate = _pauseGates[transferId];
+    if (gate == null) return;
+    await gate.future;
+    if (_activeTransfers[transferId]?.status == TransferStatus.cancelled) {
+      throw TransferException('Transfer cancelled', code: 'CANCELLED');
     }
   }
 

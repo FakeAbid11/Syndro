@@ -9,6 +9,7 @@ enum TransferStatus {
   pending,
   connecting,
   transferring,
+  paused,
   completed,
   failed,
   cancelled;
@@ -21,6 +22,8 @@ enum TransferStatus {
         return 'Connecting';
       case TransferStatus.transferring:
         return 'Transferring';
+      case TransferStatus.paused:
+        return 'Paused';
       case TransferStatus.completed:
         return 'Completed';
       case TransferStatus.failed:
@@ -300,6 +303,9 @@ class Transfer extends Equatable {
   final DateTime createdAt;
   final String? errorMessage;
 
+  /// True when this transfer uses the parallel (multi-connection) pipeline.
+  final bool? isParallel;
+
   const Transfer({
     required this.id,
     required this.senderId,
@@ -309,6 +315,7 @@ class Transfer extends Equatable {
     required this.progress,
     required this.createdAt,
     this.errorMessage,
+    this.isParallel,
   });
 
   int get totalSize => items.fold(0, (sum, item) => sum + item.size);
@@ -335,6 +342,7 @@ class Transfer extends Equatable {
     TransferProgress? progress,
     DateTime? createdAt,
     String? errorMessage,
+    bool? isParallel,
   }) {
     return Transfer(
       id: id ?? this.id,
@@ -345,6 +353,7 @@ class Transfer extends Equatable {
       progress: progress ?? this.progress,
       createdAt: createdAt ?? this.createdAt,
       errorMessage: errorMessage ?? this.errorMessage,
+      isParallel: isParallel ?? this.isParallel,
     );
   }
 
@@ -363,6 +372,7 @@ class Transfer extends Equatable {
       },
       'createdAt': createdAt.toIso8601String(),
       'errorMessage': errorMessage,
+      'isParallel': isParallel,
     };
   }
 
@@ -398,6 +408,7 @@ class Transfer extends Equatable {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       errorMessage: json['errorMessage'] as String?,
+      isParallel: json['isParallel'] as bool?,
     );
   }
 

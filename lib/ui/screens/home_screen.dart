@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:animations/animations.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
@@ -11,12 +13,15 @@ import '../widgets/common/app_widgets.dart';
 import '../animations/pulse_animation.dart';
 import '../widgets/device_card.dart';
 import '../../core/models/device.dart';
+import '../../core/models/transfer.dart';
 import '../../core/providers/device_provider.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/services/transfer_service.dart';
+import '../../core/services/background_transfer_service.dart';
 import 'file_picker_screen.dart';
 import 'browser_share_screen.dart';
 import 'browser_receive_screen.dart';
+import 'transfer_progress_screen.dart';
 import 'home_screen_strings.dart';
 import '../../core/utils/byte_formatter.dart';
 
@@ -34,7 +39,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   ProviderSubscription<AsyncValue<List<PendingTransferRequest>>>?
       _pendingRequestsSubscription;
-  
+
+  StreamSubscription<ReceivedTextMessage>? _receivedTextSubscription;
+
   // FIX (Bug #6): Store timer reference for cancellation on dispose
   Timer? _pendingRequestTimer;
 
@@ -43,6 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _listenForIncomingRequests();
+    _listenForReceivedText();
   }
 
   // FIX (Bug #3): Ensure all subscriptions are properly cancelled
@@ -60,6 +68,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _pendingRequestsSubscription = null;
     } catch (e) {
       debugPrint('Error closing pending requests subscription: $e');
+    }
+
+    try {
+      _receivedTextSubscription?.cancel();
+      _receivedTextSubscription = null;
+    } catch (e) {
+      debugPrint('Error closing received text subscription: $e');
     }
     
     debugPrint('🧹 HomeScreen disposed');
@@ -96,6 +111,147 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     } catch (e) {
       debugPrint('⚠️ Error creating pending requests subscription: $e');
     }
+  }
+
+  void _listenForReceivedText() {
+    try {
+      _receivedTextSubscription =
+          ref.read(transferServiceProvider).receivedTextStream.listen((msg) {
+        if (!mounted) return;
+        _showReceivedTextSheet(msg);
+      });
+    } catch (e) {
+      debugPrint('⚠️ Error creating received text subscription: $e');
+    }
+  }
+
+  void _showReceivedTextSheet(ReceivedTextMessage message) {
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isDismissible: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) {
+        return Container(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          decoration: const BoxDecoration(
+            color: AppTheme.surfaceColor,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppTheme.borderColor,
+                  borderRadius: AppRadius.pillAll,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              Row(
+                children: [
+                  const GradientIconTile(
+                    icon: Icons.chat_bubble_rounded,
+                    size: 48,
+                    radius: AppRadius.lg,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Message from ${message.senderName}',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Saved to Downloads/Syndro Notes',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.textTertiary,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 280),
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceContainerHigh,
+                  borderRadius: AppRadius.lgAll,
+                  border: Border.all(
+                    color: AppTheme.outlineVariant,
+                    width: 1,
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    message.text,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: message.text),
+                        );
+                        if (!bottomSheetContext.mounted) return;
+                        ScaffoldMessenger.of(bottomSheetContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Copied to clipboard'),
+                            backgroundColor: AppTheme.successColor,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 20),
+                      label: const Text('Copy'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(bottomSheetContext).pop();
+                        BackgroundTransferService.openFileLocation(
+                          message.filePath,
+                        );
+                      },
+                      icon: const Icon(Icons.folder_open, size: 20),
+                      label: const Text('Open file'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.of(bottomSheetContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showTransferRequestSheet(PendingTransferRequest request) {
@@ -686,6 +842,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
+Future<void> _showTextComposeDialog(Device device) async {
+    if (!mounted) return;
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppTheme.surfaceColor,
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppRadius.xlAll,
+        ),
+        title: Text('Send to ${device.name}'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 6,
+            minLines: 3,
+            maxLength: 64000,
+            decoration: const InputDecoration(
+              hintText: 'Type a message, note or link...',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Message cannot be empty';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.of(dialogContext).pop(controller.text.trim());
+              }
+            },
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (text == null || text.isEmpty || !mounted) return;
+    await _sendTextMessage(device, text);
+  }
+
+  Future<void> _sendTextMessage(Device device, String text) async {
+    if (!mounted) return;
+    final transferService = ref.read(transferServiceProvider);
+
+    // Pre-compute the transfer id so the progress screen can attach to the
+    // transfer immediately; sendText publishes it synchronously afterwards.
+    final transferId =
+        'text-${DateTime.now().microsecondsSinceEpoch}-${device.id}';
+
+    try {
+      final sendFuture = transferService.sendText(
+        device,
+        text,
+        transferId: transferId,
+      );
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              TransferProgressScreen(
+            transferId: transferId,
+            remoteDevice: device,
+            isSender: true,
+            items: const [
+              TransferItem(
+                name: 'Message',
+                path: '',
+                size: 0,
+              ),
+            ],
+          ),
+          transitionsBuilder:
+              (context, animation, secondaryAnimation, child) {
+            return FadeThroughTransition(
+              animation: animation,
+              secondaryAnimation: secondaryAnimation,
+              child: child,
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 400),
+        ),
+      );
+
+      await sendFuture;
+    } catch (e) {
+      debugPrint('Error sending text: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Message failed: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
+
   void _openReceiveScreen() {
     if (!mounted) return;
     Navigator.of(context).push(
@@ -860,6 +1127,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: const Icon(Icons.language, size: 30),
               ),
             ),
+
+            // Send Text FAB (when device selected)
+            if (selectedDevice != null)
+              Positioned(
+                right: AppSpacing.xl + 170,
+                bottom: _isMobile() ? 190 : 80,
+                child: FloatingActionButton(
+                  heroTag: 'sendText',
+                  onPressed: () => _showTextComposeDialog(selectedDevice),
+                  backgroundColor: AppTheme.surfaceContainerHigh,
+                  foregroundColor: AppTheme.primaryColor,
+                  shape: const CircleBorder(),
+                  tooltip: 'Send text or link',
+                  child: const Icon(Icons.notes, size: 24),
+                ),
+              ),
 
             // Send Files FAB (when device selected)
             if (selectedDevice != null)
@@ -1195,7 +1478,7 @@ class _TransferRequestSheetContentState
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'Incoming Transfer',
+            request.isText ? 'Incoming Message' : 'Incoming Transfer',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -1206,12 +1489,38 @@ class _TransferRequestSheetContentState
                 ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            '${request.fileCount} file(s) • ${_formatSize(request.totalSize)}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textTertiary,
-                ),
-          ),
+          if (request.isText)
+            Text(
+              '1 message',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textTertiary,
+                  ),
+            )
+          else
+            Text(
+              '${request.fileCount} file(s) • ${_formatSize(request.totalSize)}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textTertiary,
+                  ),
+            ),
+          if (request.isText) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerHigh,
+                borderRadius: AppRadius.lgAll,
+                border: Border.all(color: AppTheme.outlineVariant, width: 1),
+              ),
+              child: Text(
+                request.textContent!,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           if (request.isTrusted)
             _TrustedDeviceBadge()

@@ -170,6 +170,9 @@ class MainActivity : FlutterActivity() {
                         val sharedFiles = getSharedFiles()
                         result.success(sharedFiles)
                     }
+                    "getSharedText" -> {
+                        result.success(getSharedText())
+                    }
                     "clearSharedFiles" -> {
                         pendingShareIntent = null
                         result.success(null)
@@ -346,8 +349,13 @@ class MainActivity : FlutterActivity() {
             Intent.ACTION_SEND -> {
                 if (intent.type != null) {
                     pendingShareIntent = intent
-                    // Determine share mode from component name
-                    val shareMode = determineShareMode(intent)
+                    // A text/plain share without an EXTRA_STREAM is a text
+                    // message, not a file share.
+                    val shareMode = if (isTextShare(intent)) {
+                        "text_share"
+                    } else {
+                        determineShareMode(intent)
+                    }
                     // Notify Flutter about the share intent with mode
                     flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
                         MethodChannel(messenger, SHARE_INTENT_CHANNEL)
@@ -377,6 +385,23 @@ class MainActivity : FlutterActivity() {
             componentName.contains("ShareAppToApp") -> "app_to_app"
             componentName.contains("ShareBrowser") -> "browser_share"
             else -> "app_to_app" // Default
+        }
+    }
+
+    private fun isTextShare(intent: Intent): Boolean {
+        if (intent.type?.startsWith("text/") != true) return false
+        if (!intent.hasExtra(Intent.EXTRA_TEXT)) return false
+        // Shares that carry both text and a file are file shares.
+        return !intent.hasExtra(Intent.EXTRA_STREAM)
+    }
+
+    private fun getSharedText(): String? {
+        val intent = pendingShareIntent ?: intent
+        if (intent == null) return null
+        return if (isTextShare(intent)) {
+            intent.getStringExtra(Intent.EXTRA_TEXT)
+        } else {
+            null
         }
     }
 

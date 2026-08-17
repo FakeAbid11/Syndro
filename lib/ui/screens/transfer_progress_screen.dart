@@ -209,7 +209,8 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         // For active transfers, show confirmation dialog
         if (status == TransferStatus.transferring ||
             status == TransferStatus.connecting ||
-            status == TransferStatus.pending) {
+            status == TransferStatus.pending ||
+            status == TransferStatus.paused) {
           final shouldCancel = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
@@ -261,7 +262,6 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
                   status == TransferStatus.cancelled) {
                 Navigator.of(context).pop();
               } else {
-                // Show confirmation for active transfers
                 final shouldCancel = await showDialog<bool>(
                   context: context,
                   builder: (dialogContext) => AlertDialog(
@@ -384,6 +384,10 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         variant = BadgeVariant.primary;
         text = 'Transferring';
         break;
+      case TransferStatus.paused:
+        variant = BadgeVariant.warning;
+        text = 'Paused';
+        break;
       case TransferStatus.completed:
         variant = BadgeVariant.success;
         text = 'Completed';
@@ -410,6 +414,8 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         return _buildWaitingState();
       case TransferStatus.transferring:
         return _buildTransferringState();
+      case TransferStatus.paused:
+        return _buildPausedState();
       case TransferStatus.completed:
         return _buildCompletedState();
       case TransferStatus.failed:
@@ -636,6 +642,59 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     );
   }
 
+  Widget _buildPausedState() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            return Container(
+              padding: const EdgeInsets.all(AppSpacing.xxl),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor
+                    .withValues(alpha: 0.15 + _pulseController.value * 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.pause_circle_outline,
+                size: 80,
+                color: AppTheme.warningColor,
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.xxxl),
+        Text(
+          'Transfer Paused',
+          style: Theme.of(context).textTheme.displaySmall,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'The transfer will resume where it left off.',
+          style: Theme.of(context).textTheme.bodyLarge,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: AppSpacing.xxl),
+        const SizedBox(
+          width: 120,
+          child: LinearProgressIndicator(
+            minHeight: 8,
+            backgroundColor: AppTheme.outlineVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _pauseTransfer() {
+    ref.read(transferServiceProvider).pauseTransfer(widget.transferId);
+  }
+
+  void _resumeTransfer() {
+    ref.read(transferServiceProvider).resumeTransfer(widget.transferId);
+  }
+
   Widget _buildCompletedState() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -727,6 +786,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
 
   Widget _buildActionButton() {
     final status = _currentTransfer?.status ?? TransferStatus.connecting;
+    final isParallel = _currentTransfer?.isParallel ?? false;
 
     if (status == TransferStatus.completed) {
       return SizedBox(
@@ -749,6 +809,58 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Close'),
         ),
+      );
+    }
+
+    // Pause/Resume only applies to sequential transfers; the parallel
+    // pipeline has no checkpoint support, so the control is hidden there.
+    if (status == TransferStatus.transferring && !isParallel) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonalIcon(
+              onPressed: _pauseTransfer,
+              icon: const Icon(Icons.pause, size: 20),
+              label: const Text('Pause'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _cancelTransfer,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.errorColor,
+                side: const BorderSide(color: AppTheme.errorColor),
+              ),
+              child: const Text('Cancel Transfer'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == TransferStatus.paused) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _resumeTransfer,
+              icon: const Icon(Icons.play_arrow, size: 20),
+              label: const Text('Resume'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _cancelTransfer,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.errorColor,
+                side: const BorderSide(color: AppTheme.errorColor),
+              ),
+              child: const Text('Cancel Transfer'),
+            ),
+          ),
+        ],
       );
     }
 
