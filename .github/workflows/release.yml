@@ -218,11 +218,10 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           for attempt in 1 2 3 4 5; do
             if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" dist/Syndro-Setup-*.exe --clobber
+              gh release upload "$TAG" dist/Syndro-Setup-*.exe --clobber && rc=0 || rc=$?
             else
-              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe
+              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe && rc=0 || rc=$?
             fi
-            rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "Attached installer to $TAG"
               exit 0
@@ -378,11 +377,10 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           for attempt in 1 2 3 4 5; do
             if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" dist/Syndro-*.apk --clobber
+              gh release upload "$TAG" dist/Syndro-*.apk --clobber && rc=0 || rc=$?
             else
-              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-*.apk
+              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-*.apk && rc=0 || rc=$?
             fi
-            rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "Attached APKs to $TAG"
               exit 0
