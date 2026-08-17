@@ -77,7 +77,7 @@ void main(List<String> args) async {
         size: windowSize,
         minimumSize: WindowSettingsService.getMinimumSize(),
         center: savedBounds == null || savedBounds.x == null || savedBounds.y == null,
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF0A0A0F),
         skipTaskbar: false,
         titleBarStyle: TitleBarStyle.normal,
         title: 'Syndro',
