@@ -207,13 +207,30 @@ jobs:
           path: syndro-windows/**
           retention-days: 90
 
+      # Attach the installer to the release. Uses the gh CLI (preinstalled on
+      # runners) with a retry loop, because GitHub's API occasionally returns
+      # transient 503s that would otherwise fail the whole job.
       - name: Attach Windows installer to Release
         if: ${{ needs.prepare.outputs.do_release == 'true' }}
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Syndro ${{ needs.prepare.outputs.tag }}
-          files: dist/Syndro-Setup-*.exe
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare.outputs.tag }}"
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" dist/Syndro-Setup-*.exe --clobber
+            else
+              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe
+            fi
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "Attached installer to $TAG"
+              exit 0
+            fi
+            echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
+            sleep 30
+          done
+          exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -355,11 +372,25 @@ jobs:
 
       - name: Attach APKs to Release
         if: ${{ needs.prepare.outputs.do_release == 'true' }}
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Syndro ${{ needs.prepare.outputs.tag }}
-          files: dist/Syndro-*.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare.outputs.tag }}"
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" dist/Syndro-*.apk --clobber
+            else
+              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-*.apk
+            fi
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "Attached APKs to $TAG"
+              exit 0
+            fi
+            echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
+            sleep 30
+          done
+          exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
