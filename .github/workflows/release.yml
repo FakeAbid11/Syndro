@@ -218,7 +218,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ──────────────────────────────────────────────────────────────────────
-  # Android APK (debug always; release when signing secrets are configured)
+  # Android APK (signed release; skipped when signing secrets are missing)
   # ──────────────────────────────────────────────────────────────────────
   android:
     needs: prepare
@@ -265,7 +265,7 @@ jobs:
             echo "has_keystore=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_keystore=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No KEYSTORE_BASE64 secret — building debug APK only."
+            echo "::notice::No KEYSTORE_BASE64 secret — skipping the APK build."
           fi
 
       - name: Decode Keystore
@@ -327,9 +327,6 @@ jobs:
           fi
           echo "Keystore decoded and verified (alias: $WANT_ALIAS)."
 
-      - name: Build Debug APK
-        run: flutter build apk --debug --build-number=${{ github.run_number }}
-
       - name: Build Release APK
         if: ${{ steps.signing.outputs.has_keystore == 'true' }}
         env:
@@ -338,23 +335,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release --build-number=${{ github.run_number }}
 
-      # Rename APKs with the version so release assets are self-describing.
-      - name: Rename APKs
+      # Rename the release APK with the version so the asset is self-describing.
+      - name: Rename Release APK
         run: |
           set -e
           VER="${{ needs.prepare.outputs.version }}"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-debug.apk "dist/Syndro-${VER}-debug.apk"
           if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
             cp build/app/outputs/flutter-apk/app-release.apk "dist/Syndro-${VER}.apk"
           fi
-
-      - name: Upload Debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: syndro-android-debug-${{ github.run_number }}
-          path: dist/Syndro-*-debug.apk
-          retention-days: 30
 
       - name: Upload Release APK artifact
         if: ${{ steps.signing.outputs.has_keystore == 'true' }}
