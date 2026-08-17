@@ -35,7 +35,8 @@
 - **🔒 End-to-End Encrypted** — AES-256-GCM with X25519 key exchange (same as Signal/WhatsApp)
 - **🌐 No Internet Required** — Direct P2P transfer over local network
 - **📦 Large File Support** — Transfer files of any size (GBs supported)
-- **⏯️ Resume Transfers** — Interrupted? Continue from where you left off
+- **⏯️ Pause & Resume** — Pause a transfer mid-flight, resume where you left off (plus checkpoint resume after interruptions)
+- **💬 Text & Link Sharing** — Send messages, notes and URLs between devices
 - **📱 Multiple Share Modes** — App-to-App, Browser Share, QR Code
 
 ---
@@ -65,8 +66,19 @@
 | **Multiple Files & Folders** | Send multiple files and entire folders at once |
 | **Large File Support** | Transfer files of any size (tested with 7GB+ files) |
 | **Resume Transfers** | Checkpoint system allows resuming interrupted transfers |
+| **Pause & Resume** | Pause any sequential transfer mid-flight and resume it later |
 | **Parallel Transfer** | Multi-connection transfers for large files (>10MB) |
 | **Adaptive Chunk Sizing** | Dynamically adjusts chunk size based on network speed |
+
+### Text & Link Sharing
+
+| Feature | Description |
+|---------|-------------|
+| **Send Text** | Compose and send a message, note or link to any discovered device |
+| **Same Approval Pipeline** | Incoming messages go through accept/reject, trusted-device auto-accept included |
+| **Saved as Notes** | Received messages are stored as `.txt` files in `Downloads/Syndro Notes` |
+| **Copy & Open** | Received messages can be copied to clipboard or opened directly |
+| **Android Share Sheet** | Share text/links from any app via the "App to App" share target |
 
 ### Security & Privacy
 
@@ -84,8 +96,8 @@
 
 | Feature | Description |
 |---------|-------------|
-| **Share Sheet Integration** | Share directly from gallery, file manager, or any app |
-| **Two Share Modes** | "App to App" for device transfer, "Browser Share" for web |
+| **Share Sheet Integration** | Share files, images, and text directly from any app |
+| **Share Modes** | "App to App" for device transfer, "Browser Share" for web, plus text/URL sharing |
 | **Background Transfer** | Continue transfers while app is in background |
 | **Notification Progress** | Real-time progress in notification bar |
 | **Notification Actions** | Accept/Reject transfers from notification |
@@ -165,7 +177,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/FakeGamingAbid/Syndro.git
+git clone https://github.com/FakeAbid11/Syndro.git
 cd Syndro
 
 # Install dependencies
@@ -200,7 +212,7 @@ Automated builds are available via GitHub Actions:
 
 | Workflow | Output |
 |----------|--------|
-| `release.yml` | On a `v*` tag: Windows zip + Android debug/release APKs attached to the GitHub Release |
+| `release.yml` | On a `v*` tag: Windows Inno Setup installer (`.exe`) + signed Android release APK attached to the GitHub Release |
 | `build-linux.yml` | Linux bundle artifact |
 | `build-macos.yml` | macOS app artifact |
 
@@ -230,12 +242,39 @@ Automated builds are available via GitHub Actions:
 1. Open Syndro
 2. Drag files onto the app window
 
+### Sending Text Messages
+
+#### From the App
+1. Open Syndro and select the destination device
+2. Tap the **message (notes) button** next to "Send Files"
+3. Type a message, note or link and tap **"Send"**
+4. The receiver accepts or rejects like any other transfer
+
+#### From the Android Share Sheet
+1. Select text in any app (browser, notes, messenger, etc.)
+2. Tap **"Share"** → choose **"App to App"**
+3. Pick the destination device in Syndro
+
+### Pausing & Resuming Transfers
+
+1. While a transfer is running, tap **"Pause"**
+2. Progress is frozen and the connection stays open
+3. Tap **"Resume"** to continue from exactly where it stopped
+4. Pause/Resume is available for sequential transfers (parallel transfers use checkpoints instead)
+
 ### Receiving Files
 
 #### From Another Device
 1. Keep Syndro open
 2. When someone sends files, tap **"Accept"** or **"Reject"**
 3. Files save to Downloads folder
+
+#### Text Messages
+1. An incoming message shows a preview with the sender's name
+2. Tap **"Accept"** to receive it
+3. The message is saved as a `.txt` note in `Downloads/Syndro Notes`
+4. A dialog lets you **Copy** the text or **Open** the saved file
+5. Trusted senders with auto-accept enabled deliver messages without a prompt
 
 #### From Browser
 1. Tap **"Receive from Browser"**
@@ -423,6 +462,9 @@ lib/
 - [x] Connection approval for browser share
 - [x] Android app bundle support (.apks, .apkm, .xapk)
 - [x] Auto cache cleanup
+- [x] Text message / link sharing with `.txt` notes
+- [x] Transfer pause & resume controls
+- [x] Windows installer (Inno Setup)
 
 ### 🔮 Planned
 
@@ -457,10 +499,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 </p>
 
 <p align="center">
-  <a href="https://github.com/FakeGamingAbid/Syndro/stargazers">
-    <img src="https://img.shields.io/github/stars/FakeGamingAbid/Syndro?style=social" alt="Stars">
+  <a href="https://github.com/FakeAbid11/Syndro/stargazers">
+    <img src="https://img.shields.io/github/stars/FakeAbid11/Syndro?style=social" alt="Stars">
   </a>
-  <a href="https://github.com/FakeGamingAbid/Syndro/network/members">
-    <img src="https://img.shields.io/github/forks/FakeGamingAbid/Syndro?style=social" alt="Forks">
+  <a href="https://github.com/FakeAbid11/Syndro/network/members">
+    <img src="https://img.shields.io/github/forks/FakeAbid11/Syndro?style=social" alt="Forks">
   </a>
 </p>
