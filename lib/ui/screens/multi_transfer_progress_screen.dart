@@ -36,6 +36,7 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
   
   int _completedCount = 0;
   int _failedCount = 0;
+  int _cancelledCount = 0;
 
   @override
   void initState() {
@@ -61,15 +62,19 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
     
     _transferSubscription = transferService.transferStream.listen((transfer) {
       if (widget.transferIds.contains(transfer.id)) {
+        if (!mounted) return;
         setState(() {
           _transfers[transfer.id] = transfer;
-          
+
           // Update counts
           _completedCount = _transfers.values
               .where((t) => t.status == TransferStatus.completed)
               .length;
           _failedCount = _transfers.values
               .where((t) => t.status == TransferStatus.failed)
+              .length;
+          _cancelledCount = _transfers.values
+              .where((t) => t.status == TransferStatus.cancelled)
               .length;
           _failedCount += _errors.length;
         });
@@ -78,7 +83,8 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
   }
 
   bool get _allCompleted {
-    return _completedCount + _failedCount >= widget.transferIds.length;
+    return _completedCount + _failedCount + _cancelledCount >=
+        widget.transferIds.length;
   }
 
   double get _overallProgress {
@@ -91,7 +97,10 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
     
     // Add completed for failed transfers
     totalProgress += _failedCount * 100;
-    
+
+    // Cancelled transfers are terminal too — count them as done.
+    totalProgress += _cancelledCount * 100;
+
     return totalProgress / widget.transferIds.length;
   }
 
@@ -156,10 +165,14 @@ class _MultiTransferProgressScreenState extends ConsumerState<MultiTransferProgr
     IconData icon;
 
     if (_allCompleted) {
-      if (_failedCount > 0 && _completedCount == 0) {
+      if (_failedCount > 0 && _completedCount == 0 && _cancelledCount == 0) {
         variant = BadgeVariant.error;
         text = 'All Failed';
         icon = Icons.error;
+      } else if (_cancelledCount > 0 && _completedCount == 0 && _failedCount == 0) {
+        variant = BadgeVariant.warning;
+        text = 'Cancelled';
+        icon = Icons.cancel;
       } else if (_failedCount > 0) {
         variant = BadgeVariant.warning;
         text = 'Partial';

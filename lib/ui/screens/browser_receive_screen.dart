@@ -109,6 +109,13 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
   }
 
   Future<void> _startReceiving() async {
+    // Cancel any previous subscriptions first — calling _startReceiving again
+    // (e.g. after a failure) must not stack duplicate listeners.
+    _filesSubscription?.cancel();
+    _filesSubscription = null;
+    _fileEventSubscription?.cancel();
+    _fileEventSubscription = null;
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -117,6 +124,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     try {
       final hasPermission = await _requestStoragePermission();
       if (!hasPermission) {
+        if (!mounted) return;
         setState(() {
           _error =
               'Storage permission denied. Please grant permission in settings.';
@@ -129,6 +137,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
       _downloadPath = downloadDir;
 
       final url = await _webShareService.startReceiving(downloadDir);
+      if (!mounted) return;
 
       if (url != null) {
         _filesSubscription =
@@ -159,12 +168,14 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           _isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           _error = 'Failed to start receive server';
           _isLoading = false;
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;

@@ -355,7 +355,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
             child: const Icon(Icons.delete, color: Colors.white),
           ),
-          onDismissed: (_) => _deleteTransfer(transferId),
+          onDismissed: (_) {
+            // Remove synchronously — Dismissible requires the item to leave
+            // the tree immediately, or the widget errors and the row stays.
+            setState(() {
+              _transfers.removeWhere((t) => t['id'] == transferId);
+            });
+            // DB delete + snackbar happen in the background.
+            _deleteTransfer(transferId);
+          },
           child: Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.md),
             child: AppCard(

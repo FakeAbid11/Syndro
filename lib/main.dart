@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,15 +125,34 @@ void main(List<String> args) async {
     // Continue anyway - the app can retry later
   }
 
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: SyndroApp(
-        showOnboarding: !onboardingComplete,
-        incomingFiles: incomingFiles,
+  // Global error handlers: uncaught async errors previously crashed the
+  // engine/isolate silently in release builds. Log (and never crash) instead.
+  runZonedGuarded(() {
+    PlatformDispatcher.instance.onError = (error, stack) {
+      debugPrint('❌ Platform error: $error');
+      debugPrint('$stack');
+      return true;
+    };
+
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      debugPrint('❌ Flutter error: ${details.exception}');
+      debugPrint('${details.stack}');
+    };
+
+    runApp(
+      UncontrolledProviderScope(
+        container: container,
+        child: SyndroApp(
+          showOnboarding: !onboardingComplete,
+          incomingFiles: incomingFiles,
+        ),
       ),
-    ),
-  );
+    );
+  }, (error, stack) {
+    debugPrint('❌ Uncaught zone error: $error');
+    debugPrint('$stack');
+  });
 }
 
 class SyndroApp extends ConsumerStatefulWidget {
@@ -394,7 +414,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     return MaterialApp(
       title: 'Syndro',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       home: _buildHome(incomingFilesState),
@@ -726,7 +746,9 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
 
     // Clear share intent and set browser share files
     ShareIntentService().clearSharedFiles();
-    
+
+    // The content-URI copies above are async — the widget may be gone by now.
+    if (!mounted) return;
     setState(() {
       _hasShareIntent = false;
       _browserShareFiles = files;

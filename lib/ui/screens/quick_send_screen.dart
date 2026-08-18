@@ -61,6 +61,10 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
   int get _totalSize => widget.files.fold(0, (sum, item) => sum + item.size);
 
   void _selectDevice(Device device) {
+    // Notify the launcher (home screen) that the quick-send flow finished —
+    // before navigating, so the home screen's bottom sheet is dismissed and
+    // the flow state is reset even if navigation is interrupted.
+    widget.onComplete();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => FilePickerScreen(
