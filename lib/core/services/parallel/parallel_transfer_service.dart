@@ -124,6 +124,7 @@ class ParallelTransferService {
           requestId: requestId,
           timeout: const Duration(minutes: 5),
           senderId: sender.id,
+          state: state,
         );
         
         if (!approved) {
@@ -136,6 +137,11 @@ class ParallelTransferService {
             'Failed to initiate parallel transfer: ${initResponse['error']}');
       } else {
         AppLogger.info('✅ Receiver auto-accepted! Starting upload...');
+      }
+
+      // User cancelled while we were waiting for approval — abort now.
+      if (state.isCancelled) {
+        throw Exception('Transfer cancelled by user');
       }
 
       AppLogger.info('📤 Now calculating hash and uploading chunks in parallel...');
@@ -194,12 +200,25 @@ class ParallelTransferService {
       final fileHash = await hashFuture;
       AppLogger.info('✅ Hash calculated: ${fileHash.substring(0, 16)}...');
 
-      await _notifyTransferComplete(
+      // User cancelled mid-upload — the chunk queues stopped, so do not
+      // finalize on the receiver as if the transfer succeeded.
+      if (state.isCancelled) {
+        throw Exception('Transfer cancelled by user');
+      }
+
+      final notified = await _notifyTransferComplete(
         receiver: receiver,
         transferId: transferId,
         fileHash: fileHash,
         senderId: sender.id,
       );
+
+      if (!notified) {
+        // The receiver rejected the finalize (hash mismatch, missing chunks,
+        // corrupt file). The receiver has already deleted the bad file, so the
+        // sender must report this transfer as failed — never as completed.
+        throw Exception('Receiver reported failure for parallel transfer');
+      }
 
       AppLogger.info('✅ Parallel transfer complete: $fileName');
     } on SocketException catch (e) {
@@ -484,7 +503,11 @@ class ParallelTransferService {
     }
   }
 
-  Future<void> _notifyTransferComplete({
+  /// Notify the receiver that all chunks are uploaded and ask it to finalize
+  /// (verify hash + rename temp file). Returns true only when the receiver
+  /// confirmed success; a hash mismatch or missing chunks returns false so the
+  /// sender can mark the transfer as failed instead of completed.
+  Future<bool> _notifyTransferComplete({
     required Device receiver,
     required String transferId,
     required String fileHash,
@@ -494,7 +517,7 @@ class ParallelTransferService {
         'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/complete');
 
     try {
-      await http
+      final response = await http
           .post(
             url,
             headers: {
@@ -512,9 +535,15 @@ class ParallelTransferService {
               throw TimeoutException('Completion notification timed out');
             },
           );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['success'] == true;
+      }
+      return false;
     } catch (e) {
       AppLogger.error('⚠️ Failed to notify transfer completion: $e');
-      // Don't rethrow - transfer is already complete, notification is optional
+      return false;
     }
   }
 
@@ -524,11 +553,17 @@ class ParallelTransferService {
     required String requestId,
     required Duration timeout,
     required String senderId,
+    ParallelTransferState? state,
   }) async {
     final startTime = DateTime.now();
     final approvalUrl = 'http://${receiver.ipAddress}:${receiver.port}/transfer/approval/$requestId';
     
     while (DateTime.now().difference(startTime) < timeout) {
+      // User cancelled while waiting — stop polling so we abort promptly.
+      if (state != null && state.isCancelled) {
+        return false;
+      }
+
       try {
         final response = await http
             .get(

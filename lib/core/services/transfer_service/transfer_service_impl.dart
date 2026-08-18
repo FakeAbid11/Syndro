@@ -113,6 +113,9 @@ class TransferService {
   /// Per-transfer gate: when present the transfer is paused and its chunk
   /// loop awaits the completer before sending more data.
   final Map<String, Completer<void>> _pauseGates = {};
+  // Receiver devices of in-flight parallel sends, so a user cancel can tell
+  // the receiver to abort its session instead of leaking it.
+  final Map<String, Device> _parallelTransferReceivers = {};
 
   final _pendingRequestsController =
       StreamController<List<PendingTransferRequest>>.broadcast();
@@ -454,6 +457,13 @@ class TransferService {
         _activeTransfers[transferId] = updatedTransfer;
         _transferController.add(updatedTransfer);
         _cleanupProgressController(transferId);
+
+        // Record the received file in history (was previously invisible).
+        DatabaseHelper.instance
+            .insertTransfer(updatedTransfer, null, null)
+            .catchError((e) {
+          AppLogger.error('Failed to insert parallel receive into history: $e');
+        });
       }
     };
 
@@ -474,6 +484,19 @@ class TransferService {
 
       if (transferId.isEmpty || fileName.isEmpty || fileSize <= 0) {
         await _sendBadRequest(request, 'Missing required fields');
+        return;
+      }
+
+      // Idempotency: a retried initiate for an already-active parallel
+      // transfer must not create a duplicate session (the writer would throw
+      // "Writer already exists" and the sender would see a confusing 500).
+      if (_transferTokens.containsKey(transferId) ||
+          _pendingRequests.containsKey(transferId) ||
+          _parallelReceiver.getSession(transferId) != null) {
+        await _sendResponse(request, HttpStatus.conflict, {
+          'success': false,
+          'error': 'Transfer already exists',
+        });
         return;
       }
 
@@ -689,6 +712,36 @@ class TransferService {
           result['success'] == true ? HttpStatus.ok : HttpStatus.badRequest, result);
     } catch (e) {
       await _sendError(request, 'Error completing parallel transfer: $e');
+    }
+  }
+
+  /// Receiver side of a user-initiated sender cancel: abort the receive
+  /// session (deletes the temp file) so nothing leaks on this device.
+  Future<void> _handleParallelCancel(HttpRequest request) async {
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final transferId = data['transferId'] as String? ?? '';
+      final callerId = request.headers.value('x-device-id');
+
+      // Bind the cancel to the approved sender of the session, exactly like
+      // the parallel complete handler.
+      final session = _parallelReceiver.getSession(transferId);
+      if (transferId.isEmpty ||
+          session == null ||
+          callerId == null ||
+          session.senderId != callerId) {
+        AppLogger.info(
+            'Security: Unauthorized parallel cancel for transfer $transferId');
+        await _sendUnauthorized(request, 'Not authorized for this transfer');
+        return;
+      }
+
+      await _parallelReceiver.abortTransfer(transferId);
+      _transferTokens.remove(transferId);
+      await _sendResponse(request, HttpStatus.ok, {'success': true});
+    } catch (e) {
+      await _sendError(request, 'Error cancelling parallel transfer: $e');
     }
   }
 
@@ -1016,6 +1069,11 @@ class TransferService {
 
       if (method == 'POST' && path == '/transfer/parallel/complete') {
         await _handleParallelComplete(request);
+        return;
+      }
+
+      if (method == 'POST' && path == '/transfer/parallel/cancel') {
+        await _handleParallelCancel(request);
         return;
       }
 
@@ -1818,6 +1876,28 @@ class TransferService {
       final result = await _parallelReceiver.handleInitiate(pending.parallelData!);
       if (result['success'] != true) {
         AppLogger.error('❌ Failed to initialize parallel receiver: ${result['error']}');
+      } else {
+        // Track the receive in _activeTransfers so the UI shows progress and
+        // the completed file lands in history (parallel receives were
+        // previously invisible: only an OS notification was shown).
+        final receiveTransfer = Transfer(
+          id: pending.requestId,
+          senderId: pending.senderId,
+          receiverId: _deviceId,
+          items: pending.items,
+          status: TransferStatus.transferring,
+          progress: const TransferProgress(bytesTransferred: 0, totalBytes: 0),
+          createdAt: DateTime.now(),
+          isParallel: true,
+        );
+        _activeTransfers[pending.requestId] = receiveTransfer;
+        _transferController.add(receiveTransfer);
+        BackgroundTransferService.startBackgroundTransfer(
+          title: 'Receiving from ${pending.senderName}',
+          fileName: pending.items.length == 1
+              ? pending.items.first.name
+              : '${pending.items.length} files',
+        );
       }
       // The sender will check approval status and start uploading chunks
     } else {
@@ -1933,9 +2013,10 @@ class TransferService {
   Future<void> _handleEncryptedFileUpload(HttpRequest request) async {
     IOSink? fileSink;
     String? tempFilePath;
+    String? transferId;
 
     try {
-      final transferId = request.headers.value('x-transfer-id');
+      transferId = request.headers.value('x-transfer-id');
       final fileName = request.headers.value('x-file-name');
       final originalSizeHeader = request.headers.value('x-original-size');
       final senderId = request.headers.value('x-sender-id');
@@ -2112,17 +2193,37 @@ class TransferService {
       await fileSink.close();
       fileSink = null;
 
+      // Byte accounting: a truncated upload (sender disconnected mid-stream,
+      // or a malicious short send) must never be accepted as complete.
+      if (originalSize > 0 && bytesReceived != originalSize) {
+        AppLogger.info(
+            'Security: Size mismatch for $transferId — declared $originalSize, '
+            'received $bytesReceived');
+        throw TransferException(
+          'File size mismatch: expected $originalSize bytes, received $bytesReceived',
+          code: 'SIZE_MISMATCH',
+        );
+      }
+
       hashInput.close();
       final calculatedHash = hashOutput.events.single.toString();
 
-      if (fileHash != null && fileHash.isNotEmpty) {
-        if (calculatedHash != fileHash) {
-          await File(tempFilePath).delete();
-          throw TransferException('File integrity check failed',
-              code: 'HASH_MISMATCH');
-        }
-        AppLogger.info('✅ File integrity verified');
+      // Integrity check is mandatory on the encrypted path — the sender always
+      // sends x-file-hash, so a missing hash means a downgraded client or a
+      // tampered request and must not pass silently.
+      if (fileHash == null || fileHash.isEmpty) {
+        AppLogger.info(
+            'Security: Missing file hash for encrypted transfer $transferId');
+        throw TransferException('Missing file integrity hash',
+            code: 'MISSING_HASH');
       }
+
+      if (calculatedHash != fileHash) {
+        await File(tempFilePath).delete();
+        throw TransferException('File integrity check failed',
+            code: 'HASH_MISMATCH');
+      }
+      AppLogger.info('✅ File integrity verified');
 
       final tempFileRef = File(tempFilePath);
       final finalFile = File(finalFilePath);
@@ -2174,7 +2275,7 @@ class TransferService {
         'bytesReceived': bytesReceived,
         'filePath': finalFilePath,
         'encrypted': true,
-        'verified': fileHash != null,
+        'verified': true,
       });
 
       if (kDebugMode) AppLogger.info('🔐 Encrypted file received: $finalFilePath');
@@ -2203,6 +2304,21 @@ class TransferService {
         }
       }
 
+      // Reconcile the UI: the receive failed, so the transfer must not stay
+      // stuck in "transferring" forever.
+      if (transferId != null) {
+        final activeTransfer = _activeTransfers[transferId];
+        if (activeTransfer != null &&
+            activeTransfer.status != TransferStatus.completed) {
+          final failedTransfer = activeTransfer.copyWith(
+            status: TransferStatus.failed,
+            errorMessage: e.toString(),
+          );
+          _activeTransfers[transferId] = failedTransfer;
+          _transferController.add(failedTransfer);
+        }
+      }
+
       await BackgroundTransferService.stopBackgroundTransfer();
       await _sendError(request, 'Error receiving encrypted file');
     }
@@ -2211,9 +2327,10 @@ class TransferService {
   Future<void> _handleFileUpload(HttpRequest request) async {
     IOSink? fileSink;
     String? tempFilePath;
+    String? transferId;
 
     try {
-      final transferId = request.headers.value('x-transfer-id');
+      transferId = request.headers.value('x-transfer-id');
       final fileName = request.headers.value('x-file-name');
       final fileSizeHeader = request.headers.value('x-file-size');
       final senderId = request.headers.value('x-sender-id');
@@ -2362,6 +2479,18 @@ class TransferService {
         }
       }
 
+      // Byte accounting: reject truncated uploads (sender disconnected
+      // mid-stream) instead of silently accepting a partial file.
+      if (fileSize > 0 && bytesReceived != fileSize) {
+        AppLogger.info(
+            'Security: Size mismatch for $transferId — declared $fileSize, '
+            'received $bytesReceived');
+        throw TransferException(
+          'File size mismatch: expected $fileSize bytes, received $bytesReceived',
+          code: 'SIZE_MISMATCH',
+        );
+      }
+
       await fileSink.flush();
       await fileSink.close();
       fileSink = null;
@@ -2439,6 +2568,21 @@ class TransferService {
           }
         } catch (deleteError) {
           AppLogger.error('Error deleting temp file: $deleteError');
+        }
+      }
+
+      // Reconcile the UI: the receive failed, so the transfer must not stay
+      // stuck in "transferring" forever.
+      if (transferId != null) {
+        final activeTransfer = _activeTransfers[transferId];
+        if (activeTransfer != null &&
+            activeTransfer.status != TransferStatus.completed) {
+          final failedTransfer = activeTransfer.copyWith(
+            status: TransferStatus.failed,
+            errorMessage: e.toString(),
+          );
+          _activeTransfers[transferId] = failedTransfer;
+          _transferController.add(failedTransfer);
         }
       }
 
@@ -2597,6 +2741,7 @@ class TransferService {
 
       _activeTransfers[transferId] = parallelTransfer;
       _transferController.add(parallelTransfer);
+      _parallelTransferReceivers[transferId] = receiver;
 
       int lastReportedProgress = -1;
       try {
@@ -2656,9 +2801,23 @@ class TransferService {
         );
 
         _cleanupProgressController(transferId);
+        _parallelTransferReceivers.remove(transferId);
         return;
       } catch (e) {
         AppLogger.error('❌ Parallel transfer failed: $e');
+
+        // A user-initiated cancellation already updated the state — don't
+        // overwrite it with "failed" (mirrors the sequential path).
+        if (_activeTransfers[transferId]?.status == TransferStatus.cancelled) {
+          if (kDebugMode) {
+            AppLogger.info('Parallel transfer cancelled by user: $transferId');
+          }
+          _parallelTransferReceivers.remove(transferId);
+          BackgroundTransferService.stopBackgroundTransfer();
+          _cleanupProgressController(transferId);
+          _cleanupCompletedTransfers();
+          return;
+        }
 
         final failedTransfer = parallelTransfer.copyWith(
           status: TransferStatus.failed,
@@ -2667,6 +2826,7 @@ class TransferService {
 
         _activeTransfers[transferId] = failedTransfer;
         _transferController.add(failedTransfer);
+        _parallelTransferReceivers.remove(transferId);
 
         BackgroundTransferService.stopBackgroundTransfer();
         _cleanupProgressController(transferId);
@@ -3414,6 +3574,20 @@ class TransferService {
       _transferController.add(_activeTransfers[transferId]!);
       BackgroundTransferService.stopBackgroundTransfer();
       _cleanupProgressController(transferId);
+
+      // Parallel sends: stop the chunk queues locally and ask the receiver to
+      // abort its session so no temp file/session is leaked on the other side.
+      if (transfer.isParallel == true) {
+        try {
+          _parallelSender?.cancelTransfer(transferId);
+        } catch (e) {
+          AppLogger.error('Error cancelling parallel sender: $e');
+        }
+        final receiver = _parallelTransferReceivers.remove(transferId);
+        if (receiver != null) {
+          _notifyReceiverParallelCancel(transferId, receiver, transfer.senderId);
+        }
+      }
     } else {
       if (kDebugMode) {
         AppLogger.warn(
@@ -3425,6 +3599,38 @@ class TransferService {
     final gate = _pauseGates.remove(transferId);
     if (gate != null && !gate.isCompleted) {
       gate.complete();
+    }
+  }
+
+  /// Best-effort one-way notification that the receiver should abort its
+  /// parallel receive session (temp file cleanup). Failures are logged, never
+  /// thrown — the local cancel already succeeded.
+  void _notifyReceiverParallelCancel(
+      String transferId, Device receiver, String senderId) {
+    try {
+      final url = Uri.parse(
+          'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/cancel');
+      http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-device-id': senderId,
+            },
+            body: jsonEncode({'transferId': transferId}),
+          )
+          .timeout(const Duration(seconds: 5))
+          .then((response) {
+            if (response.statusCode != 200 && kDebugMode) {
+              AppLogger.warn(
+                  'Receiver parallel cancel returned ${response.statusCode}');
+            }
+          })
+          .catchError((e) {
+            AppLogger.error('Failed to notify receiver of cancel: $e');
+          });
+    } catch (e) {
+      AppLogger.error('Failed to notify receiver of cancel: $e');
     }
   }
 
