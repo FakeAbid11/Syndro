@@ -10,7 +10,13 @@ import 'package:flutter/foundation.dart';
 class AppLogger {
   AppLogger._();
 
-  static bool _enabled = kDebugMode;
+  /// Enable or disable logging at runtime.
+  ///
+  /// Default: `kDebugMode` — override at build time with
+  /// `--dart-define=SYNDRO_LOGGING=true` (e.g. to keep logs in a release
+  /// build during troubleshooting).
+  static bool _enabled =
+      const bool.fromEnvironment('SYNDRO_LOGGING', defaultValue: kDebugMode);
 
   /// Enable or disable logging at runtime.
   static void setEnabled(bool enabled) => _enabled = enabled;

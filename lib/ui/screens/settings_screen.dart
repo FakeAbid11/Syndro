@@ -11,6 +11,7 @@ import '../../core/providers/transfer_provider.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/update_service.dart';
+import '../../core/utils/app_logger.dart';
 import '../../core/widgets/update_dialog.dart';
 import '../../core/services/transfer_service/models.dart';
 import '../../core/services/transfer_service/transfer_service_impl.dart';
@@ -705,27 +706,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         onSelected: (value) async {
           if (value == 'rotate') {
-            await transferService.rotatePinnedKey(device.senderId);
-            if (mounted) {
-              ref.invalidate(trustedDevicesProvider);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      'Pin reset for ${device.senderName} \u2014 re-pair on next transfer'),
-                  backgroundColor: AppTheme.secondaryColor,
-                ),
-              );
+            try {
+              await transferService.rotatePinnedKey(device.senderId);
+              if (mounted) {
+                ref.invalidate(trustedDevicesProvider);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        'Pin reset for ${device.senderName} \u2014 re-pair on next transfer'),
+                    backgroundColor: AppTheme.secondaryColor,
+                  ),
+                );
+              }
+            } catch (e) {
+              AppLogger.error('Error resetting pin for ${device.senderId}: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to reset pin: $e'),
+                    backgroundColor: AppTheme.errorColor,
+                  ),
+                );
+              }
             }
           } else if (value == 'revoke') {
-            await transferService.revokeTrust(device.senderId);
-            if (mounted) {
-              ref.invalidate(trustedDevicesProvider);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Trust revoked for ${device.senderName}'),
-                  backgroundColor: AppTheme.errorColor,
-                ),
-              );
+            try {
+              await transferService.revokeTrust(device.senderId);
+              if (mounted) {
+                ref.invalidate(trustedDevicesProvider);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Trust revoked for ${device.senderName}'),
+                    backgroundColor: AppTheme.errorColor,
+                  ),
+                );
+              }
+            } catch (e) {
+              AppLogger.error('Error revoking trust for ${device.senderId}: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to revoke trust: $e'),
+                    backgroundColor: AppTheme.errorColor,
+                  ),
+                );
+              }
             }
           }
         },

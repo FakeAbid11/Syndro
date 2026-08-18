@@ -41,7 +41,8 @@ class ChunkWriterService {
   Stream<double> get completionStream => _completionController.stream;
   
   /// Current completion percentage
-  double get completionPercentage => _receivedChunks.length / totalChunks;
+  double get completionPercentage =>
+      totalChunks == 0 ? 0.0 : _receivedChunks.length / totalChunks;
   
   /// Bytes received so far
   int get bytesReceived => _bytesReceived;

@@ -113,9 +113,15 @@ class TransferService {
   /// Per-transfer gate: when present the transfer is paused and its chunk
   /// loop awaits the completer before sending more data.
   final Map<String, Completer<void>> _pauseGates = {};
-  // Receiver devices of in-flight parallel sends, so a user cancel can tell
+    // Receiver devices of in-flight parallel sends, so a user cancel can tell
   // the receiver to abort its session instead of leaking it.
   final Map<String, Device> _parallelTransferReceivers = {};
+
+  // Per-IP rate limit for transfer initiation — a remote device must not be
+  // able to spam approval prompts (mirrors ShareServer's limiter).
+  static const int _maxInitiatesPerMinute = 20;
+  static const Duration _initiateRateLimitWindow = Duration(minutes: 1);
+  final Map<String, List<DateTime>> _initiateTimestamps = {};
 
   final _pendingRequestsController =
       StreamController<List<PendingTransferRequest>>.broadcast();
@@ -472,6 +478,13 @@ class TransferService {
 
   Future<void> _handleParallelInitiate(HttpRequest request) async {
     try {
+      // Per-IP rate limit: same spam protection as the sequential initiate.
+      final remoteIp = request.connectionInfo?.remoteAddress.address ?? 'unknown';
+      if (!_checkInitiateRateLimit(remoteIp)) {
+        await _sendTooManyRequests(request);
+        return;
+      }
+
       final body = await utf8.decoder.bind(request).join();
       final data = jsonDecode(body) as Map<String, dynamic>;
 
@@ -615,18 +628,36 @@ class TransferService {
         return;
       }
 
+      // Cap the chunk body: the sender streams bounded chunks (4MB + encryption
+      // overhead), so anything beyond 8MB is a runaway or an attempt to exhaust
+      // memory. Drain the request so the connection is reusable, then reject.
+      final session = _parallelReceiver.getSession(transferId);
+      final maxChunkBytes = session != null
+          ? session.chunkSize * 2
+          : 8 * 1024 * 1024;
       final chunks = <int>[];
+      var receivedBytes = 0;
+      var overLimit = false;
       await for (final chunk in request) {
+        receivedBytes += chunk.length;
+        if (receivedBytes > maxChunkBytes) {
+          overLimit = true;
+          continue;
+        }
         chunks.addAll(chunk);
+      }
+      if (overLimit) {
+        AppLogger.info(
+            'Security: Chunk body $receivedBytes bytes exceeds cap '
+            '$maxChunkBytes for transfer $transferId');
+        await _sendBadRequest(request, 'Chunk body exceeds allowed size');
+        return;
       }
       final chunkData = Uint8List.fromList(chunks);
 
       SecretKey? decryptionKey;
-      if (encrypted) {
-        final session = _parallelReceiver.getSession(transferId);
-        if (session != null) {
-          decryptionKey = _encryptionSessions[session.senderId]?.sharedSecret;
-        }
+      if (encrypted && session != null) {
+        decryptionKey = _encryptionSessions[session.senderId]?.sharedSecret;
       }
 
       final result = await _parallelReceiver.handleChunk(
@@ -706,6 +737,20 @@ class TransferService {
           fileCount: 1,
           totalSize: result['fileSize'] as int,
         );
+      } else {
+        // The receiver rejected the finalize (hash mismatch / missing chunks)
+        // and already deleted the temp file — reconcile the UI so the
+        // transfer does not stay stuck in "transferring".
+        final receiveTransfer = _activeTransfers[transferId];
+        if (receiveTransfer != null) {
+          final failedTransfer = receiveTransfer.copyWith(
+            status: TransferStatus.failed,
+            errorMessage: result['error']?.toString() ?? 'Receiver rejected finalize',
+          );
+          _activeTransfers[transferId] = failedTransfer;
+          _transferController.add(failedTransfer);
+        }
+        _transferTokens.remove(transferId);
       }
 
       await _sendResponse(request,
@@ -739,6 +784,18 @@ class TransferService {
 
       await _parallelReceiver.abortTransfer(transferId);
       _transferTokens.remove(transferId);
+
+      // Reconcile the UI: the sender cancelled — the receive must not stay
+      // stuck in "transferring".
+      final cancelledTransfer = _activeTransfers[transferId];
+      if (cancelledTransfer != null) {
+        final updated = cancelledTransfer.copyWith(
+          status: TransferStatus.cancelled,
+        );
+        _activeTransfers[transferId] = updated;
+        _transferController.add(updated);
+        _cleanupProgressController(transferId);
+      }
       await _sendResponse(request, HttpStatus.ok, {'success': true});
     } catch (e) {
       await _sendError(request, 'Error cancelling parallel transfer: $e');
@@ -1256,6 +1313,30 @@ class TransferService {
     await request.response.close();
   }
 
+  Future<void> _sendTooManyRequests(HttpRequest request) async {
+    request.response.statusCode = HttpStatus.tooManyRequests;
+    request.response.write('Too many requests, try again later');
+    await request.response.close();
+  }
+
+  /// True when the caller's IP is under the initiate-rate limit.
+  bool _checkInitiateRateLimit(String ipAddress) {
+    final now = DateTime.now();
+    final windowStart = now.subtract(_initiateRateLimitWindow);
+    final timestamps = _initiateTimestamps[ipAddress] ?? [];
+    timestamps.removeWhere((t) => t.isBefore(windowStart));
+    if (timestamps.length >= _maxInitiatesPerMinute) {
+      AppLogger.warn(
+          '⚠️ Rate limit exceeded for ${AppLogger.sanitize(ipAddress)}: '
+          '${timestamps.length} initiates in last minute');
+      _initiateTimestamps[ipAddress] = timestamps;
+      return false;
+    }
+    timestamps.add(now);
+    _initiateTimestamps[ipAddress] = timestamps;
+    return true;
+  }
+
   Future<void> _sendError(HttpRequest request, String message) async {
     request.response.statusCode = HttpStatus.internalServerError;
     request.response.write(message);
@@ -1440,6 +1521,13 @@ class TransferService {
 
   Future<void> _handleTransferInitiate(HttpRequest request) async {
     try {
+      // Per-IP rate limit: prevent approval-prompt spam / DoS.
+      final remoteIp = request.connectionInfo?.remoteAddress.address ?? 'unknown';
+      if (!_checkInitiateRateLimit(remoteIp)) {
+        await _sendTooManyRequests(request);
+        return;
+      }
+
       final body = await utf8.decoder.bind(request).join();
       final data = _validateAndParseJson(body);
 
@@ -2319,8 +2407,14 @@ class TransferService {
         }
       }
 
-      await BackgroundTransferService.stopBackgroundTransfer();
-      await _sendError(request, 'Error receiving encrypted file');
+            await BackgroundTransferService.stopBackgroundTransfer();
+      if (e is TransferException) {
+        // Expected protocol failures (size mismatch, hash mismatch) are
+        // client errors — 400, not 500.
+        await _sendBadRequest(request, e.message);
+      } else {
+        await _sendError(request, 'Error receiving encrypted file');
+      }
     }
   }
 
@@ -2586,8 +2680,13 @@ class TransferService {
         }
       }
 
-      await BackgroundTransferService.stopBackgroundTransfer();
-      await _sendError(request, 'Error uploading file');
+            await BackgroundTransferService.stopBackgroundTransfer();
+      if (e is TransferException) {
+        // Expected protocol failures (size mismatch) are client errors.
+        await _sendBadRequest(request, e.message);
+      } else {
+        await _sendError(request, 'Error uploading file');
+      }
     }
   }
 

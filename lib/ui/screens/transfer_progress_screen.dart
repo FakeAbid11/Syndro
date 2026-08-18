@@ -466,9 +466,15 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     final bytesTransferred = progress?.bytesTransferred ?? 0;
     final totalBytes = progress?.totalBytes ?? 1;
 
-    final currentFile = _currentFileIndex < widget.items.length
-        ? widget.items[_currentFileIndex]
-        : widget.items.last;
+    final currentFile = widget.items.isNotEmpty
+        ? (_currentFileIndex < widget.items.length
+            ? widget.items[_currentFileIndex]
+            : widget.items.last)
+        : const TransferItem(
+            name: 'File',
+            path: '',
+            size: 0,
+          );
 
     return Column(
       children: [

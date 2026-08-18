@@ -49,6 +49,9 @@ class _PulseAnimationState extends State<PulseAnimation>
 
   @override
   void dispose() {
+    // Stop the ticker before disposing — repeat() left it active, and an
+    // active ticker during dispose triggers an assertion in debug mode.
+    _controller.stop();
     _controller.dispose();
     super.dispose();
   }
