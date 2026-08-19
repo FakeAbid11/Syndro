@@ -45,6 +45,10 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+; The in-app updater exits Syndro before running the installer, but force-close
+; any lingering instance so file replacement can never fail on a locked exe.
+CloseApplications=yes
+CloseApplicationsFilter={#MyAppExeName}
 OutputBaseFilename=Syndro-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
@@ -68,4 +72,7 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; `nowait postinstall` without `skipifsilent`: the interactive wizard still
+; shows the "Launch Syndro" checkbox, and a silent install (in-app updater:
+; /VERYSILENT) automatically relaunches the updated app.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall

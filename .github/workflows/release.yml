@@ -144,6 +144,25 @@ jobs:
           (Get-Content windows/runner/Runner.rc) -replace 'VALUE "ProductName", "syndro"', 'VALUE "ProductName", "Syndro"' | Set-Content windows/runner/Runner.rc
           (Get-Content windows/runner/Runner.rc) -replace 'VALUE "FileDescription", "syndro"', 'VALUE "FileDescription", "Syndro"' | Set-Content windows/runner/Runner.rc
 
+      # Embed the real release version into the exe version resource so
+      # PackageInfo.fromPlatform() (used by the in-app update check) reports the
+      # installed version instead of the flutter-create default 1.0.0.
+      - name: Embed version into Windows executable
+        run: |
+          $ver = "${{ needs.prepare.outputs.version }}"
+          $parts = $ver -split '\.'
+          $major = if ($parts.Count -gt 0) { $parts[0] } else { '1' }
+          $minor = if ($parts.Count -gt 1) { $parts[1] } else { '0' }
+          $patch = if ($parts.Count -gt 2) { $parts[2] } else { '0' }
+          $build = if ($parts.Count -gt 3) { $parts[3] } else { '0' }
+          $file = 'windows/runner/CMakeLists.txt'
+          (Get-Content $file) -replace 'FLUTTER_VERSION="[^"]*"', "FLUTTER_VERSION=`"$ver`"" | Set-Content $file
+          (Get-Content $file) -replace 'FLUTTER_VERSION_MAJOR=\d+', "FLUTTER_VERSION_MAJOR=$major" | Set-Content $file
+          (Get-Content $file) -replace 'FLUTTER_VERSION_MINOR=\d+', "FLUTTER_VERSION_MINOR=$minor" | Set-Content $file
+          (Get-Content $file) -replace 'FLUTTER_VERSION_PATCH=\d+', "FLUTTER_VERSION_PATCH=$patch" | Set-Content $file
+          (Get-Content $file) -replace 'FLUTTER_VERSION_BUILD=\d+', "FLUTTER_VERSION_BUILD=$build" | Set-Content $file
+          Get-Content $file | Select-String 'FLUTTER_VERSION'
+
       - name: Generate App Icons
         run: dart run flutter_launcher_icons
 
@@ -198,6 +217,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem dist
 
+      # Portable ZIP for users who prefer no installer (also the browser
+      # fallback target of the in-app update check). The in-app updater itself
+      # uses the Inno Setup installer above.
+      - name: Package portable ZIP
+        run: |
+          $ver = "${{ needs.prepare.outputs.version }}"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path syndro-windows\* -DestinationPath "dist\Syndro-Windows-$ver.zip" -CompressionLevel Optimal
+          Get-ChildItem dist
+
       # Upload the raw folder as the workflow artifact. GitHub zips artifacts once
       # on download, so this also extracts in a single unzip (avoids double-zip).
       - name: Upload Windows artifact
@@ -207,10 +236,10 @@ jobs:
           path: syndro-windows/**
           retention-days: 90
 
-      # Attach the installer to the release. Uses the gh CLI (preinstalled on
-      # runners) with a retry loop, because GitHub's API occasionally returns
-      # transient 503s that would otherwise fail the whole job.
-      - name: Attach Windows installer to Release
+      # Attach the installer + portable ZIP to the release. Uses the gh CLI
+      # (preinstalled on runners) with a retry loop, because GitHub's API
+      # occasionally returns transient 503s that would otherwise fail the job.
+      - name: Attach Windows assets to Release
         if: ${{ needs.prepare.outputs.do_release == 'true' }}
         shell: bash
         run: |
@@ -218,12 +247,12 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           for attempt in 1 2 3 4 5; do
             if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" dist/Syndro-Setup-*.exe --clobber && rc=0 || rc=$?
+              gh release upload "$TAG" dist/Syndro-Setup-*.exe dist/Syndro-Windows-*.zip --clobber && rc=0 || rc=$?
             else
-              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe && rc=0 || rc=$?
+              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe dist/Syndro-Windows-*.zip && rc=0 || rc=$?
             fi
             if [ "$rc" -eq 0 ]; then
-              echo "Attached installer to $TAG"
+              echo "Attached installer + ZIP to $TAG"
               exit 0
             fi
             echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
