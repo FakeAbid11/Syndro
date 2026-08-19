@@ -31,6 +31,10 @@ class ParallelTransferService {
 
   final Map<String, ParallelTransferState> _activeTransfers = {};
 
+  /// Transfer ids whose cancellation arrived before their state was registered
+  /// (see [cancelTransfer]); honored when the send flow registers the state.
+  final Set<String> _pendingCancellations = {};
+
   final SynchronizedLock<void> _transfersLock = SynchronizedLock<void>();
 
   final _progressController = StreamController<ParallelProgress>.broadcast();
@@ -94,6 +98,17 @@ class ParallelTransferService {
     await _transfersLock.synchronized(() async {
       _activeTransfers[transferId] = state;
     });
+
+    // A cancel may have raced ahead of this registration (the TransferService
+    // can cancel as soon as it registers its own transfer, before the parallel
+    // service has seen it). Honor it now so the approval wait aborts promptly.
+    if (_pendingCancellations.remove(transferId)) {
+      state.cancel();
+    }
+    if (state.isCancelled) {
+      AppLogger.info('🚫 Transfer cancelled before initiation: $transferId');
+      throw Exception('Transfer cancelled by user');
+    }
 
     try {
       // FIX: Initiate transfer FIRST with placeholder hash
@@ -680,6 +695,11 @@ class ParallelTransferService {
     if (state != null) {
       state.cancel();
       _activeTransfers.remove(transferId);
+    } else {
+      // The send flow has not registered its state yet (e.g. it is still
+      // deriving the sender token). Remember the cancel so it is honored as
+      // soon as the state is registered.
+      _pendingCancellations.add(transferId);
     }
   }
 
@@ -698,6 +718,7 @@ class ParallelTransferService {
         state.cancel();
       }
       _activeTransfers.clear();
+      _pendingCancellations.clear();
     } catch (e) {
       AppLogger.error('⚠️ Error cancelling active transfers: $e');
     }

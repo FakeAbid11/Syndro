@@ -3703,31 +3703,42 @@ class TransferService {
 
   /// Best-effort one-way notification that the receiver should abort its
   /// parallel receive session (temp file cleanup). Failures are logged, never
-  /// thrown — the local cancel already succeeded.
+  /// thrown — the local cancel already succeeded. Retries briefly because the
+  /// receiver may not have processed the initiate request yet (the cancel can
+  /// race ahead of it), in which case a 401 would otherwise leak a pending
+  /// approval on the receiver side.
   void _notifyReceiverParallelCancel(
       String transferId, Device receiver, String senderId) {
+    Future<void> attempt(int remaining) async {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(
+                  'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/cancel'),
+              headers: {
+                'Content-Type': 'application/json',
+                'x-device-id': senderId,
+              },
+              body: jsonEncode({'transferId': transferId}),
+            )
+            .timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) return;
+        if (kDebugMode) {
+          AppLogger.warn(
+              'Receiver parallel cancel returned ${response.statusCode} '
+              '(${3 - remaining + 1}/3)');
+        }
+      } catch (e) {
+        AppLogger.error('Failed to notify receiver of cancel: $e');
+      }
+      if (remaining > 1) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await attempt(remaining - 1);
+      }
+    }
+
     try {
-      final url = Uri.parse(
-          'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/cancel');
-      http
-          .post(
-            url,
-            headers: {
-              'Content-Type': 'application/json',
-              'x-device-id': senderId,
-            },
-            body: jsonEncode({'transferId': transferId}),
-          )
-          .timeout(const Duration(seconds: 5))
-          .then((response) {
-            if (response.statusCode != 200 && kDebugMode) {
-              AppLogger.warn(
-                  'Receiver parallel cancel returned ${response.statusCode}');
-            }
-          })
-          .catchError((e) {
-            AppLogger.error('Failed to notify receiver of cancel: $e');
-          });
+      attempt(3);
     } catch (e) {
       AppLogger.error('Failed to notify receiver of cancel: $e');
     }
