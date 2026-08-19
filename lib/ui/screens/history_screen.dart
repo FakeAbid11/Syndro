@@ -451,7 +451,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         const SizedBox(height: AppSpacing.xs + 2),
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.access_time_rounded,
                               size: 12,
                               color: AppTheme.textTertiary,
@@ -474,7 +474,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       color: AppTheme.surfaceColor.withValues(alpha: 0.5),
                       borderRadius: AppRadius.smAll,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.chevron_right,
                       color: AppTheme.textTertiary,
                     ),

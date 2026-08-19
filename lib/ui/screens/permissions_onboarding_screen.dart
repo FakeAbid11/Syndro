@@ -164,15 +164,15 @@ class _PermissionsOnboardingScreenState
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Permissions Required'),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Syndro requires certain permissions to function properly. '
                 'Without these permissions, some features may not work.',
               ),
-              SizedBox(height: AppSpacing.lg),
+const SizedBox(height: AppSpacing.lg),
               Text(
                 'You can grant permissions in Settings, or continue with limited functionality.',
                 style: TextStyle(fontSize: 14, color: AppTheme.textTertiary),
@@ -248,7 +248,7 @@ class _PermissionsOnboardingScreenState
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: TextButton(
                       onPressed: _isLoading ? null : _skip,
-                      child: const Text(
+                      child: Text(
                         'Skip',
                         style: TextStyle(
                           color: AppTheme.textTertiary,
@@ -332,7 +332,7 @@ class _PermissionsOnboardingScreenState
                         const SizedBox(height: AppSpacing.md),
                         Text(
                           'Missing: ${_missingPermissions.join(", ")}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             color: AppTheme.textTertiary,
                           ),

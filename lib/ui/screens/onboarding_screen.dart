@@ -123,7 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: TextButton(
                       onPressed: _isLoading ? null : _skip,
-                      child: const Text(
+                      child: Text(
                         'Skip',
                         style: TextStyle(
                           color: AppTheme.textTertiary,
@@ -294,7 +294,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Text(
               page.description,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 color: AppTheme.textSecondary,
                 height: 1.6,

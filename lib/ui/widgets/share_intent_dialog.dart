@@ -120,7 +120,7 @@ class _ShareIntentDialogState extends State<ShareIntentDialog> {
             // Cancel button
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
+              child: Text(
                 'Cancel',
                 style: TextStyle(color: AppTheme.textSecondary),
               ),
@@ -193,7 +193,7 @@ class _ShareOption extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right,
               color: AppTheme.textSecondary,
             ),

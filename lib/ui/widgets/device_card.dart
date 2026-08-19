@@ -210,7 +210,7 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(AppSpacing.xs),
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   color: AppTheme.surfaceContainerHigh,
                                   borderRadius: AppRadius.smAll,
                                 ),
@@ -235,7 +235,7 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                           const SizedBox(height: AppSpacing.xs),
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.router_rounded,
                                 size: 12,
                                 color: AppTheme.textTertiary,

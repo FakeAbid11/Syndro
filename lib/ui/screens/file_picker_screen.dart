@@ -755,9 +755,9 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                     slideUp: true,
                     child: Container(
                       padding: const EdgeInsets.all(AppSpacing.lg),
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: AppTheme.surfaceContainer,
-                        borderRadius: BorderRadius.vertical(
+                        borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(AppRadius.xxl),
                         ),
                         border: Border(
@@ -1494,7 +1494,7 @@ class _FileListTile extends StatelessWidget {
                       // File size
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.storage_rounded,
                             size: 12,
                             color: AppTheme.textTertiary,
@@ -1542,9 +1542,9 @@ class _FileDetailsSheet extends StatelessWidget {
     final fileType = FileTypeHelper.getFileType(file.name);
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
       ),
       padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
@@ -1608,7 +1608,7 @@ class _FileDetailsSheet extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.folder_outlined,
                       size: 16,
                       color: AppTheme.textTertiary,

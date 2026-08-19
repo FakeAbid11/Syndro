@@ -41,7 +41,7 @@ class FileSummaryWidget extends StatelessWidget {
           color: AppTheme.primaryContainer,
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.folder_open,
                 color: AppTheme.onPrimaryContainer,
                 size: 32,

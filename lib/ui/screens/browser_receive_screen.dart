@@ -570,14 +570,14 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           // Instructions
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppTheme.primaryContainer,
               borderRadius: AppRadius.mdAll,
             ),
-            child: const Row(
+            child: Row(
               children: <Widget>[
                 Icon(Icons.info_outline, color: AppTheme.onPrimaryContainer),
-                SizedBox(width: AppSpacing.md),
+const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
                     'Open the link on any device to send files to this device',
@@ -603,12 +603,12 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.folder, color: AppTheme.textSecondary, size: 20),
+                Icon(Icons.folder, color: AppTheme.textSecondary, size: 20),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'Saving to: ${_downloadPath ?? 'Downloads'}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,
                     ),
@@ -735,7 +735,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                       Expanded(
                         child: Text(
                           _receiveUrl!,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,
                             color: AppTheme.textSecondary,
@@ -782,7 +782,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                 Expanded(
                   child: Text(
                     _receiveUrl!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12,
                       color: AppTheme.textSecondary,
@@ -934,7 +934,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
 
         // Files list
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.surfaceColor,
             borderRadius: AppRadius.mdAll,
           ),
@@ -942,7 +942,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _pendingFiles.length,
-            separatorBuilder: (_, __) => const Divider(
+            separatorBuilder: (_, __) => Divider(
               height: 1,
               color: AppTheme.outlineVariant,
             ),
@@ -994,7 +994,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
                   children: [
                     Text(
                       file.sizeFormatted,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: AppTheme.textTertiary,
                       ),
@@ -1030,7 +1030,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           ] else if (isSaved) ...[
             const Icon(Icons.check_circle, color: AppTheme.successColor),
           ] else if (isDiscarded) ...[
-            const Icon(Icons.delete, color: AppTheme.textTertiary),
+            Icon(Icons.delete, color: AppTheme.textTertiary),
           ],
         ],
       ),

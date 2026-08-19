@@ -216,7 +216,7 @@ class _TextShareScreenState extends ConsumerState<TextShareScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.devices_other_rounded,
                           size: 48,
                           color: AppTheme.textTertiary,

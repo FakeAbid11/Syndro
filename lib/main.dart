@@ -411,6 +411,10 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     final incomingFilesState = ref.watch(incomingFilesProvider);
     final themeMode = ref.watch(themeModeProvider);
 
+    // Sync the legacy hardcoded AppTheme.* palette with the selected mode
+    // before any widget builds, so light mode renders light colors.
+    AppTheme.applyMode(themeMode);
+
     return MaterialApp(
       title: 'Syndro',
       debugShowCheckedModeBanner: false,
@@ -429,12 +433,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
           decoration: BoxDecoration(
             gradient: AppTheme.backgroundGradient,
           ),
-          child: const Center(
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 24),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 24),
                 Text(
                   'Starting Syndro...',
                   style: TextStyle(
@@ -476,7 +480,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
                   child: Text(
                     _initError!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppTheme.textSecondary),
+                    style: TextStyle(color: AppTheme.textSecondary),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -572,12 +576,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         decoration: BoxDecoration(
           gradient: AppTheme.backgroundGradient,
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 24),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 24),
               Text(
                 'Preparing share...',
                 style: TextStyle(

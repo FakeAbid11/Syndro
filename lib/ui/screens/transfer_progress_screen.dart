@@ -682,7 +682,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: AppSpacing.xxl),
-        const SizedBox(
+        SizedBox(
           width: 120,
           child: LinearProgressIndicator(
             minHeight: 8,
@@ -775,7 +775,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             color: AppTheme.textTertiary.withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.cancel_outlined,
             size: 80,
             color: AppTheme.textTertiary,

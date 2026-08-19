@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 
 import 'app_dimens.dart';
@@ -8,52 +10,257 @@ class AppTheme {
   static const Color secondaryColor = Color(0xFF5B8DEF); // Blue from logo
   static const Color accentColor = Color(0xFF06B6D4); // Cyan for highlights
 
-  // Background Colors
-  static const Color backgroundColor = Color(0xFF0A0A0F); // Near black
-  static const Color surfaceColor = Color(0xFF141420); // Dark purple-gray
-  static const Color cardColor = Color(0xFF1E1E2E); // Card background
-
-  // Status Colors
+  // Status Colors (same in both modes)
   static const Color successColor = Color(0xFF22C55E); // Green
   static const Color errorColor = Color(0xFFEF4444); // Red
   static const Color warningColor = Color(0xFFF59E0B); // Amber
 
-  // Text Colors
-  static const Color textPrimary = Color(0xFFF8FAFC); // White
-  static const Color textSecondary = Color(0xFFCBD5E1); // Light gray
-  static const Color textTertiary = Color(0xFF94A3B8); // Muted gray
+  // ────────────────────────────────────────────────────────────────────
+  // Dark palette (default)
+  // ────────────────────────────────────────────────────────────────────
+  static const Color _darkBackground = Color(0xFF0A0A0F); // Near black
+  static const Color _darkSurface = Color(0xFF141420); // Dark purple-gray
+  static const Color _darkCard = Color(0xFF1E1E2E); // Card background
 
-  // ✅ ADD THIS LINE - Border Color (was missing!)
-  static const Color borderColor = Color(0xFF2D2D3D); // Subtle border
+  static const Color _darkTextPrimary = Color(0xFFF8FAFC); // White
+  static const Color _darkTextSecondary = Color(0xFFCBD5E1); // Light gray
+  static const Color _darkTextTertiary = Color(0xFF94A3B8); // Muted gray
+  static const Color _darkBorder = Color(0xFF2D2D3D); // Subtle border
 
-  // --- Material 3 tonal surfaces (derived from the brand palette) ---
-  // A ramp of increasingly light surfaces so M3 components read as layered
-  // depth instead of flat panels. Kept on-brand (dark purple-gray family).
-  static const Color surfaceContainerLowest = Color(0xFF08080C);
-  static const Color surfaceContainerLow = Color(0xFF141420);
-  static const Color surfaceContainer = Color(0xFF1A1A28);
-  static const Color surfaceContainerHigh = Color(0xFF232334);
-  static const Color surfaceContainerHighest = Color(0xFF2A2A3C);
-  static const Color outlineVariant = Color(0xFF24242F);
+  // Material 3 tonal surfaces (dark purple-gray family).
+  static const Color _darkSurfaceContainerLowest = Color(0xFF08080C);
+  static const Color _darkSurfaceContainerLow = Color(0xFF141420);
+  static const Color _darkSurfaceContainer = Color(0xFF1A1A28);
+  static const Color _darkSurfaceContainerHigh = Color(0xFF232334);
+  static const Color _darkSurfaceContainerHighest = Color(0xFF2A2A3C);
+  static const Color _darkOutlineVariant = Color(0xFF24242F);
 
-  // Tonal "container" roles for the brand colors (used by chips, badges,
-  // tonal buttons, selected states) — muted, dark-tinted backgrounds with
-  // light foregrounds.
-  static const Color primaryContainer = Color(0xFF2A2350);
-  static const Color onPrimaryContainer = Color(0xFFD9CCFF);
-  static const Color secondaryContainer = Color(0xFF1E2E4D);
-  static const Color onSecondaryContainer = Color(0xFFCBDCFF);
-  static const Color tertiaryContainer = Color(0xFF06333B);
-  static const Color onTertiaryContainer = Color(0xFF9FEAF5);
-  static const Color errorContainer = Color(0xFF4A1D1D);
-  static const Color onErrorContainer = Color(0xFFFFD6D6);
+  // Tonal "container" roles for the brand colors (dark-tinted backgrounds
+  // with light foregrounds).
+  static const Color _darkPrimaryContainer = Color(0xFF2A2350);
+  static const Color _darkOnPrimaryContainer = Color(0xFFD9CCFF);
+  static const Color _darkSecondaryContainer = Color(0xFF1E2E4D);
+  static const Color _darkOnSecondaryContainer = Color(0xFFCBDCFF);
+  static const Color _darkTertiaryContainer = Color(0xFF06333B);
+  static const Color _darkOnTertiaryContainer = Color(0xFF9FEAF5);
+  static const Color _darkErrorContainer = Color(0xFF4A1D1D);
+  static const Color _darkOnErrorContainer = Color(0xFFFFD6D6);
 
+  // ────────────────────────────────────────────────────────────────────
+  // Light palette
+  // ────────────────────────────────────────────────────────────────────
+  static const Color _lightBackground = Color(0xFFF6F7FB); // Soft blue-gray
+  static const Color _lightSurface = Color(0xFFFFFFFF); // White
+  static const Color _lightCard = Color(0xFFF1F3F9); // Card background
+
+  static const Color _lightTextPrimary = Color(0xFF0F172A); // Slate-900
+  static const Color _lightTextSecondary = Color(0xFF334155); // Slate-700
+  static const Color _lightTextTertiary = Color(0xFF64748B); // Slate-500
+  static const Color _lightBorder = Color(0xFFE2E8F0); // Subtle border
+
+  // Material 3 tonal surfaces (light slate family).
+  static const Color _lightSurfaceContainerLowest = Color(0xFFFFFFFF);
+  static const Color _lightSurfaceContainerLow = Color(0xFFF8FAFC);
+  static const Color _lightSurfaceContainer = Color(0xFFF1F5F9);
+  static const Color _lightSurfaceContainerHigh = Color(0xFFE9EDF5);
+  static const Color _lightSurfaceContainerHighest = Color(0xFFE2E8F0);
+  static const Color _lightOutlineVariant = Color(0xFFE2E8F0);
+
+  // Tonal "container" roles for the brand colors (light-tinted backgrounds
+  // with dark foregrounds).
+  static const Color _lightPrimaryContainer = Color(0xFFE4DBFF);
+  static const Color _lightOnPrimaryContainer = Color(0xFF3B2A75);
+  static const Color _lightSecondaryContainer = Color(0xFFD8E4FF);
+  static const Color _lightOnSecondaryContainer = Color(0xFF1E3A5F);
+  static const Color _lightTertiaryContainer = Color(0xFFC9F0F5);
+  static const Color _lightOnTertiaryContainer = Color(0xFF044A54);
+  static const Color _lightErrorContainer = Color(0xFFFFDADA);
+  static const Color _lightOnErrorContainer = Color(0xFF7F1D1D);
+
+  // ────────────────────────────────────────────────────────────────────
+  // Active palette — swapped by [applyMode]. Defaults to dark. These are the
+  // non-const tokens referenced by the (legacy) hardcoded call sites across
+  // the UI; keeping the same names means those call sites are theme-aware
+  // once [applyMode] has run, without threading BuildContext everywhere.
+  // ────────────────────────────────────────────────────────────────────
+  static Color backgroundColor = _darkBackground;
+  static Color surfaceColor = _darkSurface;
+  static Color cardColor = _darkCard;
+
+  static Color textPrimary = _darkTextPrimary;
+  static Color textSecondary = _darkTextSecondary;
+  static Color textTertiary = _darkTextTertiary;
+  static Color borderColor = _darkBorder;
+
+  static Color surfaceContainerLowest = _darkSurfaceContainerLowest;
+  static Color surfaceContainerLow = _darkSurfaceContainerLow;
+  static Color surfaceContainer = _darkSurfaceContainer;
+  static Color surfaceContainerHigh = _darkSurfaceContainerHigh;
+  static Color surfaceContainerHighest = _darkSurfaceContainerHighest;
+  static Color outlineVariant = _darkOutlineVariant;
+
+  static Color primaryContainer = _darkPrimaryContainer;
+  static Color onPrimaryContainer = _darkOnPrimaryContainer;
+  static Color secondaryContainer = _darkSecondaryContainer;
+  static Color onSecondaryContainer = _darkOnSecondaryContainer;
+  static Color tertiaryContainer = _darkTertiaryContainer;
+  static Color onTertiaryContainer = _darkOnTertiaryContainer;
+  static Color errorContainer = _darkErrorContainer;
+  static Color onErrorContainer = _darkOnErrorContainer;
+
+  static const LinearGradient _darkBackgroundGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF0A0A0F),
+      Color(0xFF141420),
+      Color(0xFF1E1E2E),
+    ],
+  );
+
+  static const LinearGradient _lightBackgroundGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFF6F7FB),
+      Color(0xFFFFFFFF),
+      Color(0xFFEDF0F7),
+    ],
+  );
+
+  /// Whether the active palette is the dark one.
+  static bool get isDarkActive => backgroundColor == _darkBackground;
+
+  /// Swap the active palette to match [mode]. Resolves `ThemeMode.system`
+  /// from the platform's current brightness. Call before building the widget
+  /// tree so hardcoded call sites render the correct colors.
+  static void applyMode(ThemeMode mode) {
+    final dark = mode == ThemeMode.dark ||
+        (mode == ThemeMode.system &&
+            PlatformDispatcher.instance.platformBrightness == Brightness.dark);
+
+    backgroundColor = dark ? _darkBackground : _lightBackground;
+    surfaceColor = dark ? _darkSurface : _lightSurface;
+    cardColor = dark ? _darkCard : _lightCard;
+
+    textPrimary = dark ? _darkTextPrimary : _lightTextPrimary;
+    textSecondary = dark ? _darkTextSecondary : _lightTextSecondary;
+    textTertiary = dark ? _darkTextTertiary : _lightTextTertiary;
+    borderColor = dark ? _darkBorder : _lightBorder;
+
+    surfaceContainerLowest =
+        dark ? _darkSurfaceContainerLowest : _lightSurfaceContainerLowest;
+    surfaceContainerLow =
+        dark ? _darkSurfaceContainerLow : _lightSurfaceContainerLow;
+    surfaceContainer = dark ? _darkSurfaceContainer : _lightSurfaceContainer;
+    surfaceContainerHigh =
+        dark ? _darkSurfaceContainerHigh : _lightSurfaceContainerHigh;
+    surfaceContainerHighest =
+        dark ? _darkSurfaceContainerHighest : _lightSurfaceContainerHighest;
+    outlineVariant = dark ? _darkOutlineVariant : _lightOutlineVariant;
+
+    primaryContainer = dark ? _darkPrimaryContainer : _lightPrimaryContainer;
+    onPrimaryContainer =
+        dark ? _darkOnPrimaryContainer : _lightOnPrimaryContainer;
+    secondaryContainer =
+        dark ? _darkSecondaryContainer : _lightSecondaryContainer;
+    onSecondaryContainer =
+        dark ? _darkOnSecondaryContainer : _lightOnSecondaryContainer;
+    tertiaryContainer =
+        dark ? _darkTertiaryContainer : _lightTertiaryContainer;
+    onTertiaryContainer =
+        dark ? _darkOnTertiaryContainer : _lightOnTertiaryContainer;
+    errorContainer = dark ? _darkErrorContainer : _lightErrorContainer;
+    onErrorContainer = dark ? _darkOnErrorContainer : _lightOnErrorContainer;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // ThemeData
+  // ────────────────────────────────────────────────────────────────────
   static ThemeData get darkTheme {
+    return _buildTheme(
+      brightness: Brightness.dark,
+      scaffold: _darkBackground,
+      surface: _darkSurface,
+      card: _darkCard,
+      textPrimary: _darkTextPrimary,
+      textSecondary: _darkTextSecondary,
+      textTertiary: _darkTextTertiary,
+      border: _darkBorder,
+      containerLowest: _darkSurfaceContainerLowest,
+      containerLow: _darkSurfaceContainerLow,
+      container: _darkSurfaceContainer,
+      containerHigh: _darkSurfaceContainerHigh,
+      containerHighest: _darkSurfaceContainerHighest,
+      outlineVariant: _darkOutlineVariant,
+      primaryContainer: _darkPrimaryContainer,
+      onPrimaryContainer: _darkOnPrimaryContainer,
+      secondaryContainer: _darkSecondaryContainer,
+      onSecondaryContainer: _darkOnSecondaryContainer,
+      tertiaryContainer: _darkTertiaryContainer,
+      onTertiaryContainer: _darkOnTertiaryContainer,
+      errorContainer: _darkErrorContainer,
+      onErrorContainer: _darkOnErrorContainer,
+    );
+  }
+
+  /// Light theme — full mirror of [darkTheme] with the light palette.
+  static ThemeData get lightTheme {
+    return _buildTheme(
+      brightness: Brightness.light,
+      scaffold: _lightBackground,
+      surface: _lightSurface,
+      card: _lightCard,
+      textPrimary: _lightTextPrimary,
+      textSecondary: _lightTextSecondary,
+      textTertiary: _lightTextTertiary,
+      border: _lightBorder,
+      containerLowest: _lightSurfaceContainerLowest,
+      containerLow: _lightSurfaceContainerLow,
+      container: _lightSurfaceContainer,
+      containerHigh: _lightSurfaceContainerHigh,
+      containerHighest: _lightSurfaceContainerHighest,
+      outlineVariant: _lightOutlineVariant,
+      primaryContainer: _lightPrimaryContainer,
+      onPrimaryContainer: _lightOnPrimaryContainer,
+      secondaryContainer: _lightSecondaryContainer,
+      onSecondaryContainer: _lightOnSecondaryContainer,
+      tertiaryContainer: _lightTertiaryContainer,
+      onTertiaryContainer: _lightOnTertiaryContainer,
+      errorContainer: _lightErrorContainer,
+      onErrorContainer: _lightOnErrorContainer,
+    );
+  }
+
+  static ThemeData _buildTheme({
+    required Brightness brightness,
+    required Color scaffold,
+    required Color surface,
+    required Color card,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color textTertiary,
+    required Color border,
+    required Color containerLowest,
+    required Color containerLow,
+    required Color container,
+    required Color containerHigh,
+    required Color containerHighest,
+    required Color outlineVariant,
+    required Color primaryContainer,
+    required Color onPrimaryContainer,
+    required Color secondaryContainer,
+    required Color onSecondaryContainer,
+    required Color tertiaryContainer,
+    required Color onTertiaryContainer,
+    required Color errorContainer,
+    required Color onErrorContainer,
+  }) {
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: const ColorScheme(
-        brightness: Brightness.dark,
+      brightness: brightness,
+      colorScheme: ColorScheme(
+        brightness: brightness,
         primary: primaryColor,
         onPrimary: Colors.white,
         primaryContainer: primaryContainer,
@@ -63,35 +270,34 @@ class AppTheme {
         secondaryContainer: secondaryContainer,
         onSecondaryContainer: onSecondaryContainer,
         tertiary: accentColor,
-        onTertiary: Color(0xFF00272E),
+        onTertiary: const Color(0xFF00272E),
         tertiaryContainer: tertiaryContainer,
         onTertiaryContainer: onTertiaryContainer,
         error: errorColor,
         onError: Colors.white,
         errorContainer: errorContainer,
         onErrorContainer: onErrorContainer,
-        surface: surfaceColor,
+        surface: surface,
         onSurface: textPrimary,
         onSurfaceVariant: textSecondary,
-        surfaceContainerLowest: surfaceContainerLowest,
-        surfaceContainerLow: surfaceContainerLow,
-        surfaceContainer: surfaceContainer,
-        surfaceContainerHigh: surfaceContainerHigh,
-        surfaceContainerHighest: surfaceContainerHighest,
+        surfaceContainerLowest: containerLowest,
+        surfaceContainerLow: containerLow,
+        surfaceContainer: container,
+        surfaceContainerHigh: containerHigh,
+        surfaceContainerHighest: containerHighest,
         surfaceTint: primaryColor,
-        outline: borderColor,
+        outline: border,
         outlineVariant: outlineVariant,
         inverseSurface: textPrimary,
-        onInverseSurface: backgroundColor,
+        onInverseSurface: scaffold,
         shadow: Colors.black,
         scrim: Colors.black,
       ),
-      scaffoldBackgroundColor: backgroundColor,
+      scaffoldBackgroundColor: scaffold,
       splashFactory: InkSparkle.splashFactory,
 
-      // AppBar Theme — transparent so the scaffold gradient shows through;
-      // a subtle tint appears once content scrolls under it (M3).
-      appBarTheme: const AppBarTheme(
+      // AppBar Theme — transparent so the scaffold gradient shows through.
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -107,8 +313,8 @@ class AppTheme {
       ),
 
       // Card Theme — tonal surface, clipped, gentle radius (M3).
-      cardTheme: const CardThemeData(
-        color: surfaceContainer,
+      cardTheme: CardThemeData(
+        color: container,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         clipBehavior: Clip.antiAlias,
@@ -149,7 +355,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryColor,
-          side: const BorderSide(color: borderColor, width: 1.5),
+          side: BorderSide(color: border, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: const StadiumBorder(),
           textStyle: const TextStyle(
@@ -179,25 +385,24 @@ class AppTheme {
         elevation: 3,
         highlightElevation: 6,
         shape: RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
-        extendedTextStyle:
-            TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        extendedTextStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
 
       // ListTile
-      listTileTheme: const ListTileThemeData(
+      listTileTheme: ListTileThemeData(
         iconColor: textSecondary,
         textColor: textPrimary,
-        contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       ),
 
       // Icon Theme
-      iconTheme: const IconThemeData(
+      iconTheme: IconThemeData(
         color: textSecondary,
         size: 24,
       ),
 
       // Text Theme (Material 3 scale)
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         displayLarge: TextStyle(
           color: textPrimary,
           fontSize: 34,
@@ -276,11 +481,11 @@ class AppTheme {
       ),
 
       // Input Decoration Theme
-      inputDecorationTheme: const InputDecorationTheme(
+      inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surfaceContainer,
+        fillColor: container,
         hintStyle: TextStyle(color: textTertiary),
-        border: OutlineInputBorder(
+        border: const OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
           borderSide: BorderSide.none,
         ),
@@ -288,78 +493,78 @@ class AppTheme {
           borderRadius: AppRadius.mdAll,
           borderSide: BorderSide(color: outlineVariant, width: 1),
         ),
-        focusedBorder: OutlineInputBorder(
+        focusedBorder: const OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
           borderSide: BorderSide(color: primaryColor, width: 2),
         ),
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
 
       // Progress Indicator Theme
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
+      progressIndicatorTheme: ProgressIndicatorThemeData(
         color: primaryColor,
-        linearTrackColor: surfaceContainerHighest,
-        circularTrackColor: surfaceContainerHighest,
+        linearTrackColor: containerHighest,
+        circularTrackColor: containerHighest,
         linearMinHeight: 6,
       ),
 
       // Snackbar Theme
-      snackBarTheme: const SnackBarThemeData(
-        backgroundColor: surfaceContainerHighest,
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: containerHighest,
         contentTextStyle: TextStyle(color: textPrimary),
         actionTextColor: primaryColor,
         elevation: 4,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: AppRadius.mdAll,
         ),
         behavior: SnackBarBehavior.floating,
       ),
 
       // Bottom Sheet Theme
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: surfaceColor,
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         showDragHandle: true,
-        dragHandleColor: borderColor,
-        shape: RoundedRectangleBorder(
+        dragHandleColor: border,
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
         ),
       ),
 
       // Dialog Theme
-      dialogTheme: const DialogThemeData(
-        backgroundColor: surfaceContainerHigh,
+      dialogTheme: DialogThemeData(
+        backgroundColor: containerHigh,
         surfaceTintColor: Colors.transparent,
         elevation: 6,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: AppRadius.xlAll,
         ),
       ),
 
       // Divider Theme
-      dividerTheme: const DividerThemeData(
+      dividerTheme: DividerThemeData(
         color: outlineVariant,
         thickness: 1,
         space: 1,
       ),
 
       // Chip Theme
-      chipTheme: const ChipThemeData(
-        backgroundColor: surfaceContainer,
+      chipTheme: ChipThemeData(
+        backgroundColor: container,
         selectedColor: primaryContainer,
         secondarySelectedColor: primaryContainer,
         checkmarkColor: onPrimaryContainer,
         labelStyle: TextStyle(
             color: textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
         side: BorderSide(color: outlineVariant, width: 1),
-        shape: StadiumBorder(),
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
 
       // Tooltip
-      tooltipTheme: const TooltipThemeData(
+      tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: surfaceContainerHighest,
+          color: containerHighest,
           borderRadius: AppRadius.smAll,
         ),
         textStyle: TextStyle(color: textPrimary, fontSize: 12),
@@ -376,8 +581,7 @@ class AppTheme {
             if (states.contains(WidgetState.selected)) return onPrimaryContainer;
             return textSecondary;
           }),
-          side: WidgetStateProperty.all(
-              const BorderSide(color: outlineVariant, width: 1)),
+          side: WidgetStateProperty.all(BorderSide(color: outlineVariant, width: 1)),
         ),
       ),
 
@@ -393,7 +597,7 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) {
             return primaryColor.withValues(alpha: 0.5);
           }
-          return cardColor;
+          return card;
         }),
       ),
 
@@ -424,26 +628,27 @@ class AppTheme {
       // Slider Theme
       sliderTheme: SliderThemeData(
         activeTrackColor: primaryColor,
-        inactiveTrackColor: cardColor,
+        inactiveTrackColor: card,
         thumbColor: primaryColor,
         overlayColor: primaryColor.withValues(alpha: 0.2),
       ),
 
       // Navigation Bar Theme (Android / mobile)
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: surfaceContainer,
+        backgroundColor: container,
         surfaceTintColor: Colors.transparent,
         indicatorColor: primaryContainer,
         elevation: 0,
         height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        indicatorShape:
-            const RoundedRectangleBorder(borderRadius: AppRadius.pillAll),
+        indicatorShape: const RoundedRectangleBorder(
+          borderRadius: AppRadius.pillAll,
+        ),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: onPrimaryContainer, size: 24);
+            return IconThemeData(color: onPrimaryContainer, size: 24);
           }
-          return const IconThemeData(color: textTertiary, size: 24);
+          return IconThemeData(color: textTertiary, size: 24);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -456,71 +661,18 @@ class AppTheme {
       ),
 
       // Navigation Rail Theme (Desktop)
-      navigationRailTheme: const NavigationRailThemeData(
-        backgroundColor: surfaceContainerLow,
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: containerLow,
         selectedIconTheme: IconThemeData(color: onPrimaryContainer),
         unselectedIconTheme: IconThemeData(color: textTertiary),
         selectedLabelTextStyle: TextStyle(
             color: textPrimary, fontWeight: FontWeight.w600, fontSize: 13),
-        unselectedLabelTextStyle:
-            TextStyle(color: textTertiary, fontSize: 13),
+        unselectedLabelTextStyle: TextStyle(color: textTertiary, fontSize: 13),
         indicatorColor: primaryContainer,
-        indicatorShape:
-            RoundedRectangleBorder(borderRadius: AppRadius.pillAll),
+        indicatorShape: const RoundedRectangleBorder(
+          borderRadius: AppRadius.pillAll,
+        ),
         useIndicator: true,
-      ),
-    );
-  }
-
-  // Light theme
-  static ThemeData get lightTheme {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.light,
-      colorScheme: const ColorScheme.light(
-        primary: primaryColor,
-        secondary: secondaryColor,
-        surface: Color(0xFFF8FAFC),
-        error: errorColor,
-      ),
-      scaffoldBackgroundColor: const Color(0xFFFFFFFF),
-
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFFFFFFFF),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Color(0xFF1E1E2E)),
-        titleTextStyle: TextStyle(
-          color: Color(0xFF1E1E2E),
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-
-      cardTheme: CardThemeData(
-        color: const Color(0xFFF8FAFC),
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(color: Color(0xFF0F172A), fontSize: 32, fontWeight: FontWeight.bold),
-        bodyLarge: TextStyle(color: Color(0xFF475569), fontSize: 16),
-        bodyMedium: TextStyle(color: Color(0xFF475569), fontSize: 14),
       ),
     );
   }
@@ -548,17 +700,9 @@ class AppTheme {
     );
   }
 
-  // Gradient background
+  // Gradient background (follows the active palette)
   static LinearGradient get backgroundGradient {
-    return const LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color(0xFF0A0A0F),
-        Color(0xFF141420),
-        Color(0xFF1E1E2E),
-      ],
-    );
+    return isDarkActive ? _darkBackgroundGradient : _lightBackgroundGradient;
   }
 
   // Logo gradient

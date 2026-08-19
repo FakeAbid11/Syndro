@@ -93,7 +93,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         children: [
           // Side Navigation Rail — styled by the global NavigationRailTheme.
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppTheme.surfaceContainerLow,
               border: Border(
                 right: BorderSide(color: AppTheme.outlineVariant, width: 1),

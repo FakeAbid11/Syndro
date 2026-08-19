@@ -493,7 +493,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         return AppTheme.textSecondary;
                       }),
                       side: WidgetStateProperty.all(
-                        const BorderSide(color: AppTheme.borderColor),
+                        BorderSide(color: AppTheme.borderColor),
                       ),
                       shape: WidgetStateProperty.all(
                         const RoundedRectangleBorder(
@@ -550,7 +550,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.chevron_right,
+                        : Icon(Icons.chevron_right,
                             color: AppTheme.textTertiary),
                     onTap: _checkingUpdate ? null : _handleCheckForUpdates,
                   ),

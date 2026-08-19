@@ -285,7 +285,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
       children: [
         Icon(icon, size: 18, color: AppTheme.textTertiary),
         const SizedBox(width: AppSpacing.sm),
-        Text('$label: ', style: const TextStyle(color: AppTheme.textTertiary)),
+        Text('$label: ', style: TextStyle(color: AppTheme.textTertiary)),
         Expanded(
           child: Text(
             value,
@@ -332,8 +332,8 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
           ],
         ),
         content: _connectedClients.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
                 child: Text(
                   'No viewers connected yet.\nShare the QR code or link to get started!',
                   textAlign: TextAlign.center,
@@ -1081,7 +1081,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
                       Expanded(
                         child: Text(
                           _shareUrl!,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,
                             color: AppTheme.textSecondary,
@@ -1159,7 +1159,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _files.length,
-              separatorBuilder: (_, __) => const Divider(
+              separatorBuilder: (_, __) => Divider(
                 height: 1,
                 color: AppTheme.outlineVariant,
               ),
@@ -1295,7 +1295,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
 
           const SizedBox(height: AppSpacing.lg),
 
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Icon(
@@ -1303,7 +1303,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
                 size: 16,
                 color: AppTheme.textTertiary,
               ),
-              SizedBox(width: AppSpacing.xs + 2),
+              const SizedBox(width: AppSpacing.xs + 2),
               Text(
                 'Link active while this screen is open',
                 style: TextStyle(

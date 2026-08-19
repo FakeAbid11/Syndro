@@ -135,10 +135,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       builder: (bottomSheetContext) {
         return Container(
           padding: const EdgeInsets.all(AppSpacing.xxl),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.surfaceColor,
             borderRadius:
-                BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+                const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -148,7 +148,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 width: 40,
                 height: 4,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppTheme.borderColor,
                   borderRadius: AppRadius.pillAll,
                 ),
@@ -404,13 +404,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ],
             ),
-            child: const Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(
+                const CircularProgressIndicator(
                   color: AppTheme.primaryColor,
                 ),
-                SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: AppSpacing.xl),
                 Text(
                   'Preparing files...',
                   style: TextStyle(
@@ -420,7 +420,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     decoration: TextDecoration.none,
                   ),
                 ),
-                SizedBox(height: AppSpacing.sm),
+const SizedBox(height: AppSpacing.sm),
                 Text(
                   'This may take a moment for large files',
                   style: TextStyle(
@@ -454,10 +454,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppTheme.surfaceColor,
           borderRadius:
-              BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+              const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
         ),
         padding: EdgeInsets.only(
           left: AppSpacing.xxl,
@@ -472,7 +472,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             Container(
               width: 40,
               height: 4,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppTheme.borderColor,
                 borderRadius: AppRadius.pillAll,
               ),
@@ -598,7 +598,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
                 color: AppTheme.textTertiary,
               ),
@@ -771,11 +771,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   color: AppTheme.primaryColor.withValues(alpha: 0.2),
                 ),
               ),
-              child: const Row(
+              child: Row(
                 children: [
                   Icon(Icons.lightbulb_outline,
                       color: AppTheme.onPrimaryContainer, size: 20),
-                  SizedBox(width: AppSpacing.sm),
+const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       'Tip: For better performance with large files, '
@@ -1006,7 +1006,7 @@ Future<void> _showTextComposeDialog(Device device) async {
                 const SizedBox(height: AppSpacing.xs),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.wifi_rounded,
                       size: 14,
                       color: AppTheme.textTertiary,
@@ -1376,7 +1376,7 @@ Future<void> _showTextComposeDialog(Device device) async {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.devices,
               size: 64,
               color: AppTheme.textTertiary,
@@ -1454,10 +1454,10 @@ class _TransferRequestSheetContentState
     final request = widget.request;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xxl),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
         borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1465,7 +1465,7 @@ class _TransferRequestSheetContentState
           Container(
             width: 40,
             height: 4,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppTheme.borderColor,
               borderRadius: AppRadius.pillAll,
             ),
@@ -1534,8 +1534,8 @@ class _TransferRequestSheetContentState
               controlAffinity: ListTileControlAffinity.leading,
               activeColor: AppTheme.primaryColor,
               checkColor: Colors.white,
-              side: const BorderSide(color: AppTheme.borderColor),
-              title: const Text(
+              side: BorderSide(color: AppTheme.borderColor),
+              title: Text(
                 'Trust this device',
                 style: TextStyle(
                   color: AppTheme.textPrimary,
@@ -1543,7 +1543,7 @@ class _TransferRequestSheetContentState
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              subtitle: const Text(
+              subtitle: Text(
                 'Future transfers from this device will auto-accept',
                 style: TextStyle(
                   color: AppTheme.textTertiary,
