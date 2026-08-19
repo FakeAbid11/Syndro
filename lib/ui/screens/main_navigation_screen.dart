@@ -30,6 +30,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   Future<void> _checkForUpdate() async {
     try {
+      // At most one automatic check per day (manual Settings check bypasses).
+      if (!await UpdateService.shouldAutoCheck()) return;
       final info = await UpdateService.checkForUpdate();
       if (info == null || !mounted) return;
       if (await UpdateService.isSkipped(info.version)) return;
