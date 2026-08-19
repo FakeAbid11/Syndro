@@ -100,6 +100,7 @@ dependencies:
   # ============================================
   cryptography: ^2.7.0           # AES-256-GCM + X25519 key exchange
   crypto: ^3.0.3                 # SHA-256 for file integrity
+  screen_retriever: ^0.1.9
 
   # ============================================
   # 🔊 SOUNDS

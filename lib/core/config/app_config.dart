@@ -65,6 +65,11 @@ class AppConfig {
   /// Default web share port
   static const int defaultWebSharePort = 8766;
 
+  /// Loopback port for the single-instance guard
+  ///
+  /// Distinct from all discovery/transfer/web-share ports above.
+  static const int singleInstancePort = 8780;
+
   /// List of ports to scan for device discovery
   static const List<int> discoveryPorts = [
     8765, 8766, 8767, 8768, 8769, 8770,

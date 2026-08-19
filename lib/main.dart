@@ -5,6 +5,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
@@ -17,9 +18,12 @@ import 'core/providers/device_provider.dart';
 import 'core/providers/transfer_provider.dart';
 import 'core/providers/incoming_files_provider.dart';
 import 'core/providers/theme_provider.dart';
+import 'core/services/single_instance_service.dart';
+import 'core/services/startup_logger.dart';
 import 'core/services/system_tray_service.dart';
 import 'core/services/share_intent_service.dart';
 import 'core/services/desktop_notification_service.dart';
+import 'core/services/window_bounds_validator.dart';
 import 'core/services/window_settings_service.dart';
 import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
@@ -27,6 +31,9 @@ import 'ui/screens/quick_send_screen.dart';
 import 'ui/screens/browser_share_screen.dart';
 import 'ui/screens/text_share_screen.dart';
 import 'ui/theme/app_theme.dart';
+
+/// Held for the process lifetime so the single-instance listener stays bound.
+SingleInstanceGuard? _instanceGuard;
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,18 +73,54 @@ void main(List<String> args) async {
     try {
       await windowManager.ensureInitialized();
 
+      // Single-instance guard: a second launch asks the running instance to
+      // show its window instead of starting a conflicting duplicate process.
+      final guard = SingleInstanceGuard(AppConfig.singleInstancePort);
+      final role = await guard.start(
+        onShowWindow: () async {
+          try {
+            if (SystemTrayService.isInitialized) {
+              await SystemTrayService.showWindow();
+            } else {
+              await windowManager.show();
+              await windowManager.focus();
+            }
+            await StartupLogger.log('Second instance signaled window show');
+          } catch (e) {
+            debugPrint('⚠️ Failed to show window on signal: $e');
+          }
+        },
+      );
+      if (role == SingleInstanceRole.secondary) {
+        debugPrint('⚠️ Another Syndro instance is already running — exiting.');
+        await StartupLogger.log('Secondary instance — exiting');
+        exit(0);
+      }
+      _instanceGuard = guard;
+      await StartupLogger.log('Single-instance listener bound on port '
+          '${AppConfig.singleInstancePort}');
+
       // Load saved window settings
       await WindowSettingsService.initialize();
-      final savedBounds = await WindowSettingsService.loadWindowBounds();
+      var savedBounds = await WindowSettingsService.loadWindowBounds();
+
+      // Never restore an off-screen or degenerate saved position: validate
+      // against the current display layout (Windows only — the platform that
+      // persists window geometry).
+      if (Platform.isWindows) {
+        savedBounds = await _sanitizeSavedBounds(savedBounds);
+      }
 
       // Configure window options
-      final windowSize = savedBounds != null 
-          ? Size(savedBounds.width, savedBounds.height) 
+      final windowSize = savedBounds != null
+          ? Size(savedBounds.width, savedBounds.height)
           : WindowSettingsService.getDefaultSize();
       final windowOptions = WindowOptions(
         size: windowSize,
         minimumSize: WindowSettingsService.getMinimumSize(),
-        center: savedBounds == null || savedBounds.x == null || savedBounds.y == null,
+        center: savedBounds == null ||
+            savedBounds.x == null ||
+            savedBounds.y == null,
         backgroundColor: const Color(0xFF0A0A0F),
         skipTaskbar: false,
         titleBarStyle: TitleBarStyle.normal,
@@ -85,18 +128,28 @@ void main(List<String> args) async {
       );
 
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
-        // Apply saved maximized state
+        // Apply saved maximized state, or restore the saved position.
+        // Each call is individually guarded so show() + focus() always run.
         if (savedBounds?.maximized == true) {
-          await windowManager.maximize();
+          await _safeWindowCall('maximize', () => windowManager.maximize());
+        } else if (savedBounds?.x != null && savedBounds?.y != null) {
+          await _safeWindowCall(
+            'setPosition',
+            () => windowManager.setPosition(
+              Offset(savedBounds!.x!, savedBounds.y!),
+            ),
+          );
         }
-        
-        // If we have saved position and not centered, apply it
-        if (savedBounds?.x != null && savedBounds?.y != null) {
-          await windowManager.setPosition(Offset(savedBounds!.x!, savedBounds.y!));
-        }
-        
+
         await windowManager.show();
         await windowManager.focus();
+        await StartupLogger.log(
+          'Window shown — size ${windowSize.width.toInt()}x'
+          '${windowSize.height.toInt()}, position '
+          '${savedBounds?.x?.toInt() ?? 'centered'},'
+          '${savedBounds?.y?.toInt() ?? 'centered'}, maximized '
+          '${savedBounds?.maximized ?? false}',
+        );
       });
 
       // Window events handled by _SyndroAppState.onWindowClose()
@@ -104,8 +157,10 @@ void main(List<String> args) async {
       // Initialize desktop notification service
       await DesktopNotificationService.initialize();
       debugPrint('✅ Desktop notification service initialized');
+      await StartupLogger.log('Desktop notification service initialized');
     } catch (e) {
       debugPrint('⚠️ Window manager initialization failed: $e');
+      await StartupLogger.log('Window manager initialization failed: $e');
       // Continue without window manager - app will still work
     }
   }
@@ -155,6 +210,57 @@ void main(List<String> args) async {
   });
 }
 
+/// Convert screen_retriever displays into logical-pixel [Rect]s (falling back
+/// to the full size/zero origin when the visible area is unavailable).
+List<Rect> displayBounds(List<Display> displays) {
+  return displays.map((display) {
+    final position = display.visiblePosition ?? Offset.zero;
+    final size = display.visibleSize ?? display.size;
+    return Rect.fromLTWH(
+      position.dx,
+      position.dy,
+      size.width,
+      size.height,
+    );
+  }).toList();
+}
+
+/// Validate saved window bounds against the current display layout so the
+/// window can never be restored off-screen or with a degenerate size.
+Future<WindowBounds?> _sanitizeSavedBounds(WindowBounds? saved) async {
+  if (saved == null) return null;
+  try {
+    final displays = await ScreenRetriever.instance.getAllDisplays();
+    final result = WindowBoundsValidator.sanitize(
+      saved,
+      displayBounds(displays),
+    );
+    await StartupLogger.log(
+      result == null
+          ? 'Saved window bounds rejected (off-screen or degenerate): $saved'
+          : 'Saved window bounds accepted: $result',
+    );
+    return result;
+  } catch (e) {
+    debugPrint('⚠️ Could not validate window bounds: $e');
+    await StartupLogger.log('Could not validate window bounds: $e');
+    return saved;
+  }
+}
+
+/// Run a window-manager call but never let a failure stop the window from
+/// being shown.
+Future<void> _safeWindowCall(
+  String name,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (e) {
+    debugPrint('⚠️ Window call "$name" failed: $e');
+  }
+}
+
 class SyndroApp extends ConsumerStatefulWidget {
   final bool showOnboarding;
   final List<String>? incomingFiles;
@@ -202,6 +308,30 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     }
 
     _initializeApp();
+
+    // Self-heal: if the window did not become visible for any reason, force
+    // it after the first frame so the app can never end up icon-only.
+    if (Platform.isWindows || Platform.isLinux) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _ensureWindowVisible();
+      });
+    }
+  }
+
+  /// Force the window visible if it somehow ended up hidden.
+  Future<void> _ensureWindowVisible() async {
+    try {
+      final visible = await windowManager.isVisible();
+      if (!visible) {
+        debugPrint('⚠️ Window not visible after first frame — forcing show');
+        await windowManager.show();
+        await windowManager.focus();
+        await StartupLogger.log('Window not visible after first frame — '
+            'forced show');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not verify window visibility: $e');
+    }
   }
 
   @override
@@ -334,6 +464,28 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     if (mounted) {
       setState(() => _initialized = true);
     }
+    await StartupLogger.log(
+      _initError == null
+          ? 'App initialization complete'
+          : 'App initialization complete with error: $_initError',
+    );
+  }
+
+  /// One-time notification so users know the app kept running in the tray
+  /// instead of closing (previously this was silent and looked like a crash).
+  static bool _trayMinimizeNotified = false;
+
+  Future<void> _notifyMinimizedToTray() async {
+    if (_trayMinimizeNotified) return;
+    _trayMinimizeNotified = true;
+    try {
+      await DesktopNotificationService.show(
+        title: 'Syndro is still running',
+        body: 'The app is in the system tray — click the tray icon to reopen it.',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Tray minimize notification failed: $e');
+    }
   }
 
   @override
@@ -357,6 +509,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
 
       if (isPreventClose && SystemTrayService.isInitialized) {
         await SystemTrayService.minimizeToTray();
+        await _notifyMinimizedToTray();
       } else {
         // FIXED: Properly dispose resources before exiting
         debugPrint('🧹 Cleaning up resources before exit...');
@@ -374,7 +527,10 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         
         // Give services time to cleanup
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
+        // Release the single-instance listener before destroying the window
+        await _instanceGuard?.dispose();
+
         // Now destroy window
         await windowManager.destroy();
       }
