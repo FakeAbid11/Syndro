@@ -76,7 +76,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final packageInfo = await PackageInfo.fromPlatform();
       if (mounted) {
         setState(() {
-          _version = '${packageInfo.version} (${packageInfo.buildNumber})';
+          final build = packageInfo.buildNumber;
+          // Windows reports a "0" build number; hide it for a clean display.
+          _version = (build.isEmpty || build == '0')
+              ? packageInfo.version
+              : '${packageInfo.version} ($build)';
         });
       }
     } catch (e) {

@@ -4,13 +4,15 @@ name: Release
 #   • Push a v* tag  → builds Windows + Android and publishes them to that release.
 #   • Run manually (Actions ▸ Release ▸ Run workflow) and type a version, e.g.
 #     1.1.0 → it bumps pubspec.yaml, commits, creates the v1.1.0 tag, then builds
-#     and publishes the release. Leave the version blank for a build-only dry run.
+#     and publishes the release. The typed version is embedded in the exe
+#     version resource and the APK versionName, so the app shows exactly that
+#     version. Leave the version blank for a build-only dry run.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, e.g. 1.1.0 (blank = build-only dry run, no release)'
+        description: 'Release version, e.g. 1.1.0 — this exact version shows in the app on Windows and Android (blank = build-only dry run, no release)'
         required: false
         default: ''
   push:
@@ -145,8 +147,12 @@ jobs:
           (Get-Content windows/runner/Runner.rc) -replace 'VALUE "FileDescription", "syndro"', 'VALUE "FileDescription", "Syndro"' | Set-Content windows/runner/Runner.rc
 
       # Embed the real release version into the exe version resource so
-      # PackageInfo.fromPlatform() (used by the in-app update check) reports the
-      # installed version instead of the flutter-create default 1.0.0.
+      # PackageInfo.fromPlatform() (used by the settings screen and the in-app
+      # update check) reports the released version. Without this, the exe
+      # reports the pubspec version: flutter generates FLUTTER_VERSION from
+      # pubspec.yaml at build time and Runner.rc substitutes it into the
+      # version resource (the old CMakeLists.txt patch no longer matched the
+      # current template, so releases shipped with the stale pubspec version).
       - name: Embed version into Windows executable
         run: |
           $ver = "${{ needs.prepare.outputs.version }}"
@@ -155,13 +161,23 @@ jobs:
           $minor = if ($parts.Count -gt 1) { $parts[1] } else { '0' }
           $patch = if ($parts.Count -gt 2) { $parts[2] } else { '0' }
           $build = if ($parts.Count -gt 3) { $parts[3] } else { '0' }
-          $file = 'windows/runner/CMakeLists.txt'
-          (Get-Content $file) -replace 'FLUTTER_VERSION="[^"]*"', "FLUTTER_VERSION=`"$ver`"" | Set-Content $file
-          (Get-Content $file) -replace 'FLUTTER_VERSION_MAJOR=\d+', "FLUTTER_VERSION_MAJOR=$major" | Set-Content $file
-          (Get-Content $file) -replace 'FLUTTER_VERSION_MINOR=\d+', "FLUTTER_VERSION_MINOR=$minor" | Set-Content $file
-          (Get-Content $file) -replace 'FLUTTER_VERSION_PATCH=\d+', "FLUTTER_VERSION_PATCH=$patch" | Set-Content $file
-          (Get-Content $file) -replace 'FLUTTER_VERSION_BUILD=\d+', "FLUTTER_VERSION_BUILD=$build" | Set-Content $file
-          Get-Content $file | Select-String 'FLUTTER_VERSION'
+          $rc = 'windows/runner/Runner.rc'
+          (Get-Content $rc) -replace `
+            '#define VERSION_AS_NUMBER FLUTTER_VERSION_MAJOR,FLUTTER_VERSION_MINOR,FLUTTER_VERSION_PATCH,FLUTTER_VERSION_BUILD', `
+            "#define VERSION_AS_NUMBER $major,$minor,$patch,$build" | Set-Content $rc
+          (Get-Content $rc) -replace `
+            '#define VERSION_AS_STRING FLUTTER_VERSION', `
+            "#define VERSION_AS_STRING `"$ver`"" | Set-Content $rc
+          # Fail loudly instead of shipping a release that reports a stale
+          # version, if the patch above did not land.
+          $rcText = Get-Content $rc -Raw
+          if ($rcText -notmatch "#define VERSION_AS_NUMBER $major,$minor,$patch,$build" -or `
+              $rcText -notmatch "#define VERSION_AS_STRING `"$ver`"") {
+            Write-Error "Failed to embed version $ver into Runner.rc"
+            exit 1
+          }
+          Write-Output "Embedded version $ver into Runner.rc:"
+          Get-Content $rc | Select-String 'VERSION_AS_'
 
       - name: Generate App Icons
         run: dart run flutter_launcher_icons
@@ -378,7 +394,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: flutter build apk --release --build-number=${{ github.run_number }}
+        run: flutter build apk --release --build-name=${{ needs.prepare.outputs.version }} --build-number=${{ github.run_number }}
 
       # Rename the release APK with the version so the asset is self-describing.
       - name: Rename Release APK
