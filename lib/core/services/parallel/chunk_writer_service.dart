@@ -155,6 +155,26 @@ class ChunkWriterService {
   }
 
   /// Check if specific chunk was received
+  /// Read a chunk from the temp file at the given index.
+  /// Returns null if the chunk has not been written yet.
+  Future<Uint8List?> readChunk(int chunkIndex) async {
+    if (_file == null || _isClosed) return null;
+    if (chunkIndex >= totalChunks) return null;
+    if (!_receivedChunks.contains(chunkIndex)) return null;
+
+    final chunkStart = chunkIndex * config.chunkSize;
+    final remainingSize = totalSize - chunkStart;
+    final chunkSize = remainingSize > config.chunkSize ? config.chunkSize : remainingSize;
+
+    // Use write lock to avoid concurrent seek/read races on the shared RAF
+    Uint8List? result;
+    await _writeLock.synchronized(() async {
+      await _file!.setPosition(chunkStart);
+      result = await _file!.read(chunkSize);
+    });
+    return result;
+  }
+
   bool hasChunk(int chunkIndex) => _receivedChunks.contains(chunkIndex);
 
   /// Finalize and rename temp file to final

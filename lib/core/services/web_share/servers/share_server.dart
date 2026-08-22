@@ -264,7 +264,7 @@ class ShareServer {
       _serve();
 
       // FIX (Bug #31): Store timer reference for proper cleanup
-      _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (_) => _cleanupStaleClients());
+      _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (_) { _cleanupStaleClients(); _cleanupRateLimits(); });
 
       // Auto-expire after duration
       _expirationTimer = Timer(_shareExpiration, () {
@@ -338,6 +338,22 @@ class ShareServer {
   }
 
   /// Clean up stale connected clients to avoid unbounded growth
+  /// Clean up stale rate limit entries to prevent unbounded growth
+  void _cleanupRateLimits() {
+    final now = DateTime.now();
+    final windowStart = now.subtract(_rateLimitWindow);
+    final keysToRemove = <String>[];
+    for (final entry in _requestTimestamps.entries) {
+      entry.value.removeWhere((t) => t.isBefore(windowStart));
+      if (entry.value.isEmpty) {
+        keysToRemove.add(entry.key);
+      }
+    }
+    for (final key in keysToRemove) {
+      _requestTimestamps.remove(key);
+    }
+  }
+
   void _cleanupStaleClients() {
     if (_connectedClients.isEmpty) return;
 

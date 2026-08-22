@@ -292,6 +292,19 @@ class ReceiveServer {
       AppLogger.error('Error closing server: $e');
     }
 
+    // Clean up rate limit entries to prevent unbounded growth
+    final rateLimitWindowStart = DateTime.now().subtract(_rateLimitWindow);
+    final keysToRemove = <String>[];
+    for (final entry in _requestTimestamps.entries) {
+      entry.value.removeWhere((t) => t.isBefore(rateLimitWindowStart));
+      if (entry.value.isEmpty) {
+        keysToRemove.add(entry.key);
+      }
+    }
+    for (final key in keysToRemove) {
+      _requestTimestamps.remove(key);
+    }
+
     _shareUrl = null;
   }
 
@@ -415,6 +428,8 @@ class ReceiveServer {
     }
   }
   Future<void> _handleFileUpload(HttpRequest request) async {
+    final clientIp = request.connectionInfo?.remoteAddress.address ?? 'unknown';
+
     if (_tempDirectory == null) {
       request.response.statusCode = HttpStatus.internalServerError;
       request.response.write('Server not properly initialized');
@@ -443,6 +458,36 @@ class ReceiveServer {
         request.response.write('No boundary found');
         await request.response.close();
         return;
+      }
+
+      // Generate a stable upload ID from the request metadata for approval checks
+      final uploadId = '${clientIp}_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Create a pending confirmation entry if confirmation is required
+      if (_requireConfirmation && !_pendingConfirmations.containsKey(uploadId)) {
+        // We don't know the filename yet, use a placeholder
+        final pending = UploadPendingConfirmation(
+          ipAddress: clientIp,
+          fileName: 'Upload from $clientIp',
+          fileSize: 0, // Will be updated once we know the size
+        );
+        _pendingConfirmations[uploadId] = pending;
+        _confirmationRequestController.add(pending);
+        AppLogger.info('Upload confirmation requested for $clientIp');
+
+        // Poll for approval (max 2 minutes)
+        final approvalDeadline = DateTime.now().add(const Duration(minutes: 2));
+        while (pending.isPending && DateTime.now().isBefore(approvalDeadline)) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+        if (pending.denied || pending.isPending) {
+          request.response.statusCode = HttpStatus.forbidden;
+          request.response.write('Upload denied by user');
+          await request.response.close();
+          _pendingConfirmations.remove(uploadId);
+          return;
+        }
+        AppLogger.info('Upload approved for $clientIp');
       }
 
       // BUG-003 FIX: Check Content-Length BEFORE reading body to prevent OOM

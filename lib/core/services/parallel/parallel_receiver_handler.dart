@@ -100,6 +100,19 @@ class ParallelReceiverHandler {
         _sessions[transferId] = session;
       });
 
+      // Start periodic progress emitter to keep UI alive during chunk gaps
+      Timer.periodic(const Duration(seconds: 1), (timer) async {
+        ParallelReceiveSession? s;
+        await _sessionsLock.synchronized(() async {
+          s = _sessions[transferId];
+        });
+        if (s == null || s!.writer.isComplete) {
+          timer.cancel();
+          return;
+        }
+        onProgress?.call(transferId, s!.bytesReceived, s!.fileSize);
+      });
+
       return {
         'success': true,
         'transferId': transferId,

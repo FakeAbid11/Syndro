@@ -1,12 +1,16 @@
 package com.syndro.app
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,13 +25,24 @@ class MainActivity : FlutterActivity() {
     private val SOUND_CHANNEL = "com.syndro.app/sound"
     private val LIVE_ACTIVITY_CHANNEL = "syndro/live_activity"
 
+    private val LIVE_ACTIVITY_CHANNEL_ID = "syndro_transfer_progress"
+    private val LIVE_ACTIVITY_NOTIFICATION_ID = 9001
+
     private var eventSink: EventChannel.EventSink? = null
     private var transferEventReceiver: BroadcastReceiver? = null
     private var pendingShareIntent: Intent? = null
     private var currentActivityId: String? = null
 
+    // Live Activity state tracking
+    private var liveActivityFileName: String = ""
+    private var liveActivitySenderName: String = ""
+    private var liveActivityIsIncoming: Boolean = true
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Create notification channel for transfer progress (Android 8+)
+        createLiveActivityNotificationChannel()
 
         // Handle share intent if app was launched from share
         handleShareIntent(intent)
@@ -208,13 +223,13 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // Live Activity Channel - For Android lock screen progress
+        // Live Activity Channel - For Android transfer progress notifications
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_ACTIVITY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isSupported" -> {
-                        // Live Activities require Android 12+ (API 31)
-                        val isSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        // Transfer progress notifications work on Android 8+ (API 26)
+                        val isSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                         result.success(isSupported)
                     }
                     "startTransferActivity" -> {
@@ -314,6 +329,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         unregisterTransferEventReceiver()
+        // Cancel any active live activity notification on destroy
+        cancelLiveActivityNotification()
         super.onDestroy()
     }
 
@@ -557,12 +574,32 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // ============================================================    // ============================================================
+    // Live Activity Methods (Android transfer progress notifications)
     // ============================================================
-    // Live Activity Methods (for Android lock screen progress)
-    // ============================================================
+
+    private fun createLiveActivityNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                LIVE_ACTIVITY_CHANNEL_ID,
+                "Transfer Progress",
+                NotificationManager.IMPORTANCE_LOW  // Low = no sound, shows in shade
+            ).apply {
+                description = "Shows real-time file transfer progress"
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
 
     /**
      * Start a Live Activity for transfer progress.
+     * Shows an ongoing notification with a progress bar.
      * Returns a unique activity ID.
      */
     private fun startLiveActivity(
@@ -573,23 +610,50 @@ class MainActivity : FlutterActivity() {
     ): String {
         val activityId = "transfer_${System.currentTimeMillis()}"
         
-        // For now, show a progress notification as fallback
-        // Full Live Activity implementation would use ActivityKit
-        Log.d("LiveActivity", "Starting transfer activity: $fileName, $totalBytes bytes from $senderName")
-        
+        // Track state for subsequent updates
+        liveActivityFileName = fileName
+        liveActivitySenderName = senderName
+        liveActivityIsIncoming = isIncoming
+
+        val direction = if (isIncoming) "Receiving from" else "Sending to"
+        val sizeText = formatFileSize(totalBytes.toLong())
+
+        val notification = buildTransferNotification(
+            title = "$direction $senderName",
+            content = "$fileName ($sizeText)",
+            progress = 0,
+            maxProgress = 100,
+            ongoing = true
+        )
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(LIVE_ACTIVITY_NOTIFICATION_ID, notification)
+
+        Log.d("LiveActivity", "Started notification: $fileName, $sizeText from $senderName (id=$activityId)")
         return activityId
     }
 
     /**
-     * Update the progress of an active Live Activity.
+     * Update the progress of an active Live Activity notification.
      */
     private fun updateLiveActivityProgress(bytesTransferred: Int, speed: Double) {
-        Log.d("LiveActivity", "Progress: $bytesTransferred bytes, ${speed}bytes/s")
-        // Full implementation would update the Live Activity widget
+        val direction = if (liveActivityIsIncoming) "Receiving from" else "Sending to"
+        val speedText = formatSpeed(speed)
+
+        val notification = buildTransferNotification(
+            title = "$direction $liveActivitySenderName",
+            content = "$liveActivityFileName • $speedText",
+            progress = bytesTransferred,
+            maxProgress = 0, // Indeterminate if we don't know total
+            ongoing = true
+        )
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(LIVE_ACTIVITY_NOTIFICATION_ID, notification)
     }
 
     /**
-     * Update the full transfer state in the Live Activity.
+     * Update the full transfer state in the Live Activity notification.
      */
     private fun updateLiveActivityState(
         bytesTransferred: Int,
@@ -598,28 +662,116 @@ class MainActivity : FlutterActivity() {
         speed: Double,
         eta: String?
     ) {
-        val progressText = "${progress.toInt()}%"
+        val direction = if (liveActivityIsIncoming) "Receiving from" else "Sending to"
         val speedText = formatSpeed(speed)
-        Log.d("LiveActivity", "State: $progressText, $speedText, ETA: $eta")
-        // Full implementation would update the Live Activity widget
+        val transferredText = formatFileSize(bytesTransferred.toLong())
+        val totalText = formatFileSize(totalBytes.toLong())
+
+        val contentBuilder = StringBuilder()
+        contentBuilder.append("$transferredText / $totalText")
+        contentBuilder.append(" • $speedText")
+        if (!eta.isNullOrEmpty()) {
+            contentBuilder.append(" • $eta")
+        }
+
+        val notification = buildTransferNotification(
+            title = "$direction $liveActivitySenderName",
+            content = contentBuilder.toString(),
+            progress = bytesTransferred,
+            maxProgress = totalBytes,
+            ongoing = true
+        )
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(LIVE_ACTIVITY_NOTIFICATION_ID, notification)
+
+        Log.d("LiveActivity", "Updated: ${progress.toInt()}%, $speedText, ETA: $eta")
     }
 
     /**
-     * End the Live Activity.
+     * End the Live Activity - show a brief completion notification, then dismiss.
      */
     private fun endLiveActivity(success: Boolean, message: String?) {
-        Log.d("LiveActivity", "Ending activity: success=$success, message=$message")
-        // Full implementation would dismiss the Live Activity
+        if (success) {
+            // Show a brief completion notification
+            val completionNotification = buildTransferNotification(
+                title = "Transfer Complete",
+                content = message ?: liveActivityFileName,
+                progress = 0,
+                maxProgress = 0,
+                ongoing = false
+            )
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.notify(LIVE_ACTIVITY_NOTIFICATION_ID + 1, completionNotification)
+        }
+
+        // Cancel the ongoing progress notification
+        cancelLiveActivityNotification()
+
+        Log.d("LiveActivity", "Ended: success=$success, message=$message")
     }
 
     /**
-     * Format speed in bytes/sec to human readable string.
+     * Cancel the ongoing progress notification.
+     */
+    private fun cancelLiveActivityNotification() {
+        try {
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.cancel(LIVE_ACTIVITY_NOTIFICATION_ID)
+        } catch (e: Exception) {
+            Log.e("LiveActivity", "Error cancelling notification: $e")
+        }
+    }
+
+    /**
+     * Build a transfer progress notification.
+     */
+    private fun buildTransferNotification(
+        title: String,
+        content: String,
+        progress: Int,
+        maxProgress: Int,
+        ongoing: Boolean
+    ): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, LIVE_ACTIVITY_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setOngoing(ongoing)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        if (maxProgress > 0) {
+            builder.setProgress(maxProgress, progress, false)
+        } else {
+            builder.setProgress(0, 0, true) // Indeterminate
+        }
+
+        return builder.build()
+    }
+
+    /**
+     * Format bytes/sec to a human-readable speed string.
      */
     private fun formatSpeed(bytesPerSecond: Double): String {
         return when {
             bytesPerSecond < 1024 -> "${bytesPerSecond.toInt()} B/s"
             bytesPerSecond < 1024 * 1024 -> "${(bytesPerSecond / 1024).toInt()} KB/s"
             else -> "${(bytesPerSecond / (1024 * 1024)).toInt()} MB/s"
+        }
+    }
+
+    /**
+     * Format byte count to a human-readable size string.
+     */
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            bytes < 1024L * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+            else -> "${bytes / (1024L * 1024 * 1024)} GB"
         }
     }
 }

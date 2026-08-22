@@ -121,6 +121,10 @@ class TransferService {
   // able to spam approval prompts (mirrors ShareServer's limiter).
   static const int _maxInitiatesPerMinute = 20;
   static const Duration _initiateRateLimitWindow = Duration(minutes: 1);
+
+  // Throttle Live Activity notification updates to avoid flooding the native channel
+  DateTime? _lastLiveActivityUpdate;
+  static const Duration _liveActivityThrottle = Duration(seconds: 2);
   final Map<String, List<DateTime>> _initiateTimestamps = {};
 
   final _pendingRequestsController =
@@ -360,8 +364,23 @@ class TransferService {
   void _startSessionCleanup() {
     _sessionCleanupTimer = Timer.periodic(
       const Duration(minutes: 15),
-      (_) => _cleanupExpiredSessions(),
+      (_) { _cleanupExpiredSessions(); _cleanupRateLimits(); },
     );
+  }
+
+  void _cleanupRateLimits() {
+    final now = DateTime.now();
+    final windowStart = now.subtract(_initiateRateLimitWindow);
+    final keysToRemove = <String>[];
+    for (final entry in _initiateTimestamps.entries) {
+      entry.value.removeWhere((t) => t.isBefore(windowStart));
+      if (entry.value.isEmpty) {
+        keysToRemove.add(entry.key);
+      }
+    }
+    for (final key in keysToRemove) {
+      _initiateTimestamps.remove(key);
+    }
   }
 
   void _cleanupExpiredSessions() {
@@ -693,8 +712,42 @@ class TransferService {
         return;
       }
 
-      // Chunk download via browser not supported - use parallel transfer instead
-      await _sendError(request, 'Chunk download not supported for browser mode');
+      // SECURITY: Verify the caller is the authorized sender of this transfer
+      final callerId = request.headers.value('x-device-id');
+      if (callerId == null || callerId.isEmpty) {
+        await _sendUnauthorized(request, 'Missing device ID');
+        return;
+      }
+      if (session.senderId != callerId) {
+        await _sendUnauthorized(request, 'Not authorized for this transfer');
+        return;
+      }
+
+      // Serve chunk data from the writer
+      final chunkIndexStr = pathParts.length > 4 ? pathParts[4] : null;
+      if (chunkIndexStr == null) {
+        await _sendBadRequest(request, 'Missing chunk index');
+        return;
+      }
+      final chunkIndex = int.tryParse(chunkIndexStr);
+      if (chunkIndex == null || chunkIndex < 0) {
+        await _sendBadRequest(request, 'Invalid chunk index');
+        return;
+      }
+
+      try {
+        final chunkData = await session.writer.readChunk(chunkIndex);
+        if (chunkData == null) {
+          await _sendNotFound(request, 'Chunk not found');
+          return;
+        }
+        request.response.headers.contentType = ContentType('application', 'octet-stream');
+        request.response.headers.contentLength = chunkData.length;
+        request.response.add(chunkData);
+        await request.response.close();
+      } catch (e) {
+        await _sendError(request, 'Error reading chunk: $e');
+      }
     } catch (e) {
       await _sendError(request, 'Error serving chunk: $e');
     }
@@ -2265,6 +2318,17 @@ class TransferService {
               totalBytes: originalSize,
             );
 
+            // Update Live Activity notification on Android (throttled)
+            final now = DateTime.now();
+            if (_lastLiveActivityUpdate == null || now.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
+              _lastLiveActivityUpdate = now;
+              LiveActivityService.updateTransferState(
+                bytesTransferred: bytesReceived,
+                totalBytes: originalSize,
+                speed: 0,
+              );
+            }
+
             final updatedTransfer = _activeTransfers[transferId]!.copyWith(
               progress: TransferProgress(
                 bytesTransferred: bytesReceived,
@@ -2321,6 +2385,21 @@ class TransferService {
       }
       await tempFileRef.rename(finalFilePath);
       tempFilePath = null;
+
+      // Verify file integrity using SHA-256 hash
+      final receivedHash = request.headers.value('x-file-hash');
+      if (receivedHash != null && receivedHash.isNotEmpty) {
+        final calculatedHash = await _calculateHashFromFile(finalFile);
+        if (calculatedHash != receivedHash) {
+          AppLogger.error('Hash mismatch for unencrypted upload: expected $receivedHash, got $calculatedHash');
+          await finalFile.delete();
+          throw TransferException(
+            'File integrity check failed: hash mismatch',
+            code: 'HASH_MISMATCH',
+          );
+        }
+        AppLogger.info('File hash verified for unencrypted upload');
+      }
 
       // Apply file metadata (modification time)
       if (fileModified != null) {
@@ -2408,6 +2487,7 @@ class TransferService {
       }
 
             await BackgroundTransferService.stopBackgroundTransfer();
+      LiveActivityService.endActivity(success: false, message: 'Transfer failed');
       if (e is TransferException) {
         // Expected protocol failures (size mismatch, hash mismatch) are
         // client errors — 400, not 500.
@@ -2562,6 +2642,17 @@ class TransferService {
             totalBytes: fileSize,
           );
 
+          // Update Live Activity notification on Android (throttled)
+          final now = DateTime.now();
+          if (_lastLiveActivityUpdate == null || now.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
+            _lastLiveActivityUpdate = now;
+            LiveActivityService.updateTransferState(
+              bytesTransferred: bytesReceived,
+              totalBytes: fileSize,
+              speed: 0,
+            );
+          }
+
           final updatedTransfer = _activeTransfers[transferId]!.copyWith(
             progress: TransferProgress(
               bytesTransferred: bytesReceived,
@@ -2681,6 +2772,7 @@ class TransferService {
       }
 
             await BackgroundTransferService.stopBackgroundTransfer();
+      LiveActivityService.endActivity(success: false, message: 'Transfer failed');
       if (e is TransferException) {
         // Expected protocol failures (size mismatch) are client errors.
         await _sendBadRequest(request, e.message);
@@ -3073,6 +3165,16 @@ class TransferService {
 
       int totalBytesTransferred = checkpoint?.bytesTransferred ?? 0;
 
+      // Start Live Activity for outgoing transfer on Android
+      if (Platform.isAndroid) {
+        LiveActivityService.startTransferActivity(
+          fileName: items.length == 1 ? items.first.name : '${items.length} files',
+          totalBytes: totalSize,
+          senderName: receiver.name,
+          isIncoming: false,
+        );
+      }
+
       for (int i = startIndex; i < items.length; i++) {
         final item = items[i];
 
@@ -3168,6 +3270,7 @@ class TransferService {
       if (kDebugMode) AppLogger.info('Stack trace: $stackTrace');
 
       await BackgroundTransferService.stopBackgroundTransfer();
+      LiveActivityService.endActivity(success: false, message: 'Transfer failed');
 
       // A user-initiated cancellation (e.g. while paused) already updated
       // the state — don't overwrite it with "failed".
@@ -3274,6 +3377,17 @@ class TransferService {
               bytesTransferred: totalBytesTransferred + bytesSent,
               totalBytes: totalSize,
             );
+
+            // Update Live Activity notification on Android (throttled)
+            final sendNow = DateTime.now();
+            if (_lastLiveActivityUpdate == null || sendNow.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
+              _lastLiveActivityUpdate = sendNow;
+              LiveActivityService.updateTransferState(
+                bytesTransferred: totalBytesTransferred + bytesSent,
+                totalBytes: totalSize,
+                speed: 0,
+              );
+            }
           }
 
           final updatedTransfer = _activeTransfers[transferId]!.copyWith(
@@ -3350,6 +3464,10 @@ class TransferService {
     request.headers['x-file-name'] = item.name;
     request.headers['x-file-size'] = fileSize.toString();
     request.headers['x-relative-path'] = item.parentPath ?? '';
+    // Compute and send file hash for integrity verification on receiver side
+    final fileHash = await _calculateHashFromFile(file);
+    request.headers['x-file-hash'] = fileHash;
+    request.headers['x-original-size'] = fileSize.toString();
     request.headers['Content-Type'] = 'application/octet-stream';
     request.headers['Content-Length'] = fileSize.toString();
     request.headers['x-device-id'] = sender.id;
@@ -3376,6 +3494,17 @@ class TransferService {
             bytesTransferred: totalBytesTransferred + bytesSent,
             totalBytes: totalSize,
           );
+
+          // Update Live Activity notification on Android (throttled)
+          final sendNow = DateTime.now();
+          if (_lastLiveActivityUpdate == null || sendNow.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
+            _lastLiveActivityUpdate = sendNow;
+            LiveActivityService.updateTransferState(
+              bytesTransferred: totalBytesTransferred + bytesSent,
+              totalBytes: totalSize,
+              speed: 0,
+            );
+          }
         }
 
         final updatedTransfer = _activeTransfers[transferId]!.copyWith(
