@@ -761,7 +761,10 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
     }
   }
 
+  int? _cachedTotalSize;
+
   Future<int> _getTotalSize() async {
+    if (_cachedTotalSize != null) return _cachedTotalSize!;
     int total = 0;
     int errorCount = 0;
     for (final file in _files) {

@@ -58,7 +58,15 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
     });
   }
 
-  int get _totalSize => widget.files.fold(0, (sum, item) => sum + item.size);
+  @override
+  void dispose() {
+    try {
+      ref.read(deviceDiscoveryProvider.notifier).stopDiscovery();
+    } catch (_) {}
+    super.dispose();
+  }
+
+    int get _totalSize => widget.files.fold(0, (sum, item) => sum + item.size);
 
   void _selectDevice(Device device) {
     // Notify the launcher (home screen) that the quick-send flow finished —

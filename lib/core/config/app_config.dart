@@ -14,6 +14,13 @@ class AppConfig {
   AppConfig._();
 
   // ============================================
+  // BRANDING
+  // ============================================
+
+  /// Developer/author name shown in the About section.
+  static const String developerName = 'FakeAbid';
+
+  // ============================================
   // TRANSFER CONFIGURATION
   // ============================================
 

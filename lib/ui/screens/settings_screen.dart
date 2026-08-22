@@ -15,6 +15,7 @@ import '../../core/utils/app_logger.dart';
 import '../../core/widgets/update_dialog.dart';
 import '../../core/services/transfer_service/models.dart';
 import '../../core/services/transfer_service/transfer_service_impl.dart';
+import '../../core/config/app_config.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -588,7 +589,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                       ),
                       Text(
-                        'FakeAbid',
+                        AppConfig.developerName,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,

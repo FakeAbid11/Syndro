@@ -9,6 +9,7 @@ import '../widgets/common/app_widgets.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/transfer_provider.dart';
+import '../../core/services/background_transfer_service.dart';
 
 class TransferProgressScreen extends ConsumerStatefulWidget {
   final String transferId;
@@ -49,6 +50,12 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+
+    Timer(const Duration(seconds: 30), () {
+      if (mounted && _pulseController.isAnimating) {
+        _pulseController.stop();
+      }
+    });
 
     // Record transfer start time for speed calculation
     _transferStartTime = DateTime.now();
@@ -105,6 +112,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   void _onTransferComplete() {
+    _speedTimer?.cancel();
     // Show completion message
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -252,52 +260,10 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
         appBar: AppBar(
           title: Text(widget.isSender ? 'Sending Files' : 'Receiving Files'),
           backgroundColor: AppTheme.backgroundColor,
+          // PopScope handles back navigation; leading triggers same path
           leading: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () async {
-              final status = _currentTransfer?.status;
-              
-              if (status == TransferStatus.completed ||
-                  status == TransferStatus.failed ||
-                  status == TransferStatus.cancelled) {
-                Navigator.of(context).pop();
-              } else {
-                final shouldCancel = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) => AlertDialog(
-                    backgroundColor: AppTheme.surfaceColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    title: const Text('Cancel Transfer?'),
-                    content: const Text(
-                        'The transfer is still in progress. Going back will cancel it. Are you sure?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, false),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                        ),
-                        child: const Text('Keep Transferring'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, true),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.errorColor,
-                        ),
-                        child: const Text('Cancel Transfer'),
-                      ),
-                    ],
-                  ),
-                );
-                
-                if (shouldCancel == true && context.mounted) {
-                  final transferService = ref.read(transferServiceProvider);
-                  transferService.cancelTransfer(widget.transferId);
-                  Navigator.of(context).pop(false);
-                }
-              }
-            },
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
         ),
         body: Container(
@@ -649,6 +615,8 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildPausedState() {
+    _speed = 0;
+    _lastBytes = _currentTransfer?.progress.bytesTransferred ?? 0;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -727,6 +695,19 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           '${widget.items.length} file${widget.items.length == 1 ? '' : 's'} ${widget.isSender ? 'sent' : 'received'} successfully',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
+        if (!widget.isSender && widget.items.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          OutlinedButton.icon(
+            onPressed: () {
+              final filePath = widget.items.first.path;
+              if (filePath.isNotEmpty) {
+                BackgroundTransferService.openFileLocation(filePath);
+              }
+            },
+            icon: const Icon(Icons.folder_open, size: 20),
+            label: const Text('Open in Folder'),
+          ),
+        ],
       ],
     );
   }
@@ -760,6 +741,12 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).pop('retry'),
+          icon: const Icon(Icons.refresh, size: 20),
+          label: const Text('Retry'),
         ),
       ],
     );

@@ -58,7 +58,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     }
     
     try {
-      _webShareService.dispose();
+      _webShareService.stopSharing();
     } catch (e) {
       debugPrint('Error disposing web share service: $e');
     }

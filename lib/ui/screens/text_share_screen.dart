@@ -32,6 +32,14 @@ class _TextShareScreenState extends ConsumerState<TextShareScreen> {
   bool _isSending = false;
 
   @override
+  void dispose() {
+    try {
+      ref.read(deviceDiscoveryProvider.notifier).stopDiscovery();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {

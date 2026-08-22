@@ -375,7 +375,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   bool _isMobile() {
-    return Platform.isAndroid;
+    return Platform.isAndroid || Platform.isIOS;
   }
 
   // FIX (Bug #13): Ensure loading dialog is always dismissed
@@ -1131,7 +1131,7 @@ Future<void> _showTextComposeDialog(Device device) async {
             // Send Text FAB (when device selected)
             if (selectedDevice != null)
               Positioned(
-                right: AppSpacing.xl + 170,
+                right: AppSpacing.xl + 88,
                 bottom: _isMobile() ? 190 : 80,
                 child: FloatingActionButton(
                   heroTag: 'sendText',

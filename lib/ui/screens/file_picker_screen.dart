@@ -266,6 +266,17 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
             _isLoading = false;
           });
 
+          if (files.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Folder is empty'),
+                backgroundColor: AppTheme.warningColor,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            return;
+          }
+
           // Trigger animation when files are added
           _animationController.forward(from: 0);
 
