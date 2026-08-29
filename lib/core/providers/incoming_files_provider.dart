@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/transfer.dart';
 import '../utils/byte_formatter.dart';
 
+import '../utils/app_logger.dart';
 /// Provider for managing files received from command line arguments (right-click send)
 final incomingFilesProvider =
     StateNotifierProvider<IncomingFilesNotifier, IncomingFilesState>((ref) {
@@ -61,7 +61,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
 
         // Handle Android content:// URIs
         if (path.startsWith('content://')) {
-          debugPrint('📱 Processing Android content URI: $path');
+          AppLogger.info('📱 Processing Android content URI: $path');
           // For content URIs, we'll use the URI directly
           // The transfer service will handle reading from the content resolver
           final name = _extractNameFromContentUri(path);
@@ -73,7 +73,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
             isDirectory: false,
           ));
           
-          debugPrint('📁 Added content URI: $name');
+          AppLogger.info('📁 Added content URI: $name');
           continue;
         }
 
@@ -91,7 +91,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
             isDirectory: false,
           ));
           
-          debugPrint('📁 Added file: $name (${ByteFormatter.format(stat.size)})');
+          AppLogger.info('📁 Added file: $name (${ByteFormatter.format(stat.size)})');
         } else if (await directory.exists()) {
           // Calculate folder size
           int folderSize = 0;
@@ -113,12 +113,12 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
             isDirectory: true,
           ));
           
-          debugPrint('📂 Added folder: $name ($fileCount files, ${ByteFormatter.format(folderSize)})');
+          AppLogger.info('📂 Added folder: $name ($fileCount files, ${ByteFormatter.format(folderSize)})');
         } else {
-          debugPrint('⚠️ Path does not exist: $path');
+          AppLogger.warn('⚠️ Path does not exist: $path');
         }
       } catch (e) {
-        debugPrint('❌ Error processing path $path: $e');
+        AppLogger.error('❌ Error processing path $path: $e');
       }
     }
 
@@ -129,7 +129,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
     );
 
     if (items.isNotEmpty) {
-      debugPrint('✅ Loaded ${items.length} incoming file(s)');
+      AppLogger.info('✅ Loaded ${items.length} incoming file(s)');
     }
   }
 
@@ -153,7 +153,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
         }
       }
     } catch (e) {
-      debugPrint('Error extracting name from URI: $e');
+      AppLogger.info('Error extracting name from URI: $e');
     }
     return 'shared_file';
   }
@@ -175,7 +175,7 @@ class IncomingFilesNotifier extends StateNotifier<IncomingFilesState> {
       isProcessing: false,
     );
     if (files.isNotEmpty) {
-      debugPrint('✅ Set ${files.length} file(s) directly');
+      AppLogger.info('✅ Set ${files.length} file(s) directly');
     }
   }
 

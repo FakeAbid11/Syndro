@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:flutter/foundation.dart';
 
+import '../utils/app_logger.dart';
 /// Service for calculating file hashes WITHOUT loading entire file into RAM
 /// 
 /// Memory usage: ~1MB regardless of file size
@@ -71,7 +71,7 @@ class StreamingHashService {
       return await completer.future;
     } catch (e) {
       subscription?.cancel();
-      debugPrint('Error calculating file hash: $e');
+      AppLogger.info('Error calculating file hash: $e');
       rethrow;
     }
   }
@@ -141,7 +141,7 @@ class StreamingHashService {
       return await completer.future;
     } catch (e) {
       subscription?.cancel();
-      debugPrint('Error calculating file hash: $e');
+      AppLogger.info('Error calculating file hash: $e');
       rethrow;
     }
   }
@@ -159,7 +159,7 @@ class StreamingHashService {
 
       return output.events.single.toString();
     } catch (e) {
-      debugPrint('Error calculating stream hash: $e');
+      AppLogger.info('Error calculating stream hash: $e');
       rethrow;
     }
   }

@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common/app_widgets.dart';
 import 'main_navigation_screen.dart';
 
+import '../../core/utils/app_logger.dart';
 class PermissionsOnboardingScreen extends StatefulWidget {
   const PermissionsOnboardingScreen({super.key});
 
@@ -98,7 +99,7 @@ class _PermissionsOnboardingScreenState
         };
       });
     } catch (e) {
-      debugPrint('Error checking permissions: $e');
+      AppLogger.info('Error checking permissions: $e');
     }
   }
 
@@ -137,7 +138,7 @@ class _PermissionsOnboardingScreenState
 
       await _checkPermissions();
     } catch (e) {
-      debugPrint('Permission request error: $e');
+      AppLogger.info('Permission request error: $e');
     }
 
     if (!mounted) return;
@@ -211,7 +212,7 @@ const SizedBox(height: AppSpacing.lg),
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('permissions_onboarding_complete', true);
     } catch (e) {
-      debugPrint('Failed to save permissions status: $e');
+      AppLogger.info('Failed to save permissions status: $e');
     }
 
     if (!mounted) return;

@@ -11,6 +11,7 @@ import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
+import '../../core/utils/app_logger.dart';
 class BrowserReceiveScreen extends StatefulWidget {
   const BrowserReceiveScreen({super.key});
 
@@ -47,20 +48,20 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
       _filesSubscription?.cancel();
       _filesSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling files subscription: $e');
+      AppLogger.info('Error cancelling files subscription: $e');
     }
     
     try {
       _fileEventSubscription?.cancel();
       _fileEventSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling file event subscription: $e');
+      AppLogger.info('Error cancelling file event subscription: $e');
     }
     
     try {
       _webShareService.stopSharing();
     } catch (e) {
-      debugPrint('Error disposing web share service: $e');
+      AppLogger.info('Error disposing web share service: $e');
     }
     
     super.dispose();
@@ -198,7 +199,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           }
           return syndroFolder;
         } catch (e) {
-          debugPrint('Error creating Syndro folder: $e');
+          AppLogger.info('Error creating Syndro folder: $e');
           return publicDownload;
         }
       }
@@ -1298,7 +1299,7 @@ class _ImageGalleryPreviewState extends State<ImageGalleryPreview> {
     try {
       _pageController.dispose();
     } catch (e) {
-      debugPrint('Error disposing page controller: $e');
+      AppLogger.info('Error disposing page controller: $e');
     }
     super.dispose();
   }

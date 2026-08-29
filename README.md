@@ -68,7 +68,7 @@
 | **Resume Transfers** | Checkpoint system allows resuming interrupted transfers |
 | **Pause & Resume** | Pause any sequential transfer mid-flight and resume it later |
 | **Parallel Transfer** | Multi-connection transfers for large files (>10MB) |
-| **Adaptive Chunk Sizing** | Dynamically adjusts chunk size based on network speed |
+| **Device-Tuned Chunking** | Chunk size and connection count selected per device RAM profile for reliability on low-end phones |
 
 ### Text & Link Sharing
 
@@ -458,7 +458,7 @@ lib/
 - [x] End-to-end encryption (AES-256-GCM)
 - [x] Parallel chunk transfers
 - [x] Streaming hash verification
-- [x] Adaptive chunk sizing
+- [x] Device-tuned parallel configs (RAM-profile chunk sizing)
 - [x] Connection approval for browser share
 - [x] Android app bundle support (.apks, .apkm, .xapk)
 - [x] Auto cache cleanup

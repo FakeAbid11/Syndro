@@ -19,28 +19,6 @@ class QrPairingException implements Exception {
       '${code != null ? ' (code: $code)' : ''}';
 }
 
-/// Custom exception for security failures that must abort a connection.
-///
-/// Thrown by [EncryptionService.verifyPinnedKey] when a key-exchange
-/// endpoint receives a public key that does not match the TOFU pin
-/// stored for that device, and by [KeyExchangeService.exchangeKeys]
-/// when the local pin check fails.
-///
-/// Surfaced to the UI so the user can decide to "Reset trust" for the
-/// affected device.
-class SecurityException implements Exception {
-  final String message;
-  final String? deviceId;
-  final String? code;
-
-  SecurityException(this.message, {this.deviceId, this.code});
-
-  @override
-  String toString() => 'SecurityException: $message'
-      '${deviceId != null ? ' [device=$deviceId]' : ''}'
-      '${code != null ? ' (code: $code)' : ''}';
-}
-
 /// Builds, signs and verifies [QrPairingPayload] objects for the
 /// out-of-band QR pairing handshake.
 ///

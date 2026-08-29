@@ -11,7 +11,7 @@ import '../models/received_file.dart';
 import '../models/pending_files_manager.dart';
 import '../utils/network_utils.dart';
 // REMOVED: import '../utils/platform_paths.dart'; (unused)
-import '../utils/multipart_parser.dart';
+import '../utils/streaming_multipart_parser.dart';
 import '../templates/receive_page_template.dart';
 
 /// Pending upload confirmation request
@@ -58,10 +58,6 @@ class ReceiveServer {
   static const int _maxUploadSizeBytes = 10 * 1024 * 1024 * 1024;
   // Maximum single file size (5GB)
   static const int _maxFileSizeBytes = 5 * 1024 * 1024 * 1024;
-  // Upper bound on how much of an upload body we will buffer in memory for
-  // multipart parsing. The body is streamed to a temp file first, but parsing
-  // still reads it back into RAM, so we cap that to avoid OOM on huge uploads.
-  static const int _maxInMemoryParseBytes = 1024 * 1024 * 1024; // 1GB
 
   // User confirmation tracking - require user confirmation before accepting uploads
   bool _requireConfirmation = true;
@@ -346,16 +342,26 @@ class ReceiveServer {
     if (_server == null) return;
 
     await for (final request in _server!) {
+      // PERF: Dispatch concurrently. Awaiting inline serialized every request
+      // behind the previous one, so a large upload starved the index page and
+      // logo requests. Per-request state is scoped and errors are answered
+      // with a 500 below, so concurrent dispatch is safe.
+      unawaited(_handleRequestSafely(request));
+    }
+  }
+
+  /// Runs [_handleRequest] with the error handling that used to sit inline in
+  /// the serve loop: any failure is logged and answered with a 500.
+  Future<void> _handleRequestSafely(HttpRequest request) async {
+    try {
+      await _handleRequest(request);
+    } catch (e) {
+      AppLogger.error('Error handling receive request: $e');
       try {
-        await _handleRequest(request);
-      } catch (e) {
-        AppLogger.error('Error handling receive request: $e');
-        try {
-          request.response.statusCode = HttpStatus.internalServerError;
-          await request.response.close();
-        } catch (closeError) {
-          AppLogger.error('Error closing error response: $closeError');
-        }
+        request.response.statusCode = HttpStatus.internalServerError;
+        await request.response.close();
+      } catch (closeError) {
+        AppLogger.error('Error closing error response: $closeError');
       }
     }
   }
@@ -532,83 +538,100 @@ class ReceiveServer {
 
         AppLogger.info('📦 Received $totalSize bytes (streamed to temp file)');
 
-        // Cap the amount we buffer in memory for parsing. readAsBytes below
-        // loads the whole body into RAM; without this a multi-GB upload could
-        // exhaust memory even though it was streamed to disk safely.
-        if (totalSize > _maxInMemoryParseBytes) {
-          request.response.statusCode = HttpStatus.requestEntityTooLarge;
-          request.response.write(
-              'Upload too large for browser transfer (${_maxInMemoryParseBytes ~/ (1024 * 1024 * 1024)}GB max). Use the app-to-app transfer for larger files.');
-          await request.response.close();
-          return;
-        }
+        // Parse the spooled body with the streaming multipart parser: each
+        // part is written to its own temp file as it is scanned, so neither
+        // the body nor any single part is ever fully resident in memory.
+        // (The old flow read the whole body back with readAsBytes and parsed
+        // it in RAM, capping uploads at the in-memory parse limit.)
+        final uploadTimestamp = DateTime.now().millisecondsSinceEpoch;
+        var partCounter = 0;
 
-        // Read back from temp file for parsing (still needed for multipart boundary detection)
-        final bytes = await tempBodyFile.readAsBytes();
-
-        // Parse multipart data
-        final parts = MultipartParser.parse(bytes, boundary);
-
-        for (final part in parts) {
-          if (part.filename != null &&
-              part.filename!.isNotEmpty &&
-              part.data.isNotEmpty) {
-            // FIX (Bug #6): Validate individual file size
-            if (part.data.length > _maxFileSizeBytes) {
-              AppLogger.warn('⚠️ File ${part.filename} exceeds size limit, skipping');
-              continue;
-            }
-            
+        await StreamingMultipartParser.parseFile<_IncomingPart>(
+          bodyFile: tempBodyFile,
+          boundary: boundary,
+          maxPartBytes: _maxFileSizeBytes,
+          onPartStart: (filename) {
+            if (filename.isEmpty) return null;
             // Clean filename (remove path traversal attempts)
-            final cleanFilename = path.basename(part.filename!);
-
-            // Generate unique temp filename
-            final timestamp = DateTime.now().millisecondsSinceEpoch;
-            final tempFilename = '${timestamp}_$cleanFilename';
-            final tempFilePath = path.join(_tempDirectory!, tempFilename);
-
-            AppLogger.info('💾 Saving to temp: $cleanFilename → $tempFilePath');
-
-            try {
-              final file = File(tempFilePath);
-
-              // Write file to TEMP location
-              await file.writeAsBytes(part.data, flush: true);
-
-              // Verify file was written
-              if (await file.exists()) {
-                final stat = await file.stat();
-                AppLogger.info(
-                    '✅ File saved to temp: $cleanFilename (${stat.size} bytes)');
-
-                uploadedFiles.add({
-                  'name': cleanFilename,
-                  'size': part.data.length,
-                  'tempPath': tempFilePath,
-                });
-
-                // Create ReceivedFile with PENDING status
-                final receivedFile = ReceivedFile(
-                  name: cleanFilename,
-                  tempPath: tempFilePath,
-                  size: part.data.length,
-                  receivedAt: DateTime.now(),
-                  status: FileReceiveStatus.pending,
-                );
-
-                // Add to pending files manager
-                _pendingFilesManager.addFile(receivedFile);
-
-                // Also notify via stream (for backward compatibility)
-                _receivedFilesController.add(receivedFile);
-              } else {
-                AppLogger.error('❌ File was not created: $tempFilePath');
-              }
-            } catch (e) {
-              AppLogger.error('❌ Error saving file $cleanFilename: $e');
+            final cleanFilename = path.basename(filename);
+            if (cleanFilename.isEmpty ||
+                cleanFilename == '.' ||
+                cleanFilename == '..') {
+              return null;
             }
-          }
-        }
+            final tempFilePath = path.join(_tempDirectory!,
+                '${uploadTimestamp}_${partCounter++}_$cleanFilename');
+            try {
+              final raf = File(tempFilePath).openSync(mode: FileMode.write);
+              return _IncomingPart(
+                cleanFilename: cleanFilename,
+                tempFilePath: tempFilePath,
+                raf: raf,
+              );
+            } catch (e) {
+              AppLogger.error(
+                  '❌ Error creating temp file for $cleanFilename: $e');
+              return null;
+            }
+          },
+          onPartData: (part, chunk) async {
+            // The parser only invokes this for parts accepted in onPartStart.
+            final target = part;
+            if (target == null) return;
+            await target.raf.writeFrom(chunk);
+          },
+          onPartEnd: (part, filename, bytesSeen, skipped) async {
+            if (part == null) return;
+            try {
+              await part.raf.flush();
+              await part.raf.close();
+            } catch (e) {
+              AppLogger.error(
+                  '❌ Error closing temp file for ${part.cleanFilename}: $e');
+            }
+
+            if (skipped) {
+              // Part exceeded the per-file cap: discard the partial write.
+              AppLogger.warn(
+                  '⚠️ File ${part.cleanFilename} exceeds size limit, discarding');
+              try {
+                await File(part.tempFilePath).delete();
+              } catch (_) {}
+              return;
+            }
+            if (bytesSeen == 0) {
+              // Empty part — nothing to keep.
+              try {
+                await File(part.tempFilePath).delete();
+              } catch (_) {}
+              return;
+            }
+
+            AppLogger.info(
+                '✅ File saved to temp: ${part.cleanFilename} ($bytesSeen bytes)');
+
+            uploadedFiles.add({
+              'name': part.cleanFilename,
+              'size': bytesSeen,
+              'tempPath': part.tempFilePath,
+            });
+
+            // Create ReceivedFile with PENDING status
+            final receivedFile = ReceivedFile(
+              name: part.cleanFilename,
+              tempPath: part.tempFilePath,
+              size: bytesSeen,
+              receivedAt: DateTime.now(),
+              status: FileReceiveStatus.pending,
+            );
+
+            // Add to pending files manager
+            _pendingFilesManager.addFile(receivedFile);
+
+            // Also notify via stream (for backward compatibility)
+            _receivedFilesController.add(receivedFile);
+          },
+        );
       } finally {
         // Clean up temp body file
         try {
@@ -638,4 +661,18 @@ class ReceiveServer {
       await request.response.close();
     }
   }
+}
+
+/// Per-part write state handed to the [StreamingMultipartParser] callbacks:
+/// each accepted file part streams straight into its own temp file.
+class _IncomingPart {
+  final String cleanFilename;
+  final String tempFilePath;
+  final RandomAccessFile raf;
+
+  _IncomingPart({
+    required this.cleanFilename,
+    required this.tempFilePath,
+    required this.raf,
+  });
 }

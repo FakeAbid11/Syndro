@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/app_logger.dart';
 /// Service to manage device nicknames with persistence
 class DeviceNicknameService {
   static const String _nicknamePrefix = 'device_nickname_';
@@ -18,7 +18,7 @@ class DeviceNicknameService {
       
       return await prefs.setString(key, nickname.trim());
     } catch (e) {
-      debugPrint('Error saving nickname: $e');
+      AppLogger.info('Error saving nickname: $e');
       return false;
     }
   }
@@ -30,7 +30,7 @@ class DeviceNicknameService {
       final key = '$_nicknamePrefix$deviceId';
       return prefs.getString(key);
     } catch (e) {
-      debugPrint('Error getting nickname: $e');
+      AppLogger.info('Error getting nickname: $e');
       return null;
     }
   }
@@ -42,7 +42,7 @@ class DeviceNicknameService {
       final key = '$_nicknamePrefix$deviceId';
       return await prefs.remove(key);
     } catch (e) {
-      debugPrint('Error deleting nickname: $e');
+      AppLogger.info('Error deleting nickname: $e');
       return false;
     }
   }
@@ -66,7 +66,7 @@ class DeviceNicknameService {
       
       return nicknames;
     } catch (e) {
-      debugPrint('Error getting all nicknames: $e');
+      AppLogger.info('Error getting all nicknames: $e');
       return {};
     }
   }
@@ -85,7 +85,7 @@ class DeviceNicknameService {
       
       return true;
     } catch (e) {
-      debugPrint('Error clearing nicknames: $e');
+      AppLogger.info('Error clearing nicknames: $e');
       return false;
     }
   }

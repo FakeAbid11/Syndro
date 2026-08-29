@@ -11,6 +11,7 @@ import '../widgets/file_preview_widgets.dart';
 import 'file_picker_screen.dart';
 import '../../core/utils/byte_formatter.dart';
 
+import '../../core/utils/app_logger.dart';
 /// Screen for quick sending files received from right-click context menu
 class QuickSendScreen extends ConsumerStatefulWidget {
   final List<TransferItem> files;
@@ -36,7 +37,7 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
         try {
           ref.read(deviceDiscoveryProvider.notifier).startDiscovery();
         } catch (e) {
-          debugPrint('⚠️ Error starting discovery: $e');
+          AppLogger.warn('⚠️ Error starting discovery: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

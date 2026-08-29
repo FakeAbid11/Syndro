@@ -7,9 +7,9 @@ import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
 import '../../core/providers/device_provider.dart';
+import '../../core/providers/settings_provider.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/providers/theme_provider.dart';
-import '../../core/services/app_settings_service.dart';
 import '../../core/services/update_service.dart';
 import '../../core/utils/app_logger.dart';
 import '../../core/widgets/update_dialog.dart';
@@ -26,24 +26,12 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _version = 'Loading...';
-  bool _autoAcceptTrusted = false;
   bool _checkingUpdate = false;
-  final AppSettingsService _settingsService = AppSettingsService();
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final autoAccept = await _settingsService.getAutoAcceptTrusted();
-    if (mounted) {
-      setState(() {
-        _autoAcceptTrusted = autoAccept;
-      });
-    }
   }
 
   Future<void> _handleCheckForUpdates() async {
@@ -399,18 +387,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       'Automatically accept transfers from devices you trust',
                       style: TextStyle(fontSize: 12),
                     ),
-                    value: _autoAcceptTrusted,
+                    value: ref.watch(autoAcceptTrustedProvider),
                     onChanged: (value) async {
                       // FIXED: Capture ScaffoldMessenger before async gap
                       final messenger = ScaffoldMessenger.of(context);
-                      
-                      await _settingsService.setAutoAcceptTrusted(value);
-                      
+
+                      await ref
+                          .read(autoAcceptTrustedProvider.notifier)
+                          .set(value);
+
                       if (mounted) {
-                        setState(() {
-                          _autoAcceptTrusted = value;
-                        });
-                        
                         messenger.showSnackBar(
                           SnackBar(
                             content: Text(

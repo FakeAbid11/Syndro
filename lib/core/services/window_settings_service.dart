@@ -1,8 +1,8 @@
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/app_logger.dart';
 /// Window bounds data class
 class WindowBounds {
   final double width;
@@ -68,9 +68,9 @@ class WindowSettingsService {
         await _prefs!.remove(_keyWindowY);
       }
 
-      debugPrint('✅ Window bounds saved: ${size.width}x${size.height}, maximized: $maximized');
+      AppLogger.info('✅ Window bounds saved: ${size.width}x${size.height}, maximized: $maximized');
     } catch (e) {
-      debugPrint('❌ Failed to save window bounds: $e');
+      AppLogger.error('❌ Failed to save window bounds: $e');
     }
   }
 
@@ -86,7 +86,7 @@ class WindowSettingsService {
       final maximized = _prefs!.getBool(_keyWindowMaximized) ?? false;
 
       if (width == null || height == null) {
-        debugPrint('ℹ️ No saved window bounds found');
+        AppLogger.info('ℹ️ No saved window bounds found');
         return null;
       }
 
@@ -101,10 +101,10 @@ class WindowSettingsService {
         maximized: maximized,
       );
 
-      debugPrint('✅ Window bounds loaded: $bounds');
+      AppLogger.info('✅ Window bounds loaded: $bounds');
       return bounds;
     } catch (e) {
-      debugPrint('❌ Failed to load window bounds: $e');
+      AppLogger.error('❌ Failed to load window bounds: $e');
       return null;
     }
   }
@@ -137,9 +137,9 @@ class WindowSettingsService {
       await _prefs!.remove(_keyWindowY);
       await _prefs!.remove(_keyWindowMaximized);
 
-      debugPrint('✅ Window settings cleared');
+      AppLogger.info('✅ Window settings cleared');
     } catch (e) {
-      debugPrint('❌ Failed to clear window settings: $e');
+      AppLogger.error('❌ Failed to clear window settings: $e');
     }
   }
 

@@ -11,6 +11,7 @@ import '../widgets/common/app_widgets.dart';
 import '../widgets/device_card.dart';
 import 'transfer_progress_screen.dart';
 
+import '../../core/utils/app_logger.dart';
 /// Device-picker for text shared into Syndro from another app
 /// (Android text/plain share intents). Lets the user choose a target device
 /// and sends the message through the same approval pipeline as file sends.
@@ -47,7 +48,7 @@ class _TextShareScreenState extends ConsumerState<TextShareScreen> {
       try {
         ref.read(deviceDiscoveryProvider.notifier).startDiscovery();
       } catch (e) {
-        debugPrint('⚠️ Error starting discovery: $e');
+        AppLogger.warn('⚠️ Error starting discovery: $e');
       }
     });
   }
@@ -89,7 +90,7 @@ class _TextShareScreenState extends ConsumerState<TextShareScreen> {
       if (!mounted) return;
       widget.onComplete();
     } catch (e) {
-      debugPrint('Error sending text: $e');
+      AppLogger.info('Error sending text: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

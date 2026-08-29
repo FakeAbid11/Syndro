@@ -23,6 +23,8 @@ import '../checkpoint_manager.dart';
 import '../background_transfer_service.dart';
 import '../device_nickname_service.dart';
 import 'models.dart';
+import 'trusted_devices_handler.dart';
+import 'transfer_progress_reporter.dart';
 
 import '../parallel/parallel_config.dart';
 import '../parallel/parallel_receiver_handler.dart';
@@ -96,7 +98,6 @@ class TransferService {
   ParallelConfig? _parallelConfig;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  static const String _trustedDevicesKey = 'syndro_trusted_devices';
   /// Storage key holding the 32-byte X25519 private seed (base64) for this
   /// device's persistent long-term identity used in TOFU pinning.
   static const String _identityKeyStorageKey = 'syndro.identity.privkey';
@@ -107,8 +108,10 @@ class TransferService {
   static const String _deviceTokenStorageKey = 'syndro.device.token';
   final AppSettingsService _settingsService = AppSettingsService();
 
-  final Map<String, TrustedDevice> _trustedDevices = {};
-  final Map<String, PendingTransferRequest> _pendingRequests = {};
+  /// Owns trusted-device records, pending transfer requests, their streams
+  /// and cleanup timers (extracted from this class to keep it focused on the
+  /// transfer protocol itself).
+  final TrustedDevicesHandler _trustedDevicesHandler = TrustedDevicesHandler();
 
   /// Per-transfer gate: when present the transfer is paused and its chunk
   /// loop awaits the completer before sending more data.
@@ -122,13 +125,10 @@ class TransferService {
   static const int _maxInitiatesPerMinute = 20;
   static const Duration _initiateRateLimitWindow = Duration(minutes: 1);
 
-  // Throttle Live Activity notification updates to avoid flooding the native channel
-  DateTime? _lastLiveActivityUpdate;
-  static const Duration _liveActivityThrottle = Duration(seconds: 2);
+  /// Reports transfer progress to the OS notification and the (throttled)
+  /// Android Live Activity, replacing three duplicated inline blocks.
+  final TransferProgressReporter _progressReporter = TransferProgressReporter();
   final Map<String, List<DateTime>> _initiateTimestamps = {};
-
-  final _pendingRequestsController =
-      StreamController<List<PendingTransferRequest>>.broadcast();
 
   final _receivedTextController =
       StreamController<ReceivedTextMessage>.broadcast();
@@ -152,7 +152,6 @@ class TransferService {
   static const Duration _sessionMaxAge = Duration(hours: 1);
   Timer? _sessionCleanupTimer;
 
-  Timer? _pendingRequestsCleanupTimer;
   StreamSubscription<Map<String, dynamic>>? _notificationEventSubscription;
 
   bool encryptionEnabled = true;
@@ -171,7 +170,7 @@ class TransferService {
   Future<void>? _initFuture;
 
   TransferService(this._fileService) {
-    _startPendingRequestsCleanup();
+    _trustedDevicesHandler.startPendingRequestsCleanup();
     _listenToNotificationEvents();
     _initializeParallelTransfer();
     _startSessionCleanup();
@@ -196,7 +195,7 @@ class TransferService {
   }
 
   Future<void> _doInitialize() async {
-    await _loadTrustedDevices();
+    await _trustedDevicesHandler.loadTrustedDevices();
     await _initializeEncryption();
     _isInitialized = true;
     if (kDebugMode) AppLogger.info('✅ TransferService initialized');
@@ -205,12 +204,13 @@ class TransferService {
   Stream<Transfer> get transferStream => _transferController.stream;
   List<Transfer> get activeTransfers => _activeTransfers.values.toList();
   List<PendingTransferRequest> get pendingRequests =>
-      _pendingRequests.values.toList();
+      _trustedDevicesHandler.pendingRequests;
   Stream<List<PendingTransferRequest>> get pendingRequestsStream =>
-      _pendingRequestsController.stream;
+      _trustedDevicesHandler.pendingRequestsStream;
   Stream<ReceivedTextMessage> get receivedTextStream =>
       _receivedTextController.stream;
-  List<TrustedDevice> get trustedDevices => _trustedDevices.values.toList();
+  List<TrustedDevice> get trustedDevices =>
+      _trustedDevicesHandler.trustedDevices;
   bool get isEncryptionReady => _encryptionKeyPair != null;
 
   Future<void> _initializeEncryption() async {
@@ -416,25 +416,27 @@ class TransferService {
     );
   }
 
-  void _cleanupOldTrustedDevices() {
-    if (_trustedDevices.isEmpty) return;
+  Future<void> _cleanupOldTrustedDevices() async {
+    final devices = _trustedDevicesHandler.trustedDevices;
+    if (devices.isEmpty) return;
 
     final now = DateTime.now();
     final expiredIds = <String>[];
 
-    for (final entry in _trustedDevices.entries) {
-      if (now.difference(entry.value.trustedAt) > _trustedDevicesMaxAge) {
-        expiredIds.add(entry.key);
+    for (final device in devices) {
+      if (now.difference(device.trustedAt) > _trustedDevicesMaxAge) {
+        expiredIds.add(device.senderId);
       }
     }
 
     for (final id in expiredIds) {
-      _trustedDevices.remove(id);
+      // revokeTrust also removes the persisted TOFU pin and saves the list.
+      await _trustedDevicesHandler.revokeTrust(id);
     }
 
-    if (expiredIds.isNotEmpty) {
-      if (kDebugMode) AppLogger.info('🧹 Cleaned up ${expiredIds.length} old trusted devices');
-      _saveTrustedDevices();
+    if (expiredIds.isNotEmpty && kDebugMode) {
+      AppLogger.info(
+          '🧹 Cleaned up ${expiredIds.length} old trusted devices');
     }
   }
 
@@ -523,7 +525,7 @@ class TransferService {
       // transfer must not create a duplicate session (the writer would throw
       // "Writer already exists" and the sender would see a confusing 500).
       if (_transferTokens.containsKey(transferId) ||
-          _pendingRequests.containsKey(transferId) ||
+          _trustedDevicesHandler.getPendingRequest(transferId) != null ||
           _parallelReceiver.getSession(transferId) != null) {
         await _sendResponse(request, HttpStatus.conflict, {
           'success': false,
@@ -542,7 +544,7 @@ class TransferService {
       }
 
       // Check if auto-accept is enabled for trusted devices
-      final trustedDevice = _trustedDevices[senderId];
+      final trustedDevice = _trustedDevicesHandler.getTrustedDevice(senderId);
       final autoAcceptTrusted = await _settingsService.getAutoAcceptTrusted();
 
       if (trustedDevice != null &&
@@ -569,7 +571,8 @@ class TransferService {
         size: fileSize,
       );
 
-      _pendingRequests[transferId] = PendingTransferRequest(
+      // Notifies the pendingRequestsStream internally (shows the request dialog)
+      _trustedDevicesHandler.addPendingRequest(PendingTransferRequest(
         requestId: transferId,
         senderId: senderId,
         senderName: senderName,
@@ -580,12 +583,7 @@ class TransferService {
         isParallelTransfer: true,
         parallelData: data,
         isTrusted: trustedDevice != null,
-      );
-
-      // Notify UI via stream (this will show the transfer request dialog)
-      if (!_pendingRequestsController.isClosed) {
-        _pendingRequestsController.add(_pendingRequests.values.toList());
-      }
+      ));
 
       if (kDebugMode) AppLogger.info('📥 Parallel transfer pending approval: $fileName from $senderName');
 
@@ -712,13 +710,21 @@ class TransferService {
         return;
       }
 
-      // SECURITY: Verify the caller is the authorized sender of this transfer
+      // SECURITY: Same transfer-scoped authorization as chunk uploads. This
+      // GET path previously trusted only the spoofable `x-device-id` header,
+      // so any LAN peer that learned an active transferId + sender ID could
+      // pull in-flight file data. Require the token accepted for the transfer
+      // (or a valid trusted-device token), exactly like the upload path.
       final callerId = request.headers.value('x-device-id');
       if (callerId == null || callerId.isEmpty) {
         await _sendUnauthorized(request, 'Missing device ID');
         return;
       }
-      if (session.senderId != callerId) {
+      if (!await _isTransferAuthorized(
+        transferId: transferId,
+        senderId: callerId,
+        presentedToken: request.headers.value('X-Sender-Token'),
+      )) {
         await _sendUnauthorized(request, 'Not authorized for this transfer');
         return;
       }
@@ -874,7 +880,7 @@ class TransferService {
           AppLogger.info('📱 Transfer accepted from notification: $requestId');
           if (requestId != null) {
             // FIX: Check if request still exists before approving
-            if (_pendingRequests.containsKey(requestId)) {
+            if (_trustedDevicesHandler.getPendingRequest(requestId) != null) {
               approveTransfer(requestId, trustSender: false);
             } else {
               AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
@@ -885,7 +891,7 @@ class TransferService {
           AppLogger.info('📱 Transfer accepted + trusted from notification: $requestId');
           if (requestId != null) {
             // FIX: Check if request still exists before approving
-            if (_pendingRequests.containsKey(requestId)) {
+            if (_trustedDevicesHandler.getPendingRequest(requestId) != null) {
               approveTransfer(requestId, trustSender: true);
             } else {
               AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
@@ -896,7 +902,7 @@ class TransferService {
           AppLogger.info('📱 Transfer rejected from notification: $requestId');
           if (requestId != null) {
             // FIX: Check if request still exists before rejecting
-            if (_pendingRequests.containsKey(requestId)) {
+            if (_trustedDevicesHandler.getPendingRequest(requestId) != null) {
               rejectTransfer(requestId);
             } else {
               AppLogger.warn('⚠️ Request $requestId no longer exists (may have been handled by UI)');
@@ -907,63 +913,6 @@ class TransferService {
     }, onError: (error) {
       if (kDebugMode) AppLogger.error('❌ Error in notification events: $error');
     });
-  }
-
-  Future<void> _loadTrustedDevices() async {
-    try {
-      final jsonString = await _secureStorage.read(key: _trustedDevicesKey);
-      if (jsonString != null && jsonString.isNotEmpty) {
-        final List<dynamic> jsonList = jsonDecode(jsonString);
-        for (final json in jsonList) {
-          final device = TrustedDevice.fromJson(json as Map<String, dynamic>);
-          _trustedDevices[device.senderId] = device;
-        }
-        AppLogger.info('✅ Loaded ${_trustedDevices.length} trusted devices');
-      }
-    } catch (e) {
-      if (kDebugMode) AppLogger.error('Error loading trusted devices: $e');
-    }
-  }
-
-  Future<void> _saveTrustedDevices() async {
-    try {
-      final jsonList = _trustedDevices.values.map((d) => d.toJson()).toList();
-      await _secureStorage.write(
-        key: _trustedDevicesKey,
-        value: jsonEncode(jsonList),
-      );
-      if (kDebugMode) AppLogger.info('✅ Saved ${_trustedDevices.length} trusted devices');
-    } catch (e) {
-      if (kDebugMode) AppLogger.error('Error saving trusted devices: $e');
-    }
-  }
-
-  void _startPendingRequestsCleanup() {
-    _pendingRequestsCleanupTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _cleanupExpiredPendingRequests(),
-    );
-  }
-
-  void _cleanupExpiredPendingRequests() {
-    final now = DateTime.now();
-    final expiredIds = <String>[];
-
-    for (final entry in _pendingRequests.entries) {
-      if (now.difference(entry.value.timestamp).inMinutes > 5) {
-        expiredIds.add(entry.key);
-      }
-    }
-
-    if (expiredIds.isNotEmpty) {
-      for (final id in expiredIds) {
-        _pendingRequests.remove(id);
-      }
-      if (!_pendingRequestsController.isClosed) {
-        _pendingRequestsController.add(_pendingRequests.values.toList());
-      }
-      if (kDebugMode) AppLogger.info('🧹 Cleaned up ${expiredIds.length} expired pending requests');
-    }
   }
 
   Future<void> setDeviceInfo({
@@ -1114,25 +1063,39 @@ class TransferService {
     try {
       await for (final request in _server!) {
         if (_isDisposed) break;
-        try {
-          await _handleRequest(request);
-        } catch (e, stackTrace) {
-          AppLogger.error('Error handling request: $e');
-          AppLogger.info('Stack trace: $stackTrace');
-          try {
-            request.response.statusCode = HttpStatus.internalServerError;
-            request.response.write('Internal server error');
-            await request.response.close();
-          } catch (closeError) { 
-            // Response may already be closed or in error state
-            AppLogger.error("Error closing response: $closeError"); 
-          }
-        }
+        // PERF: Handle each request concurrently. Awaiting inside the loop
+        // body used to serialize every request behind the previous one
+        // (head-of-line blocking): a large chunk upload starved discovery
+        // probes and approval polls, and the parallel-transfer connections
+        // were effectively serialized on the receiving side. Request state is
+        // fully scoped inside the handler and errors always close the
+        // response, so concurrent dispatch is safe.
+        unawaited(_handleRequestSafely(request));
       }
     } catch (e) {
       // Server was closed or socket error - this is expected during dispose
       if (!_isDisposed) {
         AppLogger.error('Server error: $e');
+      }
+    }
+  }
+
+  /// Runs [_handleRequest] with the error handling that used to sit inline in
+  /// the serve loop: any failure is logged and answered with a 500 so the
+  /// connection stays reusable.
+  Future<void> _handleRequestSafely(HttpRequest request) async {
+    try {
+      await _handleRequest(request);
+    } catch (e, stackTrace) {
+      AppLogger.error('Error handling request: $e');
+      AppLogger.info('Stack trace: $stackTrace');
+      try {
+        request.response.statusCode = HttpStatus.internalServerError;
+        request.response.write('Internal server error');
+        await request.response.close();
+      } catch (closeError) {
+        // Response may already be closed or in error state
+        AppLogger.error("Error closing response: $closeError");
       }
     }
   }
@@ -1251,7 +1214,8 @@ class TransferService {
       // TOFU PIN CHECK: if the sender is trusted and has a pinned
       // public key, verify the presented key matches the pin. A
       // mismatch indicates a possible MITM — abort immediately.
-      final trustedDevice = _trustedDevices[theirDeviceId];
+      final trustedDevice =
+          _trustedDevicesHandler.getTrustedDevice(theirDeviceId);
       if (trustedDevice != null && trustedDevice.hasActivePin) {
         try {
           await EncryptionService.verifyPinnedKey(
@@ -1451,23 +1415,13 @@ class TransferService {
   //  TOFU pin helpers
   // ─────────────────────────────────────────────
 
-  /// Store a public key pin for a trusted device, updating both the
-  /// in-memory map and the secure-storage entry. Called when a new key
-  /// is auto-pinned during key exchange or explicitly pinned via QR scan.
+  /// Store a public key pin for a trusted device. Delegates to
+  /// [TrustedDevicesHandler.pinKey], which updates the in-memory record,
+  /// persists the trusted-devices JSON and writes the namespaced
+  /// `syndro.pin.<id>` secure-storage entry.
   Future<void> _pinTrustedDeviceKey(
       TrustedDevice device, String pubKeyBase64) async {
-    final updated = device.copyWith(
-      pinnedPubKey: pubKeyBase64,
-      pendingRepin: false,
-    );
-    _trustedDevices[device.senderId] = updated;
-    await _saveTrustedDevices();
-
-    // Also persist to the namespaced pin key for fast lookups
-    await _secureStorage.write(
-      key: 'syndro.pin.${device.senderId}',
-      value: pubKeyBase64,
-    );
+    await _trustedDevicesHandler.pinKey(device.senderId, pubKeyBase64);
   }
 
   /// Verify the presented token against the trusted device's record.
@@ -1480,7 +1434,8 @@ class TransferService {
     required String senderId,
     required String presentedToken,
   }) async {
-    final trustedDevice = _trustedDevices[senderId];
+    final trustedDevice =
+        _trustedDevicesHandler.getTrustedDevice(senderId);
     if (trustedDevice == null) return false;
 
     // Fast path: raw static token matches (legacy / unpinned)
@@ -1556,7 +1511,8 @@ class TransferService {
   /// possession of the pinned key. Otherwise, fall back to the raw
   /// `_deviceToken` for backward compatibility with unpinned devices.
   Future<String> _getSenderTokenForDevice(String receiverId) async {
-    final trustedDevice = _trustedDevices[receiverId];
+    final trustedDevice =
+        _trustedDevicesHandler.getTrustedDevice(receiverId);
 
     if (trustedDevice != null && trustedDevice.hasActivePin) {
       try {
@@ -1641,7 +1597,7 @@ class TransferService {
         });
         return;
       }
-      if (_pendingRequests.containsKey(requestId)) {
+      if (_trustedDevicesHandler.getPendingRequest(requestId) != null) {
         // Still awaiting the user's decision — re-report pending without adding
         // another PendingTransferRequest (which would re-emit and re-show).
         await _sendResponse(request, HttpStatus.ok, {
@@ -1652,7 +1608,8 @@ class TransferService {
         return;
       }
 
-      final trustedDevice = _trustedDevices[senderId];
+      final trustedDevice =
+          _trustedDevicesHandler.getTrustedDevice(senderId);
       
       // Check if auto-accept is enabled for trusted devices
       final autoAcceptTrusted = await _settingsService.getAutoAcceptTrusted();
@@ -1687,7 +1644,8 @@ class TransferService {
         return;
       }
 
-      _pendingRequests[requestId] = PendingTransferRequest(
+      // Notifies the pendingRequestsStream internally (shows the request sheet)
+      _trustedDevicesHandler.addPendingRequest(PendingTransferRequest(
         requestId: requestId,
         senderId: senderId,
         senderName: senderName,
@@ -1696,12 +1654,7 @@ class TransferService {
         timestamp: DateTime.now(),
         senderPublicKey: senderPublicKey,
         isTrusted: trustedDevice != null,
-      );
-
-      // Notify UI via stream (this will show the modal sheet if app is in foreground)
-      if (!_pendingRequestsController.isClosed) {
-        _pendingRequestsController.add(_pendingRequests.values.toList());
-      }
+      ));
 
       // NOTE: onTransferRequest callback is NOT called here to avoid double-showing
       // The UI listens to pendingRequestsStream via pendingTransferRequestsProvider
@@ -1774,7 +1727,7 @@ class TransferService {
         });
         return;
       }
-      if (_pendingRequests.containsKey(requestId)) {
+      if (_trustedDevicesHandler.getPendingRequest(requestId) != null) {
         await _sendResponse(request, HttpStatus.ok, {
           'status': 'pending_approval',
           'requestId': requestId,
@@ -1783,7 +1736,8 @@ class TransferService {
         return;
       }
 
-      final trustedDevice = _trustedDevices[senderId];
+      final trustedDevice =
+          _trustedDevicesHandler.getTrustedDevice(senderId);
       final autoAcceptTrusted = await _settingsService.getAutoAcceptTrusted();
 
       if (trustedDevice != null &&
@@ -1805,7 +1759,8 @@ class TransferService {
         return;
       }
 
-      _pendingRequests[requestId] = PendingTransferRequest(
+      // Notifies the pendingRequestsStream internally (shows the request sheet)
+      _trustedDevicesHandler.addPendingRequest(PendingTransferRequest(
         requestId: requestId,
         senderId: senderId,
         senderName: senderName,
@@ -1814,11 +1769,7 @@ class TransferService {
         timestamp: DateTime.now(),
         textContent: text,
         isTrusted: trustedDevice != null,
-      );
-
-      if (!_pendingRequestsController.isClosed) {
-        _pendingRequestsController.add(_pendingRequests.values.toList());
-      }
+      ));
 
       await _sendResponse(request, HttpStatus.ok, {
         'status': 'pending_approval',
@@ -1900,7 +1851,7 @@ class TransferService {
       return;
     }
 
-    final pending = _pendingRequests[requestId];
+    final pending = _trustedDevicesHandler.getPendingRequest(requestId);
 
     if (pending == null) {
       final transfer = _activeTransfers[requestId];
@@ -1924,8 +1875,8 @@ class TransferService {
     }
 
     if (DateTime.now().difference(pending.timestamp).inMinutes > 5) {
-      _pendingRequests.remove(requestId);
-      _pendingRequestsController.add(_pendingRequests.values.toList());
+      // Removes and re-notifies the pendingRequestsStream internally.
+      _trustedDevicesHandler.removePendingRequest(requestId);
 
       await _sendResponse(request, HttpStatus.ok, {
         'status': 'expired',
@@ -1942,7 +1893,7 @@ class TransferService {
 
   Future<void> approveTransfer(String requestId,
       {bool trustSender = false}) async {
-    final pending = _pendingRequests[requestId];
+    final pending = _trustedDevicesHandler.getPendingRequest(requestId);
     if (pending == null) {
       if (kDebugMode) {
         AppLogger.warn(
@@ -1951,11 +1902,9 @@ class TransferService {
       return;
     }
 
-    // FIX: Remove from pending list immediately to prevent double-handling
-    _pendingRequests.remove(requestId);
-    if (!_pendingRequestsController.isClosed) {
-      _pendingRequestsController.add(_pendingRequests.values.toList());
-    }
+    // FIX: Remove from pending list immediately to prevent double-handling.
+    // The handler re-notifies pendingRequestsStream internally.
+    _trustedDevicesHandler.removePendingRequest(requestId);
 
     // Bridge the vulnerable window right after approval: the sender's upload
     // arrives a moment from now, but on Android (esp. MIUI/HyperOS) backgrounding
@@ -1972,13 +1921,13 @@ class TransferService {
     }
 
     if (trustSender) {
-      _trustedDevices[pending.senderId] = TrustedDevice(
+      // Handler persists the record (and notifies nothing else) internally.
+      await _trustedDevicesHandler.trustDevice(TrustedDevice(
         senderId: pending.senderId,
         senderName: pending.senderName,
         token: pending.senderToken,
         trustedAt: DateTime.now(),
-      );
-      await _saveTrustedDevices();
+      ));
     }
 
     if (pending.senderPublicKey != null && encryptionEnabled) {
@@ -2054,7 +2003,7 @@ class TransferService {
 
   void rejectTransfer(String requestId) {
     // FIX: Check if request exists and remove it
-    final removed = _pendingRequests.remove(requestId);
+    final removed = _trustedDevicesHandler.getPendingRequest(requestId);
     if (removed == null) {
       if (kDebugMode) {
         AppLogger.warn(
@@ -2062,12 +2011,10 @@ class TransferService {
       }
       return;
     }
-    
-    // Update UI
-    if (!_pendingRequestsController.isClosed) {
-      _pendingRequestsController.add(_pendingRequests.values.toList());
-    }
-    
+
+    // Removes and re-notifies the pendingRequestsStream internally.
+    _trustedDevicesHandler.removePendingRequest(requestId);
+
     // Dismiss notifications
     BackgroundTransferService.stopBackgroundTransfer();
     BackgroundTransferService.dismissTransferRequest();
@@ -2310,24 +2257,13 @@ class TransferService {
 
           if (progressPercent - lastReportedProgress >= 5) {
             lastReportedProgress = progressPercent;
-            await BackgroundTransferService.updateProgress(
+            _progressReporter.report(
               title: 'Receiving (encrypted)...',
               fileName: sanitizedFileName,
               progress: progressPercent,
               bytesTransferred: bytesReceived,
               totalBytes: originalSize,
             );
-
-            // Update Live Activity notification on Android (throttled)
-            final now = DateTime.now();
-            if (_lastLiveActivityUpdate == null || now.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
-              _lastLiveActivityUpdate = now;
-              LiveActivityService.updateTransferState(
-                bytesTransferred: bytesReceived,
-                totalBytes: originalSize,
-                speed: 0,
-              );
-            }
 
             final updatedTransfer = _activeTransfers[transferId]!.copyWith(
               progress: TransferProgress(
@@ -2634,24 +2570,13 @@ class TransferService {
         if (progressPercent != lastProgressPercent) {
           lastProgressPercent = progressPercent;
 
-          await BackgroundTransferService.updateProgress(
+          _progressReporter.report(
             title: 'Receiving files...',
             fileName: sanitizedFileName,
             progress: progressPercent,
             bytesTransferred: bytesReceived,
             totalBytes: fileSize,
           );
-
-          // Update Live Activity notification on Android (throttled)
-          final now = DateTime.now();
-          if (_lastLiveActivityUpdate == null || now.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
-            _lastLiveActivityUpdate = now;
-            LiveActivityService.updateTransferState(
-              bytesTransferred: bytesReceived,
-              totalBytes: fileSize,
-              speed: 0,
-            );
-          }
 
           final updatedTransfer = _activeTransfers[transferId]!.copyWith(
             progress: TransferProgress(
@@ -3050,6 +2975,9 @@ class TransferService {
     _activeTransfers[transferId] = transfer;
     _transferController.add(transfer);
 
+    // Reset Live Activity throttling for this new outgoing transfer.
+    _progressReporter.begin();
+
     await BackgroundTransferService.startBackgroundTransfer(
       title: 'Sending to ${receiver.name}',
       fileName: items.length == 1 ? items.first.name : '${items.length} files',
@@ -3370,24 +3298,13 @@ class TransferService {
 
           if (progressPercent != lastReportedProgress) {
             lastReportedProgress = progressPercent;
-            BackgroundTransferService.updateProgress(
+            _progressReporter.report(
               title: 'Sending (encrypted) to ${receiver.name}',
               fileName: item.name,
               progress: progressPercent,
               bytesTransferred: totalBytesTransferred + bytesSent,
               totalBytes: totalSize,
             );
-
-            // Update Live Activity notification on Android (throttled)
-            final sendNow = DateTime.now();
-            if (_lastLiveActivityUpdate == null || sendNow.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
-              _lastLiveActivityUpdate = sendNow;
-              LiveActivityService.updateTransferState(
-                bytesTransferred: totalBytesTransferred + bytesSent,
-                totalBytes: totalSize,
-                speed: 0,
-              );
-            }
           }
 
           final updatedTransfer = _activeTransfers[transferId]!.copyWith(
@@ -3487,24 +3404,13 @@ class TransferService {
 
         if (progressPercent != lastReportedProgress) {
           lastReportedProgress = progressPercent;
-          BackgroundTransferService.updateProgress(
+          _progressReporter.report(
             title: 'Sending to ${receiver.name}',
             fileName: item.name,
             progress: progressPercent,
             bytesTransferred: totalBytesTransferred + bytesSent,
             totalBytes: totalSize,
           );
-
-          // Update Live Activity notification on Android (throttled)
-          final sendNow = DateTime.now();
-          if (_lastLiveActivityUpdate == null || sendNow.difference(_lastLiveActivityUpdate!) >= _liveActivityThrottle) {
-            _lastLiveActivityUpdate = sendNow;
-            LiveActivityService.updateTransferState(
-              bytesTransferred: totalBytesTransferred + bytesSent,
-              totalBytes: totalSize,
-              speed: 0,
-            );
-          }
         }
 
         final updatedTransfer = _activeTransfers[transferId]!.copyWith(
@@ -3927,12 +3833,11 @@ class TransferService {
   }
 
   Future<void> revokeTrust(String senderId) async {
-    final removed = _trustedDevices.remove(senderId);
-    if (removed != null) {
-      if (kDebugMode) {
-        AppLogger.info('Revoked trust for device: ${removed.senderName}');
-      }
-      await _saveTrustedDevices();
+    final removed = _trustedDevicesHandler.getTrustedDevice(senderId);
+    // Handler removes the record, deletes the persisted TOFU pin and saves.
+    await _trustedDevicesHandler.revokeTrust(senderId);
+    if (removed != null && kDebugMode) {
+      AppLogger.info('Revoked trust for device: ${removed.senderName}');
     }
   }
 
@@ -3940,27 +3845,19 @@ class TransferService {
   /// on the next key exchange. Clears the pinned public key and sets
   /// the pendingRepin flag so the next connection auto-pins a fresh key.
   Future<void> rotatePinnedKey(String deviceId) async {
-    final device = _trustedDevices[deviceId];
+    final device = _trustedDevicesHandler.getTrustedDevice(deviceId);
     if (device == null) return;
 
-    // Clear the pin from secure storage
-    await _secureStorage.delete(key: 'syndro.pin.$deviceId');
-
-    // Update in-memory record
-    _trustedDevices[deviceId] = device.copyWith(
-      pinnedPubKey: null,
-      pendingRepin: true,
-    );
-    await _saveTrustedDevices();
+    await _trustedDevicesHandler.rotatePinnedKey(deviceId);
 
     if (kDebugMode) {
-      AppLogger.info('🔄 Rotated pin for device: ${device.senderName} ($deviceId)');
+      AppLogger.info(
+          '🔄 Rotated pin for device: ${device.senderName} ($deviceId)');
     }
   }
 
   Future<void> clearTrustedSenders() async {
-    _trustedDevices.clear();
-    await _saveTrustedDevices();
+    await _trustedDevicesHandler.clearTrustedDevices();
     AppLogger.info('Cleared all trusted devices');
   }
 
@@ -3976,14 +3873,15 @@ class TransferService {
   Future<void> dispose() async {
     _isDisposed = true;
 
-    // Cancel timers
+    // TrustedDevicesHandler owns the pending-requests cleanup timer and
+    // stream controller — dispose it as one unit.
     try {
-      _pendingRequestsCleanupTimer?.cancel();
-      _pendingRequestsCleanupTimer = null;
+      _trustedDevicesHandler.dispose();
     } catch (e) {
-      if (kDebugMode) AppLogger.error('Error cancelling pending requests cleanup timer: $e');
+      if (kDebugMode) AppLogger.error('Error disposing trusted devices handler: $e');
     }
 
+    // Cancel timers
     try {
       _sessionCleanupTimer?.cancel();
       _sessionCleanupTimer = null;
@@ -4023,14 +3921,6 @@ class TransferService {
       if (kDebugMode) AppLogger.error('Error closing transfer controller: $e');
     }
 
-    try {
-      if (!_pendingRequestsController.isClosed) {
-        await _pendingRequestsController.close();
-      }
-    } catch (e) {
-      if (kDebugMode) AppLogger.error('Error closing pending requests controller: $e');
-    }
-
     // Close progress controllers
     for (final controller in _progressControllers.values) {
       try {
@@ -4044,7 +3934,6 @@ class TransferService {
 
     _progressControllers.clear();
     _activeTransfers.clear();
-    _pendingRequests.clear();
     _encryptionSessions.clear();
 
     // Dispose parallel handlers

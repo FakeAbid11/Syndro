@@ -1,12 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 import '../models/transfer.dart';
+import '../models/transfer_history_entry.dart';
 import '../models/device.dart';
 
+import '../utils/app_logger.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
   static Database? _database;
@@ -109,7 +110,7 @@ class DatabaseHelper {
           CREATE INDEX IF NOT EXISTS idx_transfers_status ON transfers(status)
         ''');
       } catch (e) {
-        debugPrint('Migration error (non-fatal): $e');
+        AppLogger.info('Migration error (non-fatal): $e');
       }
     }
   }
@@ -223,6 +224,16 @@ class DatabaseHelper {
       limit: limit,
       offset: offset,
     );
+  }
+
+  /// Typed variant of [getTransferHistory] — maps raw rows into
+  /// [TransferHistoryEntry] models so callers never touch raw maps.
+  Future<List<TransferHistoryEntry>> getHistoryEntries({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final rows = await getTransferHistory(limit: limit, offset: offset);
+    return rows.map(TransferHistoryEntry.fromRow).toList();
   }
 
   // FIX: Get transfer by ID with parameterized queries
@@ -411,13 +422,15 @@ class DatabaseHelper {
 
   // Close database
   Future<void> close() async {
-    if (_isClosed) return;
-    _isClosed = true;
     final db = _database;
     _database = null;
     _initFuture = null;
     if (db != null) {
       await db.close();
     }
+    // Allow the singleton to be reopened later (e.g. tests that point the
+    // database factory at a fresh databases path per case). Previously this
+    // flag stayed `true` forever, permanently bricking the instance.
+    _isClosed = false;
   }
 }

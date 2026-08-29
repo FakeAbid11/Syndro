@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'main_navigation_screen.dart';
 import 'permissions_onboarding_screen.dart';
 
+import '../../core/utils/app_logger.dart';
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -81,7 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('onboarding_complete', true);
     } catch (e) {
-      debugPrint('Failed to save onboarding status: $e');
+      AppLogger.info('Failed to save onboarding status: $e');
     }
 
     if (!mounted) return;

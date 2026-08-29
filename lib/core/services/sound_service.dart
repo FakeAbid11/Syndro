@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/app_logger.dart';
 /// Service to play notification sounds across all platforms.
 ///
 /// - Android: Uses native MethodChannel to play system notification sound.
@@ -43,7 +43,7 @@ class SoundService {
     try {
       await _channel.invokeMethod('playNotificationSound');
     } catch (e) {
-      debugPrint('Could not play Android notification sound: $e');
+      AppLogger.info('Could not play Android notification sound: $e');
     }
   }
 
@@ -76,7 +76,7 @@ class SoundService {
         runInShell: true,
       );
     } catch (e) {
-      debugPrint('Could not play Windows notification sound: $e');
+      AppLogger.info('Could not play Windows notification sound: $e');
     }
   }
 

@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
 
+import '../utils/app_logger.dart';
 class TransferCheckpoint extends Equatable {
   final String transferId;
   final String fileId; // Which file in multi-file transfer (file path or index)
@@ -66,7 +66,7 @@ class TransferCheckpoint extends Equatable {
       if (currentFileIndex < filePaths!.length) {
         final currentFile = File(filePaths![currentFileIndex]);
         if (!await currentFile.exists()) {
-          debugPrint(
+          AppLogger.info(
               '⚠️ Checkpoint file not found: ${filePaths![currentFileIndex]}');
           return false;
         }
@@ -74,7 +74,7 @@ class TransferCheckpoint extends Equatable {
 
       return true;
     } catch (e) {
-      debugPrint('Error checking checkpoint files: $e');
+      AppLogger.info('Error checking checkpoint files: $e');
       return false;
     }
   }
@@ -164,7 +164,7 @@ class TransferCheckpoint extends Equatable {
       try {
         return DateTime.parse(value);
       } catch (e) {
-        debugPrint('Error parsing checkpoint timestamp: $e');
+        AppLogger.info('Error parsing checkpoint timestamp: $e');
         return DateTime.now();
       }
     }

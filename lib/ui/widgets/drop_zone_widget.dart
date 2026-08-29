@@ -7,6 +7,7 @@ import '../../core/models/transfer.dart';
 import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
+import '../../core/utils/app_logger.dart';
 class DropZoneWidget extends StatefulWidget {
   final Widget child;
   final Function(List<TransferItem> items) onFilesDropped;
@@ -93,7 +94,7 @@ class _DropZoneWidgetState extends State<DropZoneWidget>
           ));
         }
       } catch (e) {
-        debugPrint('Error processing dropped file: $e');
+        AppLogger.info('Error processing dropped file: $e');
       }
     }
 
@@ -283,7 +284,7 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
           ));
         }
       } catch (e) {
-        debugPrint('Error processing dropped file: $e');
+        AppLogger.info('Error processing dropped file: $e');
       }
     }
 

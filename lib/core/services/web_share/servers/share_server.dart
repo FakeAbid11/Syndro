@@ -477,16 +477,25 @@ class ShareServer {
     if (_server == null) return;
 
     await for (final request in _server!) {
+      // PERF: Dispatch concurrently. Awaiting inline serialized every request
+      // behind the previous one, so a slow download starved the index page and
+      // thumbnail requests. Errors are answered with a 500 below.
+      unawaited(_handleRequestSafely(request));
+    }
+  }
+
+  /// Runs [_handleRequest] with the error handling that used to sit inline in
+  /// the serve loop: any failure is logged and answered with a 500.
+  Future<void> _handleRequestSafely(HttpRequest request) async {
+    try {
+      await _handleRequest(request);
+    } catch (e) {
+      AppLogger.error('Error handling request: $e');
       try {
-        await _handleRequest(request);
-      } catch (e) {
-        AppLogger.error('Error handling request: $e');
-        try {
-          request.response.statusCode = HttpStatus.internalServerError;
-          await request.response.close();
-        } catch (closeError) {
-          AppLogger.error('Error closing error response: $closeError');
-        }
+        request.response.statusCode = HttpStatus.internalServerError;
+        await request.response.close();
+      } catch (closeError) {
+        AppLogger.error('Error closing error response: $closeError');
       }
     }
   }

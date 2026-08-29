@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../config/app_config.dart';
 import '../utils/synchronized.dart';
 
+import '../utils/app_logger.dart';
 /// Core encryption service using AES-256-GCM
 ///
 /// This service provides secure file encryption and decryption using the AES-256-GCM
@@ -336,7 +337,7 @@ class EncryptionService {
 
         yield encrypted;
       } catch (e) {
-        debugPrint('Error encrypting chunk: $e');
+        AppLogger.info('Error encrypting chunk: $e');
         rethrow;
       }
     }
@@ -372,7 +373,7 @@ class EncryptionService {
 
         yield decrypted;
       } catch (e) {
-        debugPrint('Error decrypting chunk: $e');
+        AppLogger.info('Error decrypting chunk: $e');
         rethrow;
       }
     }

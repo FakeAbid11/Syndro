@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../utils/app_logger.dart';
 class SystemTrayService {
   static final SystemTray _systemTray = SystemTray();
   static bool _initialized = false;
@@ -59,7 +60,7 @@ class SystemTrayService {
 
       // Handle tray events
       _systemTray.registerSystemTrayEventHandler((eventName) async {
-        debugPrint('System tray event: $eventName');
+        AppLogger.info('System tray event: $eventName');
         
         if (eventName == kSystemTrayEventClick) {
           // Left click - show window
@@ -71,9 +72,9 @@ class SystemTrayService {
       });
 
       _initialized = true;
-      debugPrint('✅ System tray initialized');
+      AppLogger.info('✅ System tray initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize system tray: $e');
+      AppLogger.error('❌ Failed to initialize system tray: $e');
     }
   }
 
@@ -123,7 +124,7 @@ class SystemTrayService {
     try {
       await _systemTray.setToolTip(tooltip);
     } catch (e) {
-      debugPrint('Failed to update tooltip: $e');
+      AppLogger.info('Failed to update tooltip: $e');
     }
   }
 
@@ -136,7 +137,7 @@ class SystemTrayService {
       await windowManager.focus();
       _onShowWindow?.call();
     } catch (e) {
-      debugPrint('Failed to show window: $e');
+      AppLogger.info('Failed to show window: $e');
     }
   }
 
@@ -150,9 +151,9 @@ class SystemTrayService {
 
     try {
       await windowManager.hide();
-      debugPrint('✅ Minimized to tray');
+      AppLogger.info('✅ Minimized to tray');
     } catch (e) {
-      debugPrint('Failed to minimize to tray: $e');
+      AppLogger.info('Failed to minimize to tray: $e');
       await windowManager.minimize();
     }
   }
@@ -164,7 +165,7 @@ class SystemTrayService {
     try {
       await _systemTray.destroy();
     } catch (e) {
-      debugPrint('Error destroying system tray: $e');
+      AppLogger.info('Error destroying system tray: $e');
     }
     
     await windowManager.setPreventClose(false);
@@ -178,9 +179,9 @@ class SystemTrayService {
     try {
       await _systemTray.destroy();
       _initialized = false;
-      debugPrint('✅ System tray disposed');
+      AppLogger.info('✅ System tray disposed');
     } catch (e) {
-      debugPrint('Error disposing system tray: $e');
+      AppLogger.info('Error disposing system tray: $e');
     }
   }
 }

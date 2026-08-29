@@ -7,6 +7,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
+import '../../core/utils/app_logger.dart';
 /// File type categories
 enum FileType {
   image,
@@ -101,7 +102,7 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
           }
         }
       } catch (e) {
-        debugPrint('Error generating video thumbnail: $e');
+        AppLogger.info('Error generating video thumbnail: $e');
         if (mounted) {
           setState(() {
             _thumbnailError = true;
@@ -636,7 +637,7 @@ class FileTypeHelper {
         return file.lengthSync();
       }
     } catch (e) {
-      debugPrint('Error getting file size: $e');
+      AppLogger.info('Error getting file size: $e');
     }
     return 0;
   }

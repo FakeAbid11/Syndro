@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart';
 
+import '../../utils/app_logger.dart';
 /// HTTP response helper methods for transfer server
 class HttpResponseHelper {
   static Future<void> sendResponse(
@@ -48,7 +48,7 @@ class HttpResponseHelper {
       }
       return data;
     } catch (e) {
-      debugPrint('JSON parse error: $e');
+      AppLogger.info('JSON parse error: $e');
       return null;
     }
   }

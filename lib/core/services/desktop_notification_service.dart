@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../utils/byte_formatter.dart';
 
+import '../utils/app_logger.dart';
 /// Desktop notification service with rich content support (thumbnails, actions)
 class DesktopNotificationService {
   static bool _initialized = false;
@@ -21,9 +22,9 @@ class DesktopNotificationService {
         shortcutPolicy: ShortcutPolicy.requireCreate,
       );
       _initialized = true;
-      debugPrint('✅ Desktop notification service initialized');
+      AppLogger.info('✅ Desktop notification service initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize desktop notifications: $e');
+      AppLogger.error('❌ Failed to initialize desktop notifications: $e');
     }
   }
 
@@ -53,9 +54,9 @@ class DesktopNotificationService {
 
       await notification.show();
       
-      debugPrint('Transfer request notification shown: $senderName, $filesText');
+      AppLogger.info('Transfer request notification shown: $senderName, $filesText');
     } catch (e) {
-      debugPrint('❌ Failed to show transfer request notification: $e');
+      AppLogger.error('❌ Failed to show transfer request notification: $e');
     }
   }
 
@@ -84,7 +85,7 @@ class DesktopNotificationService {
 
       await notification.show();
     } catch (e) {
-      debugPrint('❌ Failed to show progress notification: $e');
+      AppLogger.error('❌ Failed to show progress notification: $e');
     }
   }
 
@@ -120,7 +121,7 @@ class DesktopNotificationService {
 
       await notification.show();
     } catch (e) {
-      debugPrint('❌ Failed to show completion notification: $e');
+      AppLogger.error('❌ Failed to show completion notification: $e');
     }
   }
 
@@ -143,7 +144,7 @@ class DesktopNotificationService {
 
       await notification.show();
     } catch (e) {
-      debugPrint('❌ Failed to show notification: $e');
+      AppLogger.error('❌ Failed to show notification: $e');
     }
   }
 
@@ -191,7 +192,7 @@ class DesktopNotificationService {
       // In a production app, you'd resize the image here
       return imagePath;
     } catch (e) {
-      debugPrint('Failed to generate thumbnail: $e');
+      AppLogger.info('Failed to generate thumbnail: $e');
       return null;
     }
   }

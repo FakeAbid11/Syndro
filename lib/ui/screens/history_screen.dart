@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
-import '../../core/database/database_helper.dart';
+import '../../core/models/transfer_history_entry.dart';
+import '../../core/providers/history_provider.dart';
 import '../../core/utils/byte_formatter.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -15,80 +16,22 @@ class HistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
-  List<Map<String, dynamic>> _transfers = [];
-  bool _isLoading = true;
-  Map<String, int> _statistics = {};
-
   @override
   void initState() {
     super.initState();
-    _loadHistory();
-  }
-
-  Future<void> _loadHistory() async {
-    // FIXED (Bug #23): Add mounted check before setState
-    if (!mounted) return;
-    
-    setState(() {
-      _isLoading = true;
+    // Load through [historyProvider] (providers must not be mutated during
+    // the build phase, hence the microtask).
+    Future.microtask(() {
+      if (mounted) ref.read(historyProvider.notifier).load();
     });
-
-    try {
-      final db = DatabaseHelper.instance;
-      final transfers = await db.getTransferHistory(limit: 100);
-      final stats = await db.getStatistics();
-
-      // FIXED (Bug #23): Add mounted check before setState
-      if (mounted) {
-        setState(() {
-          _transfers = transfers;
-          _statistics = stats;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      // FIXED (Bug #23): Add mounted check before setState
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading history: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    }
   }
 
-  Future<void> _deleteTransfer(String transferId) async {
-    try {
-      await DatabaseHelper.instance.deleteTransfer(transferId);
-      await _loadHistory();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transfer removed from history'),
-            backgroundColor: AppTheme.successColor,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting transfer: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    }
-  }
+  // Backed by the history provider — previously local setState state fed by
+  // raw sqflite maps.
+  List<TransferHistoryEntry> get _transfers =>
+      ref.watch(historyProvider).entries;
+  Map<String, int> get _statistics => ref.watch(historyProvider).statistics;
+  bool get _isLoading => ref.watch(historyProvider).isLoading;
 
   Future<void> _clearAllHistory() async {
     final confirmed = await showDialog<bool>(
@@ -115,33 +58,21 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
 
     if (confirmed == true) {
-      try {
-        await DatabaseHelper.instance.clearHistory();
-        await _loadHistory();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('History cleared'),
-              backgroundColor: AppTheme.successColor,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error clearing history: $e'),
-              backgroundColor: AppTheme.errorColor,
-            ),
-          );
-        }
+      final cleared = await ref.read(historyProvider.notifier).clearAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(cleared ? 'History cleared' : 'Error clearing history'),
+            backgroundColor:
+                cleared ? AppTheme.successColor : AppTheme.errorColor,
+          ),
+        );
       }
     }
   }
 
-  String _formatTimestamp(int milliseconds) {
-    final dateTime = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  String _formatTimestamp(DateTime dateTime) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
@@ -334,13 +265,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       itemBuilder: (context, index) {
         final transfer = _transfers[index];
 
-        // FIX (Bug #33, #39): Safe type casting with defaults
-        final transferId = transfer['id'] as String? ?? '';
-        final status = transfer['status'] as String? ?? 'unknown';
-        final receiverName = transfer['receiver_name'] as String? ?? 'Unknown Device';
-        final fileCount = transfer['file_count'] as int? ?? 0;
-        final totalBytes = transfer['total_bytes'] as int? ?? 0;
-        final createdAt = transfer['created_at'] as int? ?? 0;
+        // Typed row — null handling lives in TransferHistoryEntry.fromRow.
+        final transferId = transfer.id;
+        final status = transfer.status;
+        final receiverName = transfer.displayName;
+        final fileCount = transfer.fileCount;
+        final totalBytes = transfer.totalBytes;
+        final createdAt = transfer.createdAt;
 
         return Dismissible(
           key: Key(transferId),
@@ -356,13 +287,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             child: const Icon(Icons.delete, color: Colors.white),
           ),
           onDismissed: (_) {
-            // Remove synchronously — Dismissible requires the item to leave
-            // the tree immediately, or the widget errors and the row stays.
-            setState(() {
-              _transfers.removeWhere((t) => t['id'] == transferId);
-            });
-            // DB delete + snackbar happen in the background.
-            _deleteTransfer(transferId);
+            // Provider state updates synchronously so the row leaves the
+            // tree immediately (Dismissible requirement); the DB delete and
+            // statistics refresh happen in the background.
+            ref.read(historyProvider.notifier).delete(transferId);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Transfer removed from history'),
+                  backgroundColor: AppTheme.successColor,
+                ),
+              );
+            }
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.md),

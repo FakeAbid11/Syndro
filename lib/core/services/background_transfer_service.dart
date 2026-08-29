@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'sound_service.dart';
 import 'desktop_notification_service.dart';
 
+import '../utils/app_logger.dart';
 class BackgroundTransferService {
   static const MethodChannel _channel =
       MethodChannel('com.syndro.app/transfer');
@@ -28,7 +28,7 @@ class BackgroundTransferService {
         }
         return <String, dynamic>{};
       } catch (e) {
-        debugPrint('Error parsing transfer event: $e');
+        AppLogger.info('Error parsing transfer event: $e');
         return <String, dynamic>{};
       }
     });
@@ -51,11 +51,11 @@ class BackgroundTransferService {
           'fileName': fileName,
         });
       } on PlatformException catch (e) {
-        debugPrint('Platform error starting background transfer: $e');
+        AppLogger.info('Platform error starting background transfer: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error starting background transfer (Android): $e');
+        AppLogger.info('Error starting background transfer (Android): $e');
       }
     } else if (Platform.isWindows) {
       await _showWindowsNotification(
@@ -126,11 +126,11 @@ class BackgroundTransferService {
           'totalBytes': totalBytes,
         });
       } on PlatformException catch (e) {
-        debugPrint('Platform error updating progress: $e');
+        AppLogger.info('Platform error updating progress: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error updating transfer progress (Android): $e');
+        AppLogger.info('Error updating transfer progress (Android): $e');
       }
     } else if (Platform.isWindows) {
       // Update every 5% to avoid notification spam
@@ -164,16 +164,16 @@ class BackgroundTransferService {
       try {
         await _channel.invokeMethod('stopBackgroundTransfer');
       } on PlatformException catch (e) {
-        debugPrint('Platform error stopping transfer: $e');
+        AppLogger.info('Platform error stopping transfer: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error stopping background transfer (Android): $e');
+        AppLogger.info('Error stopping background transfer (Android): $e');
       }
     } else if (Platform.isWindows) {
-      debugPrint('Transfer notification cleared (Windows)');
+      AppLogger.info('Transfer notification cleared (Windows)');
     } else if (Platform.isLinux) {
-      debugPrint('Transfer notification cleared (Linux)');
+      AppLogger.info('Transfer notification cleared (Linux)');
     }
   }
 
@@ -201,11 +201,11 @@ class BackgroundTransferService {
           'firstFileName': firstFileName,
         });
       } on PlatformException catch (e) {
-        debugPrint('Platform error showing request: $e');
+        AppLogger.info('Platform error showing request: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error showing transfer request (Android): $e');
+        AppLogger.info('Error showing transfer request (Android): $e');
       }
     } else if (Platform.isWindows || Platform.isLinux) {
       // Use desktop notification service with thumbnail support
@@ -226,11 +226,11 @@ class BackgroundTransferService {
       try {
         await _channel.invokeMethod('dismissTransferRequest');
       } on PlatformException catch (e) {
-        debugPrint('Platform error dismissing request: $e');
+        AppLogger.info('Platform error dismissing request: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error dismissing transfer request (Android): $e');
+        AppLogger.info('Error dismissing transfer request (Android): $e');
       }
     }
   }
@@ -257,11 +257,11 @@ class BackgroundTransferService {
           'thumbnailPath': thumbnailPath,
         });
       } on PlatformException catch (e) {
-        debugPrint('Platform error showing complete: $e');
+        AppLogger.info('Platform error showing complete: $e');
       } on MissingPluginException catch (e) {
-        debugPrint('Plugin not available: $e');
+        AppLogger.info('Plugin not available: $e');
       } catch (e) {
-        debugPrint('Error showing transfer complete (Android): $e');
+        AppLogger.info('Error showing transfer complete (Android): $e');
       }
     } else if (Platform.isWindows || Platform.isLinux) {
       // Use desktop notification service with thumbnail support
@@ -340,8 +340,8 @@ class BackgroundTransferService {
         runInShell: true,
       );
     } catch (e) {
-      debugPrint('Windows notification error: $e');
-      debugPrint('Notification: $title - $body');
+      AppLogger.info('Windows notification error: $e');
+      AppLogger.info('Notification: $title - $body');
     }
   }
 
@@ -385,8 +385,8 @@ class BackgroundTransferService {
         await _playLinuxSound();
       }
     } catch (e) {
-      debugPrint('Linux notification error: $e');
-      debugPrint('Notification: $title - $body');
+      AppLogger.info('Linux notification error: $e');
+      AppLogger.info('Notification: $title - $body');
     }
   }
 
@@ -418,7 +418,7 @@ class BackgroundTransferService {
       }
 
       if (validSoundPath == null) {
-        debugPrint('No system sound file found, skipping sound playback');
+        AppLogger.info('No system sound file found, skipping sound playback');
         return;
       }
 
@@ -446,7 +446,7 @@ class BackgroundTransferService {
     try {
       // FIX: Validate file path to prevent command injection
       if (!_isValidWindowsPath(filePath)) {
-        debugPrint('Invalid file path: $filePath');
+        AppLogger.info('Invalid file path: $filePath');
         return;
       }
 
@@ -471,7 +471,7 @@ class BackgroundTransferService {
         runInShell: false, // FIX: Don't use shell
       );
     } catch (e) {
-      debugPrint('Error opening file location: $e');
+      AppLogger.info('Error opening file location: $e');
     }
   }
 
@@ -501,7 +501,7 @@ class BackgroundTransferService {
     try {
       // FIX: Validate path
       if (!_isValidLinuxPath(filePath)) {
-        debugPrint('Invalid file path: $filePath');
+        AppLogger.info('Invalid file path: $filePath');
         return;
       }
 
@@ -511,7 +511,7 @@ class BackgroundTransferService {
 
       await Process.run('xdg-open', [directory]);
     } catch (e) {
-      debugPrint('Error opening file location: $e');
+      AppLogger.info('Error opening file location: $e');
     }
   }
 

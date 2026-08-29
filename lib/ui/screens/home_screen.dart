@@ -25,6 +25,7 @@ import 'transfer_progress_screen.dart';
 import 'home_screen_strings.dart';
 import '../../core/utils/byte_formatter.dart';
 
+import '../../core/utils/app_logger.dart';
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -67,17 +68,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _pendingRequestsSubscription?.close();
       _pendingRequestsSubscription = null;
     } catch (e) {
-      debugPrint('Error closing pending requests subscription: $e');
+      AppLogger.info('Error closing pending requests subscription: $e');
     }
 
     try {
       _receivedTextSubscription?.cancel();
       _receivedTextSubscription = null;
     } catch (e) {
-      debugPrint('Error closing received text subscription: $e');
+      AppLogger.info('Error closing received text subscription: $e');
     }
     
-    debugPrint('🧹 HomeScreen disposed');
+    AppLogger.info('🧹 HomeScreen disposed');
     super.dispose();
   }
 
@@ -109,7 +110,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         },
       );
     } catch (e) {
-      debugPrint('⚠️ Error creating pending requests subscription: $e');
+      AppLogger.warn('⚠️ Error creating pending requests subscription: $e');
     }
   }
 
@@ -121,7 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         _showReceivedTextSheet(msg);
       });
     } catch (e) {
-      debugPrint('⚠️ Error creating received text subscription: $e');
+      AppLogger.warn('⚠️ Error creating received text subscription: $e');
     }
   }
 
@@ -291,7 +292,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ),
                 );
               } catch (e) {
-                debugPrint('Error accepting transfer: $e');
+                AppLogger.info('Error accepting transfer: $e');
                 if (!mounted) return;
                 scaffoldMessenger.showSnackBar(
                   SnackBar(
@@ -320,7 +321,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ),
                 );
               } catch (e) {
-                debugPrint('Error rejecting transfer: $e');
+                AppLogger.info('Error rejecting transfer: $e');
               }
             },
           );
@@ -346,11 +347,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             }
           });
         } catch (e) {
-          debugPrint('Error checking pending requests: $e');
+          AppLogger.info('Error checking pending requests: $e');
         }
       });
     } catch (e) {
-      debugPrint('⚠️ Error showing transfer request sheet: $e');
+      AppLogger.warn('⚠️ Error showing transfer request sheet: $e');
       // FIXED (Bug #4): Reset flag if sheet fails to show
       if (mounted) {
         setState(() => _isShowingRequestSheet = false);
@@ -366,7 +367,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       final service = ref.read(deviceDiscoveryServiceProvider);
       await service.refreshDevices();
     } catch (e) {
-      debugPrint('Refresh error: $e');
+      AppLogger.info('Refresh error: $e');
     } finally {
       if (mounted) {
         setState(() => _isRefreshing = false);
@@ -444,7 +445,7 @@ const SizedBox(height: AppSpacing.sm),
         // Use root navigator to ensure we dismiss the right dialog
         Navigator.of(context, rootNavigator: true).pop();
       } catch (e) {
-        debugPrint('Error dismissing dialog: $e');
+        AppLogger.info('Error dismissing dialog: $e');
       }
     }
   }
@@ -648,7 +649,7 @@ const SizedBox(height: AppSpacing.sm),
           _openBrowserShareScreen(files, ShareMode.media);
         }
       } catch (e) {
-        debugPrint('Error processing media files: $e');
+        AppLogger.info('Error processing media files: $e');
         _dismissLoadingDialog();
         
         // FIX (Bug #18): Show error feedback to user
@@ -706,7 +707,7 @@ const SizedBox(height: AppSpacing.sm),
           _openBrowserShareScreen(files, ShareMode.files);
         }
       } catch (e) {
-        debugPrint('Error processing files: $e');
+        AppLogger.info('Error processing files: $e');
         _dismissLoadingDialog();
         
         // FIX (Bug #18): Show error feedback to user
@@ -942,7 +943,7 @@ Future<void> _showTextComposeDialog(Device device) async {
 
       await sendFuture;
     } catch (e) {
-      debugPrint('Error sending text: $e');
+      AppLogger.info('Error sending text: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

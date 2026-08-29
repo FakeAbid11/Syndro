@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/app_logger.dart';
 /// Represents a shared file from another app
 class SharedFile {
   final String uri;
@@ -114,7 +114,7 @@ class ShareIntentService {
         return files;
       }
     } on PlatformException catch (e) {
-      debugPrint('Error checking for shared files: ${e.message}');
+      AppLogger.info('Error checking for shared files: ${e.message}');
     }
     return null;
   }
@@ -130,7 +130,7 @@ class ShareIntentService {
         return result;
       }
     } on PlatformException catch (e) {
-      debugPrint('Error checking for shared text: ${e.message}');
+      AppLogger.info('Error checking for shared text: ${e.message}');
     }
     return null;
   }
@@ -158,7 +158,7 @@ class ShareIntentService {
       _lastSharedFiles = null;
       _lastSharedText = null;
     } on PlatformException catch (e) {
-      debugPrint('Error clearing shared files: ${e.message}');
+      AppLogger.info('Error clearing shared files: ${e.message}');
     }
   }
 
@@ -181,7 +181,7 @@ class ShareIntentService {
       });
       return result;
     } on PlatformException catch (e) {
-      debugPrint('Error copying content URI: ${e.message}');
+      AppLogger.info('Error copying content URI: ${e.message}');
       return null;
     }
   }

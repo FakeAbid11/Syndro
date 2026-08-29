@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/device.dart';
 import '../services/device_discovery_service.dart';
 import '../services/device_nickname_service.dart';
 
+import '../utils/app_logger.dart';
 // ============================================
 // DEVICE NICKNAME SERVICE PROVIDER
 // ============================================
@@ -112,7 +112,7 @@ class DeviceNicknameNotifier extends StateNotifier<String?> {
     try {
       state = await _service.getNickname(_deviceId);
     } catch (e) {
-      debugPrint('Error loading nickname: $e');
+      AppLogger.info('Error loading nickname: $e');
       state = null;
     }
   }
@@ -125,7 +125,7 @@ class DeviceNicknameNotifier extends StateNotifier<String?> {
       }
       return success;
     } catch (e) {
-      debugPrint('Error setting nickname: $e');
+      AppLogger.info('Error setting nickname: $e');
       return false;
     }
   }
@@ -138,7 +138,7 @@ class DeviceNicknameNotifier extends StateNotifier<String?> {
       }
       return success;
     } catch (e) {
-      debugPrint('Error clearing nickname: $e');
+      AppLogger.info('Error clearing nickname: $e');
       return false;
     }
   }
@@ -174,7 +174,7 @@ class DeviceDiscoveryNotifier extends StateNotifier<List<Device>> {
         }
       },
       onError: (e) {
-        debugPrint('Device stream error: $e');
+        AppLogger.info('Device stream error: $e');
       },
     );
   }
@@ -195,7 +195,7 @@ class DeviceDiscoveryNotifier extends StateNotifier<List<Device>> {
 
       await _service.refreshDevices();
     } catch (e) {
-      debugPrint('Discovery error: $e');
+      AppLogger.info('Discovery error: $e');
     } finally {
       if (!_isDisposed) {
         _isScanning = false;

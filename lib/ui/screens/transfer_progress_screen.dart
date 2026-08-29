@@ -11,6 +11,7 @@ import '../../core/models/transfer.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/services/background_transfer_service.dart';
 
+import '../../core/utils/app_logger.dart';
 class TransferProgressScreen extends ConsumerStatefulWidget {
   final String transferId;
   final Device? remoteDevice;
@@ -174,21 +175,21 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
       }
       _pulseController.dispose();
     } catch (e) {
-      debugPrint('Error disposing pulse controller: $e');
+      AppLogger.info('Error disposing pulse controller: $e');
     }
     
     try {
       _transferSubscription?.cancel();
       _transferSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling transfer subscription: $e');
+      AppLogger.info('Error cancelling transfer subscription: $e');
     }
     
     try {
       _speedTimer?.cancel();
       _speedTimer = null;
     } catch (e) {
-      debugPrint('Error cancelling speed timer: $e');
+      AppLogger.info('Error cancelling speed timer: $e');
     }
     
     super.dispose();

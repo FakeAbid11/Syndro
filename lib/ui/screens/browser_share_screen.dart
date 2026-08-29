@@ -12,6 +12,7 @@ import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
+import '../../core/utils/app_logger.dart';
 /// Enum to define the share mode
 enum ShareMode {
   files, // General files - "Add More Files"
@@ -80,36 +81,36 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
       _connectionCountSubscription?.cancel();
       _connectionCountSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling connection count subscription: $e');
+      AppLogger.info('Error cancelling connection count subscription: $e');
     }
     
     try {
       _connectionEventSubscription?.cancel();
       _connectionEventSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling connection event subscription: $e');
+      AppLogger.info('Error cancelling connection event subscription: $e');
     }
     
     try {
       _confirmationRequestSubscription?.cancel();
       _confirmationRequestSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling confirmation request subscription: $e');
+      AppLogger.info('Error cancelling confirmation request subscription: $e');
     }
     
     try {
       _webShareService.stopSharing();
     } catch (e) {
-      debugPrint('Error stopping web share service: $e');
+      AppLogger.info('Error stopping web share service: $e');
     }
     
     // Clear FilePicker cache to free storage
     // Fire-and-forget is acceptable for cache cleanup - if it fails, it's not critical
     // Using then/catchError instead of ignore() for proper error handling
     _clearFilePickerCache().then((_) {
-      debugPrint('✅ FilePicker cache cleanup completed');
+      AppLogger.info('✅ FilePicker cache cleanup completed');
     }).catchError((e) {
-      debugPrint('⚠️ FilePicker cache cleanup failed (non-critical): $e');
+      AppLogger.warn('⚠️ FilePicker cache cleanup failed (non-critical): $e');
     });
     super.dispose();
   }
@@ -120,7 +121,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
     try {
       await FilePicker.clearTemporaryFiles();
     } catch (e) {
-      debugPrint('FilePicker.clearTemporaryFiles failed: $e');
+      AppLogger.info('FilePicker.clearTemporaryFiles failed: $e');
     }
 
     // Method 2: Manually delete cache directory (more reliable on Android)
@@ -130,7 +131,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
 
       if (await filePickerDir.exists()) {
         await filePickerDir.delete(recursive: true);
-        debugPrint('✅ FilePicker cache cleared: ${filePickerDir.path}');
+        AppLogger.info('✅ FilePicker cache cleared: ${filePickerDir.path}');
       }
 
       // Method 3: Also clear any file_picker related folders
@@ -139,14 +140,14 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
         if (entity is Directory && entity.path.contains('file_picker')) {
           try {
             await entity.delete(recursive: true);
-            debugPrint('✅ Cleared: ${entity.path}');
+            AppLogger.info('✅ Cleared: ${entity.path}');
           } catch (e) {
-            debugPrint('Failed to clear ${entity.path}: $e');
+            AppLogger.info('Failed to clear ${entity.path}: $e');
           }
         }
       }
     } catch (e) {
-      debugPrint('Error in manual cache cleanup: $e');
+      AppLogger.info('Error in manual cache cleanup: $e');
     }
   }
 
@@ -773,11 +774,11 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
         total += stat.size;
       } catch (e) { 
         errorCount++;
-        debugPrint("Error getting file size: $e");
+        AppLogger.info("Error getting file size: $e");
       }
     }
     if (errorCount > 0 && errorCount == _files.length) {
-      debugPrint('Warning: Could not get size for any files');
+      AppLogger.info('Warning: Could not get size for any files');
     }
     return total;
   }

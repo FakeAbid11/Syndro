@@ -32,6 +32,7 @@ import 'ui/screens/browser_share_screen.dart';
 import 'ui/screens/text_share_screen.dart';
 import 'ui/theme/app_theme.dart';
 
+import 'core/utils/app_logger.dart';
 /// Held for the process lifetime so the single-instance listener stays bound.
 SingleInstanceGuard? _instanceGuard;
 
@@ -61,9 +62,9 @@ void main(List<String> args) async {
     }).toList();
 
     if (incomingFiles.isNotEmpty) {
-      debugPrint('📥 Received ${incomingFiles.length} file(s) from command line');
+      AppLogger.info('📥 Received ${incomingFiles.length} file(s) from command line');
       for (final file in incomingFiles) {
-        debugPrint('  - $file');
+        AppLogger.info('  - $file');
       }
     }
   }
@@ -87,12 +88,12 @@ void main(List<String> args) async {
             }
             await StartupLogger.log('Second instance signaled window show');
           } catch (e) {
-            debugPrint('⚠️ Failed to show window on signal: $e');
+            AppLogger.warn('⚠️ Failed to show window on signal: $e');
           }
         },
       );
       if (role == SingleInstanceRole.secondary) {
-        debugPrint('⚠️ Another Syndro instance is already running — exiting.');
+        AppLogger.warn('⚠️ Another Syndro instance is already running — exiting.');
         await StartupLogger.log('Secondary instance — exiting');
         exit(0);
       }
@@ -156,10 +157,10 @@ void main(List<String> args) async {
 
       // Initialize desktop notification service
       await DesktopNotificationService.initialize();
-      debugPrint('✅ Desktop notification service initialized');
+      AppLogger.info('✅ Desktop notification service initialized');
       await StartupLogger.log('Desktop notification service initialized');
     } catch (e) {
-      debugPrint('⚠️ Window manager initialization failed: $e');
+      AppLogger.warn('⚠️ Window manager initialization failed: $e');
       await StartupLogger.log('Window manager initialization failed: $e');
       // Continue without window manager - app will still work
     }
@@ -169,14 +170,14 @@ void main(List<String> args) async {
   final container = ProviderContainer();
 
   // PRE-INITIALIZE device discovery service BEFORE app loads
-  debugPrint('🚀 Pre-initializing device discovery...');
+  AppLogger.info('🚀 Pre-initializing device discovery...');
 
   try {
     final deviceService = container.read(deviceDiscoveryServiceProvider);
     await deviceService.initialize();
-    debugPrint('✅ Device discovery initialized!');
+    AppLogger.info('✅ Device discovery initialized!');
   } catch (e) {
-    debugPrint('❌ Device discovery initialization failed: $e');
+    AppLogger.error('❌ Device discovery initialization failed: $e');
     // Continue anyway - the app can retry later
   }
 
@@ -184,15 +185,15 @@ void main(List<String> args) async {
   // engine/isolate silently in release builds. Log (and never crash) instead.
   runZonedGuarded(() {
     PlatformDispatcher.instance.onError = (error, stack) {
-      debugPrint('❌ Platform error: $error');
-      debugPrint('$stack');
+      AppLogger.error('❌ Platform error: $error');
+      AppLogger.info('$stack');
       return true;
     };
 
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
-      debugPrint('❌ Flutter error: ${details.exception}');
-      debugPrint('${details.stack}');
+      AppLogger.error('❌ Flutter error: ${details.exception}');
+      AppLogger.info('${details.stack}');
     };
 
     runApp(
@@ -205,8 +206,8 @@ void main(List<String> args) async {
       ),
     );
   }, (error, stack) {
-    debugPrint('❌ Uncaught zone error: $error');
-    debugPrint('$stack');
+    AppLogger.error('❌ Uncaught zone error: $error');
+    AppLogger.info('$stack');
   });
 }
 
@@ -242,7 +243,7 @@ Future<WindowBounds?> _sanitizeSavedBounds(WindowBounds? saved) async {
     );
     return result;
   } catch (e) {
-    debugPrint('⚠️ Could not validate window bounds: $e');
+    AppLogger.warn('⚠️ Could not validate window bounds: $e');
     await StartupLogger.log('Could not validate window bounds: $e');
     return saved;
   }
@@ -257,7 +258,7 @@ Future<void> _safeWindowCall(
   try {
     await action();
   } catch (e) {
-    debugPrint('⚠️ Window call "$name" failed: $e');
+    AppLogger.warn('⚠️ Window call "$name" failed: $e');
   }
 }
 
@@ -303,7 +304,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         windowManager.addListener(this);
         _windowListenerAdded = true;
       } catch (e) {
-        debugPrint('⚠️ Could not add window listener: $e');
+        AppLogger.warn('⚠️ Could not add window listener: $e');
       }
     }
 
@@ -323,14 +324,14 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
     try {
       final visible = await windowManager.isVisible();
       if (!visible) {
-        debugPrint('⚠️ Window not visible after first frame — forcing show');
+        AppLogger.warn('⚠️ Window not visible after first frame — forcing show');
         await windowManager.show();
         await windowManager.focus();
         await StartupLogger.log('Window not visible after first frame — '
             'forced show');
       }
     } catch (e) {
-      debugPrint('⚠️ Could not verify window visibility: $e');
+      AppLogger.warn('⚠️ Could not verify window visibility: $e');
     }
   }
 
@@ -348,15 +349,15 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       try {
         windowManager.removeListener(this);
       } catch (e) {
-        debugPrint('⚠️ Could not remove window listener: $e');
+        AppLogger.warn('⚠️ Could not remove window listener: $e');
       }
     }
 
     // Prevent double dispose — fire-and-forget is correct for sync dispose()
     SystemTrayService.dispose().timeout(
       const Duration(seconds: 3),
-      onTimeout: () => debugPrint('⚠️ SystemTrayService disposal timed out'),
-    ).catchError((e) => debugPrint('⚠️ SystemTrayService disposal error: $e'));
+      onTimeout: () => AppLogger.warn('⚠️ SystemTrayService disposal timed out'),
+    ).catchError((e) => AppLogger.warn('⚠️ SystemTrayService disposal error: $e'));
     super.dispose();
   }
 
@@ -366,17 +367,17 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       try {
         await SystemTrayService.initialize(
           onShowWindow: () {
-            debugPrint('Window shown from tray');
+            AppLogger.info('Window shown from tray');
           },
           onToggleServer: () {
-            debugPrint('Toggle server from tray');
+            AppLogger.info('Toggle server from tray');
           },
           onExit: () {
-            debugPrint('Exit from tray');
+            AppLogger.info('Exit from tray');
           },
         );
       } catch (e) {
-        debugPrint('⚠️ System tray initialization failed: $e');
+        AppLogger.warn('⚠️ System tray initialization failed: $e');
         // Continue without system tray
       }
     }
@@ -390,10 +391,10 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         // Listen for share intents
         _sharedFilesSubscription = shareIntentService.sharedFilesStream.listen((files) {
           if (files.isNotEmpty && mounted) {
-            debugPrint('📥 Received ${files.length} file(s) from share intent');
+            AppLogger.info('📥 Received ${files.length} file(s) from share intent');
             // Get the share mode from the service
             final mode = shareIntentService.lastShareMode;
-            debugPrint('📱 Share mode: $mode');
+            AppLogger.info('📱 Share mode: $mode');
             
             setState(() {
               _sharedFilesFromIntent = files;
@@ -406,7 +407,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         // Also listen for share mode changes
         _shareModeSubscription = shareIntentService.shareModeStream.listen((mode) {
           if (mounted) {
-            debugPrint('📱 Share mode changed to: $mode');
+            AppLogger.info('📱 Share mode changed to: $mode');
             setState(() {
               _shareMode = mode;
             });
@@ -417,7 +418,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         _sharedTextSubscription =
             shareIntentService.sharedTextStream.listen((text) {
           if (text.isNotEmpty && mounted) {
-            debugPrint('📝 Received shared text');
+            AppLogger.info('📝 Received shared text');
             setState(() {
               _sharedTextFromIntent = text;
               _hasShareIntent = true;
@@ -426,7 +427,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
           }
         });
       } catch (e) {
-        debugPrint('⚠️ Share intent service initialization failed: $e');
+        AppLogger.warn('⚠️ Share intent service initialization failed: $e');
       }
     }
 
@@ -437,13 +438,13 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
             .read(incomingFilesProvider.notifier)
             .setFilesFromPaths(widget.incomingFiles!);
       } catch (e) {
-        debugPrint('⚠️ Error setting incoming files: $e');
+        AppLogger.warn('⚠️ Error setting incoming files: $e');
       }
     }
 
     // Initialize transfer server for discovery
     try {
-      debugPrint('🚀 Starting transfer server...');
+      AppLogger.info('🚀 Starting transfer server...');
       final transferService = ref.read(transferServiceProvider);
 
       // Initialize encryption and trusted devices before starting server
@@ -451,13 +452,13 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
 
       try {
         await transferService.startServer(AppConfig.defaultTransferPort);
-        debugPrint('✅ Transfer server started');
+        AppLogger.info('✅ Transfer server started');
       } catch (e) {
-        debugPrint('❌ Failed to start transfer server: $e');
+        AppLogger.error('❌ Failed to start transfer server: $e');
         _initError = 'Could not start transfer server';
       }
     } catch (e) {
-      debugPrint('❌ Failed to initialize transfer service: $e');
+      AppLogger.error('❌ Failed to initialize transfer service: $e');
       _initError = 'Transfer service error: $e';
     }
 
@@ -484,7 +485,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         body: 'The app is in the system tray — click the tray icon to reopen it.',
       );
     } catch (e) {
-      debugPrint('⚠️ Tray minimize notification failed: $e');
+      AppLogger.warn('⚠️ Tray minimize notification failed: $e');
     }
   }
 
@@ -502,7 +503,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
           maximized: maximized,
         );
       } catch (e) {
-        debugPrint('⚠️ Error saving window bounds: $e');
+        AppLogger.warn('⚠️ Error saving window bounds: $e');
       }
 
       final isPreventClose = await windowManager.isPreventClose();
@@ -512,14 +513,14 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         await _notifyMinimizedToTray();
       } else {
         // FIXED: Properly dispose resources before exiting
-        debugPrint('🧹 Cleaning up resources before exit...');
+        AppLogger.info('🧹 Cleaning up resources before exit...');
         
         // FIX (Bug #8): Close database before exiting
         try {
           await DatabaseHelper.instance.close();
-          debugPrint('✅ Database closed');
+          AppLogger.info('✅ Database closed');
         } catch (e) {
-          debugPrint('⚠️ Error closing database: $e');
+          AppLogger.warn('⚠️ Error closing database: $e');
         }
         
         // Dispose system tray
@@ -535,19 +536,19 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         await windowManager.destroy();
       }
     } catch (e) {
-      debugPrint('⚠️ Error handling window close: $e');
+      AppLogger.warn('⚠️ Error handling window close: $e');
       // Try graceful cleanup before fallback
       try {
         await DatabaseHelper.instance.close();
-        debugPrint('✅ Database closed in fallback');
+        AppLogger.info('✅ Database closed in fallback');
       } catch (dbError) {
-        debugPrint('⚠️ Database close error in fallback: $dbError');
+        AppLogger.warn('⚠️ Database close error in fallback: $dbError');
       }
       try {
         await SystemTrayService.dispose();
-        debugPrint('✅ System tray disposed in fallback');
+        AppLogger.info('✅ System tray disposed in fallback');
       } catch (trayError) {
-        debugPrint('⚠️ System tray dispose error in fallback: $trayError');
+        AppLogger.warn('⚠️ System tray dispose error in fallback: $trayError');
       }
       // Give a brief moment for cleanup to complete
       await Future.delayed(const Duration(milliseconds: 100));
@@ -555,7 +556,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       try {
         await windowManager.destroy();
       } catch (destroyError) {
-        debugPrint('⚠️ Error destroying window: $destroyError');
+        AppLogger.warn('⚠️ Error destroying window: $destroyError');
         // Only use exit(0) as absolute last resort when window manager is unavailable
         // This ensures the app still terminates even if window manager is corrupted
       }
@@ -753,7 +754,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
   }
 
   void _handleAppToAppShare() async {
-    debugPrint('App to App share selected with ${_sharedFilesFromIntent?.length ?? 0} files');
+    AppLogger.info('App to App share selected with ${_sharedFilesFromIntent?.length ?? 0} files');
     
     if (_sharedFilesFromIntent == null || _sharedFilesFromIntent!.isEmpty) {
       setState(() {
@@ -788,12 +789,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
               size: sharedFile.size,
               isDirectory: false,
             ));
-            debugPrint('✅ Copied content URI to: $result (name: $fileName, size: ${sharedFile.size})');
+            AppLogger.info('✅ Copied content URI to: $result (name: $fileName, size: ${sharedFile.size})');
           } else {
-            debugPrint('⚠️ Failed to copy content URI: $uri');
+            AppLogger.warn('⚠️ Failed to copy content URI: $uri');
           }
         } catch (e) {
-          debugPrint('❌ Error copying content URI: $e');
+          AppLogger.error('❌ Error copying content URI: $e');
         }
       } else {
         // Regular file path - use the name from share intent
@@ -807,15 +808,15 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       }
     }
     
-    debugPrint('Processed ${items.length} files:');
+    AppLogger.info('Processed ${items.length} files:');
     for (final item in items) {
-      debugPrint('  - ${item.name} (${item.size} bytes)');
+      AppLogger.info('  - ${item.name} (${item.size} bytes)');
     }
     
     // Set the files directly - this triggers the state to show QuickSendScreen
     if (items.isNotEmpty) {
       ref.read(incomingFilesProvider.notifier).setFiles(items);
-      debugPrint('Set ${items.length} files for QuickSendScreen');
+      AppLogger.info('Set ${items.length} files for QuickSendScreen');
     }
 
     // Clear the share intent from Android
@@ -831,7 +832,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
   }
 
   void _handleTextShare() {
-    debugPrint('📝 Text share selected');
+    AppLogger.info('📝 Text share selected');
     final text = _sharedTextFromIntent;
     if (text == null || text.trim().isEmpty) {
       if (mounted) {
@@ -863,7 +864,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
   }
 
   void _handleBrowserShare() async {
-    debugPrint('Browser share selected with ${_sharedFilesFromIntent?.length ?? 0} files');
+    AppLogger.info('Browser share selected with ${_sharedFilesFromIntent?.length ?? 0} files');
     
     if (_sharedFilesFromIntent == null || _sharedFilesFromIntent!.isEmpty) {
       setState(() {
@@ -891,12 +892,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
           
           if (result != null) {
             files.add(File(result));
-            debugPrint('✅ Copied content URI to: $result (name: ${sharedFile.name}, size: ${sharedFile.size})');
+            AppLogger.info('✅ Copied content URI to: $result (name: ${sharedFile.name}, size: ${sharedFile.size})');
           } else {
-            debugPrint('⚠️ Failed to copy content URI: $uri');
+            AppLogger.warn('⚠️ Failed to copy content URI: $uri');
           }
         } catch (e) {
-          debugPrint('❌ Error copying content URI: $e');
+          AppLogger.error('❌ Error copying content URI: $e');
         }
       } else {
         // Regular file path

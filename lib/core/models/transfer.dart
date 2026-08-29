@@ -1,10 +1,10 @@
 import 'dart:math';
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
 
 import '../utils/byte_formatter.dart';
 
+import '../utils/app_logger.dart';
 enum TransferStatus {
   pending,
   connecting,
@@ -264,7 +264,7 @@ class TransferItem extends Equatable {
       try {
         createdAt = DateTime.parse(json['createdAt'] as String);
       } catch (e) {
-        debugPrint('Warning: Failed to parse createdAt: $e');
+        AppLogger.info('Warning: Failed to parse createdAt: $e');
       }
     }
     
@@ -272,7 +272,7 @@ class TransferItem extends Equatable {
       try {
         modifiedAt = DateTime.parse(json['modifiedAt'] as String);
       } catch (e) {
-        debugPrint('Warning: Failed to parse modifiedAt: $e');
+        AppLogger.info('Warning: Failed to parse modifiedAt: $e');
       }
     }
 

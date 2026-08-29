@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/app_logger.dart';
 /// Service for managing Android transfer progress notifications.
 ///
 /// Displays real-time transfer progress as an ongoing foreground notification
@@ -29,12 +29,12 @@ class LiveActivityService {
       final isSupported = await _channel.invokeMethod<bool>('isSupported');
       if (isSupported == true) {
         _isInitialized = true;
-        debugPrint('✅ Live Activity service initialized');
+        AppLogger.info('✅ Live Activity service initialized');
       } else {
-        debugPrint('ℹ️ Live Activities not supported on this Android version');
+        AppLogger.info('ℹ️ Live Activities not supported on this Android version');
       }
     } catch (e) {
-      debugPrint('❌ Failed to initialize Live Activity service: $e');
+      AppLogger.error('❌ Failed to initialize Live Activity service: $e');
     }
   }
 
@@ -89,7 +89,7 @@ class LiveActivityService {
         return _currentActivityId;
       }
     } catch (e) {
-      debugPrint('❌ Failed to start Live Activity: $e');
+      AppLogger.error('❌ Failed to start Live Activity: $e');
     }
 
     return null;
@@ -112,7 +112,7 @@ class LiveActivityService {
         'speed': speed,
       });
     } catch (e) {
-      debugPrint('❌ Failed to update Live Activity progress: $e');
+      AppLogger.error('❌ Failed to update Live Activity progress: $e');
     }
   }
 
@@ -141,7 +141,7 @@ class LiveActivityService {
         'eta': eta,
       });
     } catch (e) {
-      debugPrint('❌ Failed to update Live Activity state: $e');
+      AppLogger.error('❌ Failed to update Live Activity state: $e');
     }
   }
 
@@ -162,7 +162,7 @@ class LiveActivityService {
         'message': message,
       });
     } catch (e) {
-      debugPrint('❌ Failed to end Live Activity: $e');
+      AppLogger.error('❌ Failed to end Live Activity: $e');
     } finally {
       _currentActivityId = null;
     }

@@ -1,108 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 
-/// Adaptive chunk size manager that adjusts based on network conditions
-///
-/// Dynamically calculates optimal chunk size based on:
-/// - Current network speed (bytes per second)
-/// - Network latency (milliseconds)
-/// - Device memory constraints
-///
-/// This improves transfer efficiency by:
-/// - Using smaller chunks on slow networks (less retransmission on error)
-/// - Using larger chunks on fast networks (less overhead)
-/// - Using smaller chunks on low-end devices (less memory pressure)
-class AdaptiveChunkManager {
-  /// Device RAM in GB (cached for performance)
-  int? _deviceRamGB;
-  
-  /// Calculate optimal chunk size based on network conditions and device capabilities
-  ///
-  /// Network speed thresholds:
-  /// - Slow (<1 MB/s) → 256KB chunks
-  /// - Medium (1-10 MB/s) → 512KB-1MB chunks
-  /// - Fast (10-50 MB/s) → 2-4MB chunks
-  /// - Very fast (>50 MB/s) → 4-8MB chunks
-  ///
-  /// Low-end devices use smaller chunks regardless of network speed
-  int calculateOptimalChunkSize(double currentSpeedBytesPerSec, int latencyMs, {int? deviceRamGB}) {
-    _deviceRamGB = deviceRamGB ?? _deviceRamGB;
-    
-    // Low-end device optimization: use smaller chunks to reduce memory pressure
-    final isLowEnd = (_deviceRamGB ?? 4) <= 2;
-    final isVeryLowEnd = (_deviceRamGB ?? 4) <= 1;
-    
-    if (isVeryLowEnd) {
-      // Very low-end: always use 128KB chunks
-      return 128 * 1024;
-    }
-    
-    if (isLowEnd) {
-      // Low-end: cap at 512KB even on fast networks
-      if (currentSpeedBytesPerSec < 1 * 1024 * 1024) {
-        return 128 * 1024; // 128KB for slow network
-      }
-      return 256 * 1024; // 256KB max for low-end
-    }
-    
-    // Normal device: scale based on network speed
-    // Slow network (<1 MB/s) → 256KB chunks
-    if (currentSpeedBytesPerSec < 1 * 1024 * 1024) {
-      return 256 * 1024;
-    }
-    // Medium network (1-10 MB/s) → 1MB chunks
-    if (currentSpeedBytesPerSec < 10 * 1024 * 1024) {
-      return 1 * 1024 * 1024;
-    }
-    // Fast network (10-50 MB/s) → 4MB chunks
-    if (currentSpeedBytesPerSec < 50 * 1024 * 1024) {
-      return 4 * 1024 * 1024;
-    }
-    // Very fast network (>50 MB/s) → 8MB chunks
-    return 8 * 1024 * 1024;
-  }
-
-  /// Calculate optimal number of connections based on network conditions
-  /// and device capabilities
-  ///
-  /// More connections help on high-latency networks
-  /// Low-end devices use fewer connections to reduce memory overhead
-  int calculateOptimalConnections(double currentSpeedBytesPerSec, int latencyMs, {int? deviceRamGB}) {
-    _deviceRamGB = deviceRamGB ?? _deviceRamGB;
-    
-    // Low-end device optimization: fewer connections
-    final isLowEnd = (_deviceRamGB ?? 4) <= 2;
-    
-    if (isLowEnd) {
-      // Low-end: use 1-2 connections max
-      return latencyMs > 100 ? 2 : 1;
-    }
-    
-    // High latency (>100ms) - use more connections to saturate link
-    if (latencyMs > 100) {
-      if (currentSpeedBytesPerSec < 1 * 1024 * 1024) {
-        return 4; // Slow + high latency
-      } else if (currentSpeedBytesPerSec < 10 * 1024 * 1024) {
-        return 8; // Medium + high latency
-      } else {
-        return 12; // Fast + high latency
-      }
-    }
-    
-    // Low latency - fewer connections needed
-    if (currentSpeedBytesPerSec < 1 * 1024 * 1024) {
-      return 2; // Slow network
-    } else if (currentSpeedBytesPerSec < 10 * 1024 * 1024) {
-      return 4; // Medium network
-    } else if (currentSpeedBytesPerSec < 50 * 1024 * 1024) {
-      return 6; // Fast network
-    } else {
-      return 8; // Very fast network
-    }
-  }
-}
-
+import '../../utils/app_logger.dart';
 /// Configuration for parallel chunk transfers
 ///
 /// Automatically adjusts based on device capabilities
@@ -190,22 +89,22 @@ class ParallelConfig {
 
       // Ultra-low-end: 2GB or less - use minimal resources
       if (ramGB <= 2) {
-        debugPrint('📱 Ultra-low-end device detected ($ramGB GB RAM), using minimal config');
+        AppLogger.info('📱 Ultra-low-end device detected ($ramGB GB RAM), using minimal config');
         return ultraLowEnd;
       }
       // Low-end: 2-4GB - conservative settings
       else if (ramGB <= 4) {
-        debugPrint('📱 Low-end device detected ($ramGB GB RAM), using conservative config');
+        AppLogger.info('📱 Low-end device detected ($ramGB GB RAM), using conservative config');
         return lowEnd;
       }
       // Mid-range: 4-8GB - balanced settings
       else if (ramGB <= 8) {
-        debugPrint('📱 Mid-range device detected ($ramGB GB RAM), using balanced config');
+        AppLogger.info('📱 Mid-range device detected ($ramGB GB RAM), using balanced config');
         return appToApp;
       }
       // High-end: 8GB+ - maximum performance
       else {
-        debugPrint('📱 High-end device detected ($ramGB GB RAM), using max performance config');
+        AppLogger.info('📱 High-end device detected ($ramGB GB RAM), using max performance config');
         return const ParallelConfig(
           connections: 12,                  // Increased from 6
           chunkSize: 4 * 1024 * 1024,      // 4MB (increased from 2MB)
@@ -215,7 +114,7 @@ class ParallelConfig {
         );
       }
     } catch (e) {
-      debugPrint('Could not detect device RAM, using default config: $e');
+      AppLogger.info('Could not detect device RAM, using default config: $e');
       return appToApp;
     }
   }
@@ -255,7 +154,7 @@ class ParallelConfig {
         return 16;
       }
     } catch (e) {
-      debugPrint('Error detecting RAM: $e');
+      AppLogger.info('Error detecting RAM: $e');
     }
 
     // Default assumption: 8GB

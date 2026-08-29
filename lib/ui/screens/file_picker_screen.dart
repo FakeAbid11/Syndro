@@ -17,6 +17,7 @@ import '../../core/providers/transfer_provider.dart';
 import 'transfer_progress_screen.dart';
 import 'multi_transfer_progress_screen.dart';
 
+import '../../core/utils/app_logger.dart';
 class FilePickerScreen extends ConsumerStatefulWidget {
   final Device? recipientDevice;
   final List<Device>? recipientDevices; // NEW: For multi-device transfer
@@ -85,14 +86,14 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
       }
       _animationController.dispose();
     } catch (e) {
-      debugPrint('Error disposing animation controller: $e');
+      AppLogger.info('Error disposing animation controller: $e');
     }
     
     try {
       _transferSubscription?.cancel();
       _transferSubscription = null;
     } catch (e) {
-      debugPrint('Error cancelling transfer subscription: $e');
+      AppLogger.info('Error cancelling transfer subscription: $e');
     }
     
     super.dispose();
@@ -140,7 +141,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
             ));
           }
         } catch (e) {
-          debugPrint('Error processing dropped file: $e');
+          AppLogger.info('Error processing dropped file: $e');
         }
       }
 
@@ -338,7 +339,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
     final isLargeFile = totalSize > 100 * 1024 * 1024; // > 100MB
     
     if (isLargeFile) {
-      debugPrint('📦 Large file transfer (${(totalSize / (1024 * 1024)).toStringAsFixed(1)}MB) - extended timeouts enabled');
+      AppLogger.info('📦 Large file transfer (${(totalSize / (1024 * 1024)).toStringAsFixed(1)}MB) - extended timeouts enabled');
     }
 
     try {
@@ -444,7 +445,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
             );
           } catch (e) {
             // Retry logic - poll for transfer (more retries for large files)
-            debugPrint('Stream timeout, using retry logic: $e');
+            AppLogger.info('Stream timeout, using retry logic: $e');
             final maxRetries = isLargeFile ? 30 : 10;
             const retryDelay = Duration(milliseconds: 500);
 
@@ -457,7 +458,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
               
               if (matchingTransfer.isNotEmpty) {
                 transfer = matchingTransfer.last;
-                debugPrint('Found transfer on retry ${i + 1}');
+                AppLogger.info('Found transfer on retry ${i + 1}');
                 break;
               }
             }
@@ -502,7 +503,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         }
       }
     } catch (e) {
-      debugPrint('Transfer error: $e');
+      AppLogger.info('Transfer error: $e');
       if (mounted) {
         setState(() {
           _isSending = false;
@@ -543,7 +544,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
       }
       return null;
     } catch (e) {
-      debugPrint('Error sending to ${receiver.name}: $e');
+      AppLogger.info('Error sending to ${receiver.name}: $e');
       return null;
     }
   }
