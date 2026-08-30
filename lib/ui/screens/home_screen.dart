@@ -1057,7 +1057,11 @@ Future<void> _showTextComposeDialog(Device device) async {
           ],
         ),
         // DESKTOP: primary actions live in the app bar instead of stacked FABs.
-        actions: _isMobile() ? const [] : _buildDesktopAppBarActions(),
+        actions: _isMobile()
+            ? const []
+            : _buildDesktopAppBarActions(
+                compact: MediaQuery.sizeOf(context).width < 720,
+              ),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -1067,9 +1071,12 @@ Future<void> _showTextComposeDialog(Device device) async {
           builder: (context, constraints) {
             // DESKTOP: wide windows get a two-pane master-detail layout;
             // narrow windows and mobile keep the single-column layout.
-            final useTwoPane = !_isMobile() && constraints.maxWidth >= 900;
+            final useTwoPane = !_isMobile() && constraints.maxWidth >= 700;
             if (useTwoPane) {
-              return _buildTwoPaneBody(selectedDevice: selectedDevice);
+              return _buildTwoPaneBody(
+                selectedDevice: selectedDevice,
+                masterWidth: (constraints.maxWidth * 0.45).clamp(300.0, 400.0).toDouble(),
+              );
             }
             return _buildSingleColumnBody(
               currentDevice: currentDevice,
@@ -1086,7 +1093,34 @@ Future<void> _showTextComposeDialog(Device device) async {
   }
 
   /// DESKTOP: app-bar actions (replace the two always-on FABs).
-  List<Widget> _buildDesktopAppBarActions() {
+  List<Widget> _buildDesktopAppBarActions({required bool compact}) {
+    // Narrow window: icon-only buttons with tooltips (labels will not fit).
+    if (compact) {
+      return [
+        IconButton(
+          tooltip: 'Browser Share',
+          onPressed: _showShareModeDialog,
+          icon: const Icon(Icons.language),
+        ),
+        IconButton(
+          tooltip: 'Send text or link',
+          onPressed: () {
+            final selected = ref.read(selectedDeviceProvider);
+            if (selected == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Select a device first to send text'),
+                ),
+              );
+              return;
+            }
+            _showTextComposeDialog(selected);
+          },
+          icon: const Icon(Icons.notes),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+      ];
+    }
     return [
       TextButton.icon(
         onPressed: _showShareModeDialog,
@@ -1291,12 +1325,15 @@ Future<void> _showTextComposeDialog(Device device) async {
   }
 
   /// DESKTOP (wide windows): master device list on the left, send pane right.
-  Widget _buildTwoPaneBody({required Device? selectedDevice}) {
+  Widget _buildTwoPaneBody({
+    required Device? selectedDevice,
+    required double masterWidth,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          width: 400,
+          width: masterWidth,
           child: _buildDeviceColumn(
             currentDevice: ref.watch(currentDeviceProvider),
             discoveredDevicesAsync: ref.watch(discoveredDevicesProvider),
