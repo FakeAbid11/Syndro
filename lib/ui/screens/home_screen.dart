@@ -126,7 +126,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
+  /// PLATFORM: Android/iOS keep bottom sheets; Windows/Linux/macOS use
+  /// centered dialogs — a drag-handle sheet doesn't suit mouse-driven windows.
+  bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+
   void _showReceivedTextSheet(ReceivedTextMessage message) {
+    if (!mounted) return;
+
+    if (_isMobilePlatform) {
+      _showReceivedTextBottomSheet(message);
+    } else {
+      _showReceivedTextDialog(message);
+    }
+  }
+
+  void _showReceivedTextBottomSheet(ReceivedTextMessage message) {
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -155,99 +169,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
               ),
               const SizedBox(height: AppSpacing.xxl),
-              Row(
-                children: [
-                  const GradientIconTile(
-                    icon: Icons.chat_bubble_rounded,
-                    size: 48,
-                    radius: AppRadius.lg,
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Message from ${message.senderName}',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          'Saved to Downloads/Syndro Notes',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppTheme.textTertiary,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 280),
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainerHigh,
-                  borderRadius: AppRadius.lgAll,
-                  border: Border.all(
-                    color: AppTheme.outlineVariant,
-                    width: 1,
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    message.text,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(
-                          ClipboardData(text: message.text),
-                        );
-                        if (!bottomSheetContext.mounted) return;
-                        ScaffoldMessenger.of(bottomSheetContext).showSnackBar(
-                          const SnackBar(
-                            content: Text('Copied to clipboard'),
-                            backgroundColor: AppTheme.successColor,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 20),
-                      label: const Text('Copy'),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(bottomSheetContext).pop();
-                        BackgroundTransferService.openFileLocation(
-                          message.filePath,
-                        );
-                      },
-                      icon: const Icon(Icons.folder_open, size: 20),
-                      label: const Text('Open file'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.of(bottomSheetContext).pop(),
-                  child: const Text('Close'),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
+              _buildReceivedTextContent(bottomSheetContext, message),
             ],
           ),
         );
@@ -255,11 +177,149 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
+  /// Message body shared by the mobile bottom sheet and the desktop dialog.
+  /// [overlayContext] is the sheet's or the dialog's own context: actions
+  /// pop it and show snackbars through it.
+  Widget _buildReceivedTextContent(
+    BuildContext overlayContext,
+    ReceivedTextMessage message,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const GradientIconTile(
+              icon: Icons.chat_bubble_rounded,
+              size: 48,
+              radius: AppRadius.lg,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Message from ${message.senderName}',
+                    style: Theme.of(overlayContext).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Saved to Downloads/Syndro Notes',
+                    style: Theme.of(overlayContext)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppTheme.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 280),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceContainerHigh,
+            borderRadius: AppRadius.lgAll,
+            border: Border.all(
+              color: AppTheme.outlineVariant,
+              width: 1,
+            ),
+          ),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              message.text,
+              style: Theme.of(overlayContext).textTheme.bodyLarge,
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: message.text),
+                  );
+                  if (!overlayContext.mounted) return;
+                  ScaffoldMessenger.of(overlayContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard'),
+                      backgroundColor: AppTheme.successColor,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 20),
+                label: const Text('Copy'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(overlayContext).pop();
+                  BackgroundTransferService.openFileLocation(
+                    message.filePath,
+                  );
+                },
+                icon: const Icon(Icons.folder_open, size: 20),
+                label: const Text('Open file'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton(
+            onPressed: () => Navigator.of(overlayContext).pop(),
+            child: const Text('Close'),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+    );
+  }
+
+  /// WINDOWS/LINUX/MACOS: the received-text view in a centered dialog.
+  void _showReceivedTextDialog(ReceivedTextMessage message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppTheme.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xxl),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: _buildReceivedTextContent(dialogContext, message),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showTransferRequestSheet(PendingTransferRequest request) {
+    // PLATFORM: Android keeps the non-dismissable bottom sheet; desktop
+    // gets an equally modal centered dialog.
+    if (_isMobilePlatform) {
+      _showTransferRequestBottomSheet(request);
+    } else {
+      _showTransferRequestDialog(request);
+    }
+  }
+
+  void _showTransferRequestBottomSheet(PendingTransferRequest request) {
     if (_isShowingRequestSheet || !mounted) return;
     setState(() => _isShowingRequestSheet = true);
-
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
       showModalBottomSheet(
@@ -270,92 +330,144 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         builder: (bottomSheetContext) {
           return _TransferRequestSheetContent(
             request: request,
-            onAccept: (bool trustSender) async {
-              if (!mounted) return;
-              Navigator.of(bottomSheetContext).pop();
-              if (!mounted) return;
-              await Future.delayed(const Duration(milliseconds: 100));
-              if (!mounted) return;
-
-              try {
-                final transferService = ref.read(transferServiceProvider);
-                await transferService.approveTransfer(
-                  request.requestId,
+            onAccept: (bool trustSender) => _resolveTransferRequest(
+                  bottomSheetContext,
+                  request,
+                  accepted: true,
                   trustSender: trustSender,
-                );
-
-                if (!mounted) return;
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(
-                    content: Text(HomeScreenStrings.transferAccepted),
-                    backgroundColor: AppTheme.successColor,
-                  ),
-                );
-              } catch (e) {
-                AppLogger.info('Error accepting transfer: $e');
-                if (!mounted) return;
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(HomeScreenStrings.failedToAccept(e.toString())),
-                    backgroundColor: AppTheme.errorColor,
-                  ),
-                );
-              }
-            },
-            onReject: () async {
-              if (!mounted) return;
-              Navigator.of(bottomSheetContext).pop();
-              if (!mounted) return;
-              await Future.delayed(const Duration(milliseconds: 100));
-              if (!mounted) return;
-
-              try {
-                final transferService = ref.read(transferServiceProvider);
-                transferService.rejectTransfer(request.requestId);
-
-                if (!mounted) return;
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(
-                    content: Text(HomeScreenStrings.transferRejected),
-                    backgroundColor: AppTheme.warningColor,
-                  ),
-                );
-              } catch (e) {
-                AppLogger.info('Error rejecting transfer: $e');
-              }
-            },
+                ),
+            onReject: () => _resolveTransferRequest(
+                  bottomSheetContext,
+                  request,
+                  accepted: false,
+                ),
           );
         },
-      ).whenComplete(() {
-        if (!mounted) return;
-        setState(() => _isShowingRequestSheet = false);
-
-        try {
-          if (!mounted) return;
-          // FIX (Bug #6): Store timer reference for cancellation on dispose.
-          // Re-read the pending list INSIDE the timer: the snapshot taken at
-          // dismissal time may still contain the request the user just handled
-          // (accept/reject remove it a beat later), which used to re-show the
-          // same "Incoming Transfer" sheet a second time.
-          _pendingRequestTimer?.cancel();
-          _pendingRequestTimer = Timer(const Duration(milliseconds: 300), () {
-            if (!mounted || _isShowingRequestSheet) return;
-            final pendingRequests =
-                ref.read(transferServiceProvider).pendingRequests;
-            if (pendingRequests.isNotEmpty) {
-              _showTransferRequestSheet(pendingRequests.first);
-            }
-          });
-        } catch (e) {
-          AppLogger.info('Error checking pending requests: $e');
-        }
-      });
+      ).whenComplete(_scheduleNextPendingRequestCheck);
     } catch (e) {
       AppLogger.warn('âš ï¸ Error showing transfer request sheet: $e');
       // FIXED (Bug #4): Reset flag if sheet fails to show
       if (mounted) {
         setState(() => _isShowingRequestSheet = false);
       }
+    }
+  }
+
+  /// WINDOWS/LINUX/MACOS: the same approval flow in a centered, equally
+  /// non-dismissable dialog.
+  void _showTransferRequestDialog(PendingTransferRequest request) {
+    if (_isShowingRequestSheet || !mounted) return;
+    setState(() => _isShowingRequestSheet = true);
+
+    try {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return _TransferRequestSheetContent(
+            request: request,
+            onAccept: (bool trustSender) => _resolveTransferRequest(
+                  dialogContext,
+                  request,
+                  accepted: true,
+                  trustSender: trustSender,
+                ),
+            onReject: () => _resolveTransferRequest(
+                  dialogContext,
+                  request,
+                  accepted: false,
+                ),
+          );
+        },
+      ).whenComplete(_scheduleNextPendingRequestCheck);
+    } catch (e) {
+      AppLogger.warn('Error showing transfer request dialog: $e');
+      if (mounted) {
+        setState(() => _isShowingRequestSheet = false);
+      }
+    }
+  }
+
+  /// Pops [routeContext] (the sheet or the dialog) and applies the user's
+  /// decision. Shared by both presentations; preserves the original
+  /// per-branch behavior (accept failures surface a snackbar, reject
+  /// failures only log).
+  Future<void> _resolveTransferRequest(
+    BuildContext routeContext,
+    PendingTransferRequest request, {
+    required bool accepted,
+    bool trustSender = false,
+  }) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    if (!mounted) return;
+    Navigator.of(routeContext).pop();
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+
+    try {
+      final transferService = ref.read(transferServiceProvider);
+      if (accepted) {
+        await transferService.approveTransfer(
+          request.requestId,
+          trustSender: trustSender,
+        );
+
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text(HomeScreenStrings.transferAccepted),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      } else {
+        transferService.rejectTransfer(request.requestId);
+
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text(HomeScreenStrings.transferRejected),
+            backgroundColor: AppTheme.warningColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (accepted) {
+        AppLogger.info('Error accepting transfer: $e');
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(HomeScreenStrings.failedToAccept(e.toString())),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      } else {
+        AppLogger.info('Error rejecting transfer: $e');
+      }
+    }
+  }
+
+  /// Common tail of both presentations: reset the guard and re-show the next
+  /// pending request after a beat. FIX (Bug #6): timer stored for disposal;
+  /// the pending list is re-read INSIDE the timer because the snapshot taken
+  /// at dismissal time may still contain the request just handled.
+  void _scheduleNextPendingRequestCheck() {
+    if (!mounted) return;
+    setState(() => _isShowingRequestSheet = false);
+
+    try {
+      if (!mounted) return;
+      _pendingRequestTimer?.cancel();
+      _pendingRequestTimer = Timer(const Duration(milliseconds: 300), () {
+        if (!mounted || _isShowingRequestSheet) return;
+        final pendingRequests =
+            ref.read(transferServiceProvider).pendingRequests;
+        if (pendingRequests.isNotEmpty) {
+          _showTransferRequestSheet(pendingRequests.first);
+        }
+      });
+    } catch (e) {
+      AppLogger.info('Error checking pending requests: $e');
     }
   }
 
@@ -447,6 +559,17 @@ const SizedBox(height: AppSpacing.sm),
   }
 
   void _showShareModeDialog() {
+    // PLATFORM: Android keeps the bottom sheet; desktop gets a centered
+    // dialog.
+    if (_isMobilePlatform) {
+      _showShareModeBottomSheet();
+    } else {
+      _showShareModeCenteredDialog();
+    }
+  }
+
+  /// ANDROID: drag-handle bottom sheet with the three share options.
+  void _showShareModeBottomSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -464,76 +587,110 @@ const SizedBox(height: AppSpacing.sm),
         ),
         child: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.borderColor,
-                borderRadius: AppRadius.pillAll,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.borderColor,
+                  borderRadius: AppRadius.pillAll,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            Text(
-              'Browser Share',
-              style: Theme.of(sheetContext).textTheme.titleLarge,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Share files without installing an app',
-              style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textTertiary,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Connect to the same WiFi network or create a Hotspot',
-              style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.warningColor,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            _buildShareOption(
-              context: sheetContext,
-              icon: Icons.photo_library,
-              title: 'Share Media',
-              subtitle: 'Photos and videos from gallery',
-              color: AppTheme.secondaryColor,
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _pickAndShareMedia();
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _buildShareOption(
-              context: sheetContext,
-              icon: Icons.upload_file,
-              title: 'Send Files',
-              subtitle: 'Share files via browser link',
-              color: AppTheme.primaryColor,
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _pickAndShareFiles();
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _buildShareOption(
-              context: sheetContext,
-              icon: Icons.download,
-              title: 'Receive Files',
-              subtitle: 'Get files from any device',
-              color: AppTheme.accentColor,
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openReceiveScreen();
-              },
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-        ),
+              const SizedBox(height: AppSpacing.xxl),
+              _buildShareModeContent(sheetContext),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// WINDOWS/LINUX/MACOS: the same options in a centered dialog.
+  void _showShareModeCenteredDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppTheme.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xxl),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: _buildShareModeContent(dialogContext),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Header + three options, shared by the mobile sheet and the desktop
+  /// dialog. Pops [routeContext] (whichever presentation is showing) before
+  /// acting.
+  Widget _buildShareModeContent(BuildContext routeContext) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Browser Share',
+          style: Theme.of(routeContext).textTheme.titleLarge,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Share files without installing an app',
+          style: Theme.of(routeContext).textTheme.bodySmall?.copyWith(
+                color: AppTheme.textTertiary,
+              ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Connect to the same WiFi network or create a Hotspot',
+          style: Theme.of(routeContext).textTheme.bodySmall?.copyWith(
+                color: AppTheme.warningColor,
+              ),
+        ),
+        const SizedBox(height: AppSpacing.xxl),
+        _buildShareOption(
+          context: routeContext,
+          icon: Icons.photo_library,
+          title: 'Share Media',
+          subtitle: 'Photos and videos from gallery',
+          color: AppTheme.secondaryColor,
+          onTap: () {
+            Navigator.pop(routeContext);
+            _pickAndShareMedia();
+          },
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _buildShareOption(
+          context: routeContext,
+          icon: Icons.upload_file,
+          title: 'Send Files',
+          subtitle: 'Share files via browser link',
+          color: AppTheme.primaryColor,
+          onTap: () {
+            Navigator.pop(routeContext);
+            _pickAndShareFiles();
+          },
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _buildShareOption(
+          context: routeContext,
+          icon: Icons.download,
+          title: 'Receive Files',
+          subtitle: 'Get files from any device',
+          color: AppTheme.accentColor,
+          onTap: () {
+            Navigator.pop(routeContext);
+            _openReceiveScreen();
+          },
+        ),
+        const SizedBox(height: AppSpacing.lg),
+      ],
     );
   }
 
