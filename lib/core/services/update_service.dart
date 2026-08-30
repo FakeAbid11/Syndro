@@ -141,6 +141,7 @@ class UpdateService {
   static Future<UpdateCheckResult> checkForUpdate({
     http.Client? client,
     String? currentVersionOverride,
+    String? platformOverride,
   }) async {
     try {
       final response = await (client ?? http.Client())
@@ -195,7 +196,7 @@ class UpdateService {
       }
 
       final assets = (data['assets'] as List?) ?? const [];
-      final asset = _selectAsset(assets);
+      final asset = _selectAsset(assets, platformOverride);
 
       return UpdateAvailable(
         UpdateInfo(
@@ -437,15 +438,24 @@ class UpdateService {
   }
 
   /// Selected release asset (name, download URL, size) for the current
-  /// platform, or null to fall back to the release page.
+  /// platform, or null to fall back to the release page. Tests can pin the
+  /// platform via [platformOverride] (the real platform is used otherwise).
   static ({String name, String url, int? size})? _selectAsset(
-    List<dynamic> assets,
-  ) {
-    if (Platform.isWindows) return selectAssetForPlatform(assets, 'windows');
-    if (Platform.isAndroid) return selectAssetForPlatform(assets, 'android');
-    if (Platform.isLinux) return selectAssetForPlatform(assets, 'linux');
-    if (Platform.isMacOS) return selectAssetForPlatform(assets, 'macos');
-    return null;
+    List<dynamic> assets, [
+    String? platformOverride,
+  ]) {
+    final platform = platformOverride ??
+        (Platform.isWindows
+            ? 'windows'
+            : Platform.isAndroid
+                ? 'android'
+                : Platform.isLinux
+                    ? 'linux'
+                    : Platform.isMacOS
+                        ? 'macos'
+                        : '');
+    if (platform.isEmpty) return null;
+    return selectAssetForPlatform(assets, platform);
   }
 
   /// Visible for testing: pick the best download asset for [platform]

@@ -51,6 +51,9 @@ void main() {
     final result = await UpdateService.checkForUpdate(
       client: mockGitHub(200, jsonEncode(releaseJson())),
       currentVersionOverride: '1.0.2+17',
+      // Pin the platform: CI runs on Linux, where the real platform
+      // dispatch would pick linux assets and find none.
+      platformOverride: 'windows',
     );
 
     expect(result, isA<UpdateAvailable>());
@@ -147,6 +150,7 @@ void main() {
     final result = await UpdateService.checkForUpdate(
       client: mockGitHub(200, jsonEncode(releaseJson(assets: [apkAsset]))),
       currentVersionOverride: '1.0.2',
+      platformOverride: 'windows',
     );
 
     expect(result, isA<UpdateAvailable>());
