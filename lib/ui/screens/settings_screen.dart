@@ -36,26 +36,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _handleCheckForUpdates() async {
     setState(() => _checkingUpdate = true);
-    UpdateInfo? info;
-    var failed = false;
+    UpdateCheckResult result;
     try {
-      info = await UpdateService.checkForUpdate();
-    } catch (_) {
-      failed = true;
+      result = await UpdateService.checkForUpdate();
+    } catch (e) {
+      // checkForUpdate never throws; stay defensive anyway.
+      result = UpdateCheckFailed('Unexpected error: $e');
     }
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
 
     final messenger = ScaffoldMessenger.of(context);
-    if (failed) {
+    if (result is UpdateAvailable) {
+      await showUpdateDialog(context, result.info);
+    } else if (result is UpToDate) {
+      final current = result.currentVersion;
+      if (result.localNewerThanLatest) {
+        // The install predates a repo reset or the newer release was deleted;
+        // explain instead of the misleading "latest version".
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Your installed version (v$current) is newer than the latest '
+              'release (v${result.latestVersion}) — nothing to update to.',
+            ),
+          ),
+        );
+      } else if (result.latestVersion.isEmpty) {
+        messenger.showSnackBar(
+          SnackBar(content: Text("You're on version v$current.")),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(content: Text("You're on the latest version (v$current).")),
+        );
+      }
+    } else if (result is UpdateCheckFailed) {
       messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't check for updates")),
-      );
-    } else if (info != null) {
-      await showUpdateDialog(context, info);
-    } else {
-      messenger.showSnackBar(
-        const SnackBar(content: Text("You're on the latest version")),
+        SnackBar(
+          content: Text("Couldn't check for updates — ${result.reason}"),
+        ),
       );
     }
   }

@@ -36,8 +36,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     try {
       // At most one automatic check per day (manual Settings check bypasses).
       if (!await UpdateService.shouldAutoCheck()) return;
-      final info = await UpdateService.checkForUpdate();
-      if (info == null || !mounted) return;
+      final result = await UpdateService.checkForUpdate();
+      if (result is! UpdateAvailable || !mounted) return;
+      final info = result.info;
       if (await UpdateService.isSkipped(info.version)) return;
       if (!mounted) return;
       await showUpdateDialog(context, info, allowSkip: true);

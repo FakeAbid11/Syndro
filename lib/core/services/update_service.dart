@@ -49,6 +49,57 @@ class UpdateInfo {
   }
 }
 
+/// Outcome of an update check. See [UpdateService.checkForUpdate].
+sealed class UpdateCheckResult {
+  const UpdateCheckResult();
+}
+
+/// A newer release is available for the running platform.
+class UpdateAvailable extends UpdateCheckResult {
+  final UpdateInfo info;
+
+  const UpdateAvailable(this.info);
+}
+
+/// No newer release to offer.
+///
+/// [localNewerThanLatest] is true when the running app reports a version
+/// *higher* than the latest published release. This happens when an install
+/// predates a repo reset or a release was deleted from GitHub; without this
+/// flag the UI can only say "up to date", which reads as a broken checker.
+class UpToDate extends UpdateCheckResult {
+  /// Version the running app reports (normalized, no `v`/`+N`).
+  final String currentVersion;
+
+  /// Latest published release version (normalized). Empty when the latest
+  /// release object had no usable tag.
+  final String latestVersion;
+
+  final bool localNewerThanLatest;
+
+  const UpToDate({
+    required this.currentVersion,
+    this.latestVersion = '',
+    this.localNewerThanLatest = false,
+  });
+}
+
+/// The check could not complete (network, HTTP status, malformed response).
+///
+/// Previously these failures were indistinguishable from "up to date", which
+/// made the in-app updater look broken whenever GitHub rate-limited the check.
+class UpdateCheckFailed extends UpdateCheckResult {
+  /// Human-readable, user-facing reason.
+  final String reason;
+
+  final int? httpStatus;
+
+  const UpdateCheckFailed(this.reason, {this.httpStatus});
+
+  /// The response was reachable but not shaped like a GitHub release.
+  const UpdateCheckFailed._parse() : reason = 'Unexpected response from GitHub.', httpStatus = null;
+}
+
 /// Checks GitHub Releases for a newer version of the app and, on Windows,
 /// downloads the setup installer and runs it silently (the installer relaunches
 /// the updated app). On other platforms it only opens the download page in the
@@ -73,60 +124,95 @@ class UpdateService {
   static const Duration _timeout = Duration(seconds: 8);
   static const Duration _downloadTimeout = Duration(minutes: 10);
 
-  /// Query GitHub for the latest release. Returns an [UpdateInfo] only when the
-  /// remote version is strictly newer than the running app; otherwise null.
+  /// Query GitHub for the latest release.
   ///
-  /// Never throws — any network/parse failure is logged and returns null.
-  static Future<UpdateInfo?> checkForUpdate() async {
+  /// Returns an [UpdateCheckResult] describing exactly one of three outcomes:
+  ///  - [UpdateAvailable]: the latest release is strictly newer than the
+  ///    running app (includes this platform's asset, when present).
+  ///  - [UpToDate]: nothing newer to offer — including the case where the
+  ///    running app is *newer* than the published release
+  ///    ([UpToDate.localNewerThanLatest]).
+  ///  - [UpdateCheckFailed]: the check could not complete (network error,
+  ///    non-200 status, malformed response).
+  ///
+  /// Never throws — every failure path is logged and returned as
+  /// [UpdateCheckFailed] so callers can distinguish "checked, nothing newer"
+  /// from "could not check".
+  static Future<UpdateCheckResult> checkForUpdate({
+    http.Client? client,
+    String? currentVersionOverride,
+  }) async {
     try {
-      final response = await http.get(
-        Uri.parse(_latestReleaseUrl),
-        headers: const {
-          'Accept': 'application/vnd.github+json',
-          'User-Agent': 'Syndro-App',
-        },
-      ).timeout(_timeout);
+      final response = await (client ?? http.Client())
+          .get(
+            Uri.parse(_latestReleaseUrl),
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'Syndro-App',
+            },
+          )
+          .timeout(_timeout);
 
       if (response.statusCode != 200) {
         AppLogger.warn('Update check: HTTP ${response.statusCode}');
-        return null;
+        return UpdateCheckFailed(
+          response.statusCode == 403
+              ? 'GitHub rejected the request (HTTP 403 — rate limit or '
+                  'blocked). Try again in a few minutes.'
+              : 'GitHub returned HTTP ${response.statusCode}.',
+          httpStatus: response.statusCode,
+        );
       }
 
       final data = jsonDecode(response.body);
-      if (data is! Map<String, dynamic>) return null;
+      if (data is! Map<String, dynamic>) {
+        return const UpdateCheckFailed._parse();
+      }
+
+      final currentVersion =
+          await _currentVersion(currentVersionOverride);
 
       // Skip drafts / prereleases.
-      if (data['draft'] == true || data['prerelease'] == true) return null;
+      if (data['draft'] == true || data['prerelease'] == true) {
+        return UpToDate(currentVersion: currentVersion);
+      }
 
       final tagName = (data['tag_name'] as String?)?.trim() ?? '';
       final releaseUrl = (data['html_url'] as String?)?.trim() ?? '';
       final notes = (data['body'] as String?)?.trim() ?? '';
-      if (tagName.isEmpty || releaseUrl.isEmpty) return null;
+      if (tagName.isEmpty || releaseUrl.isEmpty) {
+        return UpToDate(currentVersion: currentVersion);
+      }
 
       final latestVersion = _normalize(tagName);
-      final currentVersion = await _currentVersion();
 
       if (!_isNewer(latestVersion, currentVersion)) {
-        return null;
+        return UpToDate(
+          currentVersion: currentVersion,
+          latestVersion: latestVersion,
+          localNewerThanLatest: _isNewer(currentVersion, latestVersion),
+        );
       }
 
       final assets = (data['assets'] as List?) ?? const [];
       final asset = _selectAsset(assets);
 
-      return UpdateInfo(
-        version: latestVersion,
-        releaseUrl: releaseUrl,
-        notes: notes,
-        assetUrl: asset?.url,
-        assetName: asset?.name,
-        assetSize: asset?.size,
+      return UpdateAvailable(
+        UpdateInfo(
+          version: latestVersion,
+          releaseUrl: releaseUrl,
+          notes: notes,
+          assetUrl: asset?.url,
+          assetName: asset?.name,
+          assetSize: asset?.size,
+        ),
       );
     } on TimeoutException {
       AppLogger.warn('Update check timed out');
-      return null;
+      return const UpdateCheckFailed('The update check timed out.');
     } catch (e) {
       AppLogger.warn('Update check failed: $e');
-      return null;
+      return UpdateCheckFailed('Unexpected error: $e');
     }
   }
 
@@ -304,7 +390,8 @@ class UpdateService {
     }
   }
 
-  static Future<String> _currentVersion() async {
+  static Future<String> _currentVersion([String? override]) async {
+    if (override != null) return _normalize(override);
     final info = await PackageInfo.fromPlatform();
     return _normalize(info.version);
   }
