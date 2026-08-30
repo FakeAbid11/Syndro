@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,7 +90,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     }
   }
 
-  /// UX: desktop keyboard shortcuts — Ctrl+1/2/3 switch between
+  /// UX: desktop keyboard shortcuts â€” Ctrl+1/2/3 switch between
   /// Devices / History / Settings without touching the mouse.
   Widget _wrapDesktopShortcuts(Widget child) {
     return CallbackShortcuts(
@@ -114,7 +114,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // Side Navigation Rail — styled by the global NavigationRailTheme.
+          // Side Navigation Rail â€” styled by the global NavigationRailTheme.
           Container(
             decoration: BoxDecoration(
               color: AppTheme.surfaceContainerLow,
@@ -183,7 +183,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
             right: 0,
             // PLATFORM: Android 15 (targetSdk 35) enforces edge-to-edge, so
             // this Stack extends behind the system navigation bar. Anchor the
-            // pill above the real inset — a fixed margin disappears behind
+            // pill above the real inset â€” a fixed margin disappears behind
             // the 3-button nav bar (~48dp).
             bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
             child: Center(

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,10 +10,6 @@ import 'package:animations/animations.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
-import '../animations/pulse_animation.dart';
-import '../widgets/device_card.dart';
-import '../widgets/shimmer_loading.dart';
-import '../widgets/drop_zone_widget.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/device_provider.dart';
@@ -24,6 +20,8 @@ import 'file_picker_screen.dart';
 import 'browser_share_screen.dart';
 import 'browser_receive_screen.dart';
 import 'transfer_progress_screen.dart';
+import 'home/home_mobile.dart';
+import 'home/home_desktop.dart';
 import 'home_screen_strings.dart';
 import '../../core/utils/byte_formatter.dart';
 
@@ -80,7 +78,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       AppLogger.info('Error closing received text subscription: $e');
     }
     
-    AppLogger.info('🧹 HomeScreen disposed');
+    AppLogger.info('ðŸ§¹ HomeScreen disposed');
     super.dispose();
   }
 
@@ -112,7 +110,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         },
       );
     } catch (e) {
-      AppLogger.warn('⚠️ Error creating pending requests subscription: $e');
+      AppLogger.warn('âš ï¸ Error creating pending requests subscription: $e');
     }
   }
 
@@ -124,7 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         _showReceivedTextSheet(msg);
       });
     } catch (e) {
-      AppLogger.warn('⚠️ Error creating received text subscription: $e');
+      AppLogger.warn('âš ï¸ Error creating received text subscription: $e');
     }
   }
 
@@ -353,7 +351,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         }
       });
     } catch (e) {
-      AppLogger.warn('⚠️ Error showing transfer request sheet: $e');
+      AppLogger.warn('âš ï¸ Error showing transfer request sheet: $e');
       // FIXED (Bug #4): Reset flag if sheet fails to show
       if (mounted) {
         setState(() => _isShowingRequestSheet = false);
@@ -375,10 +373,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         setState(() => _isRefreshing = false);
       }
     }
-  }
-
-  bool _isMobile() {
-    return Platform.isAndroid || Platform.isIOS;
   }
 
   // FIX (Bug #13): Ensure loading dialog is always dismissed
@@ -965,436 +959,83 @@ Future<void> _showTextComposeDialog(Device device) async {
     );
   }
 
-  Widget _buildCurrentDeviceCard(BuildContext context, dynamic currentDevice) {
-    // Get custom nickname if available
-    final customNickname = ref.watch(currentDeviceNicknameProvider);
-    final displayName = customNickname ?? currentDevice.name;
-
-    return AppCard(
-      child: Row(
-        children: [
-          const GradientIconTile(
-            icon: Icons.devices,
-            size: 52,
-            radius: AppRadius.lg,
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'This Device',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    const StatusBadge(
-                      label: 'Online',
-                      variant: BadgeVariant.success,
-                      showDot: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xs + 2),
-                Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.wifi_rounded,
-                      size: 14,
-                      color: AppTheme.textTertiary,
-                    ),
-                    const SizedBox(width: AppSpacing.xs),
-                    Text(
-                      currentDevice.ipAddress,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentDevice = ref.watch(currentDeviceProvider);
     final discoveredDevicesAsync = ref.watch(discoveredDevicesProvider);
     final selectedDevice = ref.watch(selectedDeviceProvider);
     final isInitialized = ref.watch(isDeviceServiceInitializedProvider);
-
-    final bottomPadding = _isMobile() ? 120.0 : 0.0;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GradientIconTile(
-              icon: Icons.share,
-              size: 36,
-              iconSize: 20,
-              radius: AppRadius.sm,
-              glow: false,
-            ),
-            SizedBox(width: AppSpacing.md),
-            Text('Syndro'),
-          ],
-        ),
-        // DESKTOP: primary actions live in the app bar instead of stacked FABs.
-        actions: _isMobile()
-            ? const []
-            : _buildDesktopAppBarActions(
-                compact: MediaQuery.sizeOf(context).width < 720,
-              ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // DESKTOP: wide windows get a two-pane master-detail layout;
-            // narrow windows and mobile keep the single-column layout.
-            final useTwoPane = !_isMobile() && constraints.maxWidth >= 700;
-            if (useTwoPane) {
-              return _buildTwoPaneBody(
-                selectedDevice: selectedDevice,
-                masterWidth: (constraints.maxWidth * 0.45).clamp(300.0, 400.0).toDouble(),
-              );
-            }
-            return _buildSingleColumnBody(
-              currentDevice: currentDevice,
-              discoveredDevicesAsync: discoveredDevicesAsync,
-              selectedDevice: selectedDevice,
-              isInitialized: isInitialized,
-              bottomPadding: bottomPadding,
-              showPrimaryFabs: _isMobile(),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  /// DESKTOP: app-bar actions (replace the two always-on FABs).
-  List<Widget> _buildDesktopAppBarActions({required bool compact}) {
-    // Narrow window: icon-only buttons with tooltips (labels will not fit).
-    if (compact) {
-      return [
-        IconButton(
-          tooltip: 'Browser Share',
-          onPressed: _showShareModeDialog,
-          icon: const Icon(Icons.language),
-        ),
-        IconButton(
-          tooltip: 'Send text or link',
-          onPressed: () {
-            final selected = ref.read(selectedDeviceProvider);
-            if (selected == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Select a device first to send text'),
-                ),
-              );
-              return;
-            }
-            _showTextComposeDialog(selected);
-          },
-          icon: const Icon(Icons.notes),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-      ];
-    }
-    return [
-      TextButton.icon(
-        onPressed: _showShareModeDialog,
-        icon: const Icon(Icons.language, size: 18),
-        label: const Text('Browser Share'),
-      ),
-      const SizedBox(width: AppSpacing.xs),
-      TextButton.icon(
-        onPressed: () {
-          final selected = ref.read(selectedDeviceProvider);
-          if (selected == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Select a device first to send text')),
-            );
-            return;
-          }
-          _showTextComposeDialog(selected);
-        },
-        icon: const Icon(Icons.notes, size: 18),
-        label: const Text('Send Text'),
-      ),
-      const SizedBox(width: AppSpacing.md),
-    ];
-  }
-
-  /// Master column: this-device card + nearby devices list. Shared by the
-  /// single-column and two-pane layouts.
-  Widget _buildDeviceColumn({
-    required dynamic currentDevice,
-    required AsyncValue<List<Device>> discoveredDevicesAsync,
-    required Device? selectedDevice,
-    required bool isInitialized,
-    required double bottomPadding,
-  }) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: _buildCurrentDeviceCard(context, currentDevice),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          child: SectionHeader(
-            title: 'Nearby Devices',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDeviceCountBadge(discoveredDevicesAsync),
-                if (_isRefreshing) ...[
-                  const SizedBox(width: AppSpacing.md),
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Scanning...',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppTheme.textTertiary),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: bottomPadding),
-            child: _buildDeviceList(
-              discoveredDevicesAsync,
-              isInitialized,
-              selectedDevice,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Single-column body (mobile + narrow windows): original Stack layout.
-  Widget _buildSingleColumnBody({
-    required dynamic currentDevice,
-    required AsyncValue<List<Device>> discoveredDevicesAsync,
-    required Device? selectedDevice,
-    required bool isInitialized,
-    required double bottomPadding,
-    required bool showPrimaryFabs,
-  }) {
-    return Stack(
-      children: [
-        _buildDeviceColumn(
-          currentDevice: currentDevice,
-          discoveredDevicesAsync: discoveredDevicesAsync,
-          selectedDevice: selectedDevice,
-          isInitialized: isInitialized,
-          bottomPadding: bottomPadding,
-        ),
-
-            // Browser Share FAB (mobile; desktop uses the app bar)
-            if (showPrimaryFabs)
-            Positioned(
-              right: AppSpacing.xl,
-              bottom: 110,
-              child: FloatingActionButton(
-                heroTag: null,
-                onPressed: _showShareModeDialog,
-                backgroundColor: AppTheme.surfaceContainerHigh,
-                foregroundColor: AppTheme.primaryColor,
-                shape: const CircleBorder(),
-                child: const Icon(Icons.language, size: 30),
-              ),
-            ),
-
-            // Send Text FAB (when device selected; mobile — desktop uses the app bar)
-            if (showPrimaryFabs && selectedDevice != null)
-              Positioned(
-                right: AppSpacing.xl + 88,
-                bottom: 190,
-                child: FloatingActionButton(
-                  heroTag: 'sendText',
-                  onPressed: () => _showTextComposeDialog(selectedDevice),
-                  backgroundColor: AppTheme.surfaceContainerHigh,
-                  foregroundColor: AppTheme.primaryColor,
-                  shape: const CircleBorder(),
-                  tooltip: 'Send text or link',
-                  child: const Icon(Icons.notes, size: 24),
-                ),
-              ),
-
-            // Send Files FAB (when device selected)
-            if (selectedDevice != null)
-              Positioned(
-                right: AppSpacing.xl,
-                bottom: _isMobile() ? 190 : 80, // Raised from 20 to 80 for desktop
-                child: FloatingActionButton.extended(
-                  heroTag: null,
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (routeContext) => FilePickerScreen(
-                          recipientDevice: selectedDevice,
-                        ),
-                      ),
-                    );
-                  },
-                  backgroundColor: AppTheme.surfaceContainerHigh,
-                  foregroundColor: AppTheme.primaryColor,
-                  icon: const Icon(Icons.send, size: 24),
-                  label: const Text('Send Files'),
-                ),
-              ),
-
-            // Multi-select Send FAB (when multiple devices selected)
-            if (ref.watch(selectedDevicesProvider).isNotEmpty)
-              Positioned(
-                right: AppSpacing.xl,
-                bottom: _isMobile() ? 190 : 80,
-                child: FloatingActionButton.extended(
-                  heroTag: null,
-                  onPressed: () {
-                    final selectedDevices = ref.read(selectedDevicesProvider);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (routeContext) => FilePickerScreen(
-                          recipientDevices: selectedDevices.toList(),
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.send, size: 24),
-                  label: Text('Send to ${ref.watch(selectedDevicesProvider).length}'),
-                ),
-              ),
-
-            // Multi-select cancel button
-            if (ref.watch(selectedDevicesProvider).isNotEmpty)
-              Positioned(
-                left: AppSpacing.xl,
-                bottom: _isMobile() ? 190 : 80,
-                child: FloatingActionButton(
-                  heroTag: null,
-                  onPressed: () {
-                    ref.read(selectedDevicesProvider.notifier).state = {};
-                  },
-                  backgroundColor: AppTheme.errorContainer,
-                  foregroundColor: AppTheme.onErrorContainer,
-                  shape: const CircleBorder(),
-                  child: const Icon(Icons.close, size: 24),
-                ),
-              ),
-      ],
-    );
-  }
-
-  /// DESKTOP (wide windows): master device list on the left, send pane right.
-  Widget _buildTwoPaneBody({
-    required Device? selectedDevice,
-    required double masterWidth,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: masterWidth,
-          child: _buildDeviceColumn(
-            currentDevice: ref.watch(currentDeviceProvider),
-            discoveredDevicesAsync: ref.watch(discoveredDevicesProvider),
-            selectedDevice: selectedDevice,
-            isInitialized: ref.watch(isDeviceServiceInitializedProvider),
-            bottomPadding: 0,
-          ),
-        ),
-        VerticalDivider(width: 1, color: AppTheme.outlineVariant),
-        Expanded(child: _buildSendPane(selectedDevice)),
-      ],
-    );
-  }
-
-  /// DESKTOP: the send pane — a drag-and-drop target for the selected
-  /// device(s). This is the primary Windows interaction: drag files onto the
-  /// window, pick files/folders, and send — no FAB hunting required.
-  Widget _buildSendPane(Device? selectedDevice) {
     final selectedDevices = ref.watch(selectedDevicesProvider);
-    final hasMulti = selectedDevices.isNotEmpty;
 
-    final Widget header;
-    if (hasMulti) {
-      header = SectionHeader(
-        title: 'Send to ${selectedDevices.length} devices',
-        trailing: TextButton(
-          onPressed: () =>
-              ref.read(selectedDevicesProvider.notifier).state = {},
-          child: const Text('Clear selection'),
-        ),
+    // PLATFORM: Android always renders the mobile layout; Windows/Linux/
+    // macOS always render the desktop layout. Each family evolves in its
+    // own file (home/home_mobile.dart, home/home_desktop.dart); shared
+    // logic lives in this facade, shared views in home_device_views.dart.
+    if (Platform.isAndroid || Platform.isIOS) {
+      return HomeMobileLayout(
+        currentDevice: currentDevice,
+        discoveredDevicesAsync: discoveredDevicesAsync,
+        selectedDevice: selectedDevice,
+        isInitialized: isInitialized,
+        isRefreshing: _isRefreshing,
+        selectedDevices: selectedDevices,
+        onRefresh: _refreshDevices,
+        onOpenShareDialog: _showShareModeDialog,
+        onTextCompose: _showTextComposeDialog,
+        onSendFiles: _openFilePickerForDevice,
+        onSendToMultiple: _openFilePickerForDevices,
+        onClearMultiSelect: _clearMultiSelect,
       );
-    } else if (selectedDevice != null) {
-      header = SectionHeader(title: 'Send to ${selectedDevice.name}');
-    } else {
-      header = const SectionHeader(title: 'Send Files');
     }
+    return HomeDesktopLayout(
+      currentDevice: currentDevice,
+      discoveredDevicesAsync: discoveredDevicesAsync,
+      selectedDevice: selectedDevice,
+      isInitialized: isInitialized,
+      isRefreshing: _isRefreshing,
+      selectedDevices: selectedDevices,
+      onRefresh: _refreshDevices,
+      onOpenShareDialog: _showShareModeDialog,
+      onSendText: _sendTextToSelected,
+      onOpenPicker: _openDesktopPicker,
+      onFilesDropped: _handleDesktopFilesDropped,
+      onSendToMultiple: _openFilePickerForDevices,
+      onClearMultiSelect: _clearMultiSelect,
+    );
+  }
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header,
-              const SizedBox(height: AppSpacing.lg),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: EmptyDropZone(
-                    onFilesDropped: _handleDesktopFilesDropped,
-                    onPickFiles: _openDesktopPicker,
-                    onPickFolder: _openDesktopPicker,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+  /// ANDROID: open the picker for a single selected device.
+  void _openFilePickerForDevice(Device device) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) => FilePickerScreen(recipientDevice: device),
       ),
     );
+  }
+
+  /// ANDROID (multi-select): open the picker for several devices at once.
+  void _openFilePickerForDevices(List<Device> devices) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) => FilePickerScreen(recipientDevices: devices),
+      ),
+    );
+  }
+
+  void _clearMultiSelect() {
+    ref.read(selectedDevicesProvider.notifier).state = {};
+  }
+
+  /// WINDOWS: compose text to the selected device (validates selection).
+  void _sendTextToSelected() {
+    final selected = ref.read(selectedDeviceProvider);
+    if (selected == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a device first to send text')),
+      );
+      return;
+    }
+    _showTextComposeDialog(selected);
   }
 
   /// Opens the file picker for the current desktop selection.
@@ -1439,218 +1080,6 @@ Future<void> _showTextComposeDialog(Device device) async {
           recipientDevices:
               selectedDevices.isNotEmpty ? selectedDevices.toList() : null,
           preselectedFiles: items,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDeviceCountBadge(AsyncValue<List<dynamic>> devicesAsync) {
-    return devicesAsync.when(
-      data: (devices) => StatusBadge(
-        label: '${devices.length}',
-        variant: BadgeVariant.primary,
-      ),
-      loading: () => const StatusBadge(
-        label: '...',
-        variant: BadgeVariant.neutral,
-      ),
-      error: (_, __) => const StatusBadge(
-        label: '!',
-        variant: BadgeVariant.error,
-      ),
-    );
-  }
-
-  Widget _buildDeviceList(
-    AsyncValue<List<Device>> devicesAsync,
-    bool isInitialized,
-    Device? selectedDevice,
-  ) {
-    if (!isInitialized) {
-      // Skeleton loaders match the card layout the list will settle into,
-      // instead of a bare spinner (the discovery service takes a moment).
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-          ],
-        ),
-      );
-    }
-
-    return devicesAsync.when(
-      data: (devices) {
-        // Filter to only show devices on the same subnet
-        final localIps = ref.watch(localIpsProvider);
-        final sameSubnetDevices = devices.where((device) {
-          // Allow current device to always show
-          if (device.id == ref.read(currentDeviceProvider).id) return true;
-          // Check if device is on same subnet as any of our local IPs
-          for (final localIp in localIps) {
-            if (device.isOnSameSubnetAs(localIp)) {
-              return true;
-            }
-          }
-          return false;
-        }).toList();
-
-        if (sameSubnetDevices.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: _refreshDevices,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final screenHeight = MediaQuery.of(context).size.height;
-                final isSmallScreen = screenHeight < 600;
-                final emptyStateHeight = isSmallScreen
-                    ? (screenHeight * 0.6).clamp(300.0, 500.0)
-                    : (screenHeight * 0.4).clamp(350.0, 600.0);
-
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: SizedBox(
-                    height: emptyStateHeight,
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          PulseAnimation(
-                            child: Icon(
-                              Icons.radar,
-                              size: 72,
-                              color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.xxl),
-                          Text(
-                            'Scanning for devices...',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  color: AppTheme.textSecondary,
-                                ),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Make sure other devices are on the\nsame Wi-Fi network and have Syndro open.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: AppTheme.textTertiary,
-                                ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppSpacing.xxxl),
-                          OutlinedButton.icon(
-                            onPressed: _isRefreshing ? null : _refreshDevices,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text(HomeScreenStrings.scanAgain),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: _refreshDevices,
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            itemCount: sameSubnetDevices.length,
-            itemBuilder: (context, index) {
-              final device = sameSubnetDevices[index];
-              final selectedDevices = ref.watch(selectedDevicesProvider);
-              final isMultiSelectMode = selectedDevices.isNotEmpty;
-              final isSelected = selectedDevices.any((d) => d.id == device.id) || 
-                                 (!isMultiSelectMode && selectedDevice?.id == device.id);
-              
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: DeviceCard(
-                  device: device,
-                  isSelected: isSelected,
-                  onTap: () {
-                    if (isMultiSelectMode) {
-                      // Multi-select mode: toggle device in selection
-                      final currentSelection = Set<Device>.from(selectedDevices);
-                      if (currentSelection.any((d) => d.id == device.id)) {
-                        currentSelection.removeWhere((d) => d.id == device.id);
-                      } else {
-                        currentSelection.add(device);
-                      }
-                      ref.read(selectedDevicesProvider.notifier).state = currentSelection;
-                      // Clear single selection when in multi-select mode
-                      ref.read(selectedDeviceProvider.notifier).state = null;
-                    } else {
-                      // Single-select mode
-                      ref.read(selectedDeviceProvider.notifier).state = device;
-                    }
-                  },
-                  onLongPress: () {
-                    // Enter multi-select mode on long press
-                    if (!isMultiSelectMode) {
-                      ref.read(selectedDevicesProvider.notifier).state = {device};
-                      ref.read(selectedDeviceProvider.notifier).state = null;
-                    }
-                  },
-                ),
-              );
-            },
-          ),
-        );
-      },
-      loading: () => const Padding(
-        padding: EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-          ],
-        ),
-      ),
-      error: (error, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: AppTheme.errorColor,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              HomeScreenStrings.errorDiscoveringDevices,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
-              child: Text(
-                error.toString(),
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            ElevatedButton.icon(
-              onPressed: _refreshDevices,
-              icon: const Icon(Icons.refresh),
-              label: const Text(HomeScreenStrings.retry),
-            ),
-          ],
         ),
       ),
     );
@@ -1726,7 +1155,7 @@ class _TransferRequestSheetContentState
             )
           else
             Text(
-              '${request.fileCount} file(s) • ${_formatSize(request.totalSize)}',
+              '${request.fileCount} file(s) â€¢ ${_formatSize(request.totalSize)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textTertiary,
                   ),
@@ -1838,7 +1267,7 @@ class _TrustedDeviceBadge extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.xs),
         Text(
-          'Trusted device — transfers auto-accept',
+          'Trusted device â€” transfers auto-accept',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppTheme.successColor,
                 fontWeight: FontWeight.w500,
