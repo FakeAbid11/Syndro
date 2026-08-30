@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 /// Scale-in animation wrapper widget
 class ScaleAnimation extends StatefulWidget {
   final Widget child;
@@ -11,7 +12,7 @@ class ScaleAnimation extends StatefulWidget {
   const ScaleAnimation({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 400),
+    this.duration = AppMotion.slow,
     this.delay = Duration.zero,
     this.curve = Curves.easeOutBack,
     this.beginScale = 0.8,

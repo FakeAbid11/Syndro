@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 /// Slide direction enum
 enum SlideDirection { up, down, left, right }
 
@@ -15,7 +16,7 @@ class SlideAnimation extends StatefulWidget {
   const SlideAnimation({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 400),
+    this.duration = AppMotion.slow,
     this.delay = Duration.zero,
     this.curve = Curves.easeOutCubic,
     this.direction = SlideDirection.up,

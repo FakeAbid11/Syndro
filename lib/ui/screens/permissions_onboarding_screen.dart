@@ -28,6 +28,7 @@ class _PermissionsOnboardingScreenState
     'storage': false,
     'notifications': false,
     'wifi': true, // WiFi doesn't need runtime permission
+    'battery': false, // Recommended, not required — see _requestPermissions
   };
 
   static final List<_PermissionItem> _permissions = [
@@ -51,6 +52,13 @@ class _PermissionsOnboardingScreenState
       description: 'Show transfer progress & requests',
       iconColor: AppTheme.accentColor,
       key: 'notifications',
+    ),
+    _PermissionItem(
+      icon: Icons.battery_saver_rounded,
+      title: 'Unrestricted Battery',
+      description: 'Recommended: keeps transfers alive in the background',
+      iconColor: AppTheme.warningColor,
+      key: 'battery',
     ),
   ];
 
@@ -88,6 +96,10 @@ class _PermissionsOnboardingScreenState
       // Storage is granted if either media permissions (Android 13+) or storage (older) are granted
       final storage = photosGranted || videosGranted || storageGranted;
       final notifications = await Permission.notification.isGranted;
+      // Battery exemption is recommended, not required. The manifest already
+      // declares REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which the request()
+      // call below needs — before this, nothing ever asked for it.
+      final battery = await Permission.ignoreBatteryOptimizations.isGranted;
 
       if (!mounted) return;
 
@@ -96,6 +108,7 @@ class _PermissionsOnboardingScreenState
           'storage': storage,
           'notifications': notifications,
           'wifi': true,
+          'battery': battery,
         };
       });
     } catch (e) {
@@ -110,30 +123,38 @@ class _PermissionsOnboardingScreenState
     setState(() => _isLoading = true);
 
     try {
+      // A permission the user previously blocked with "Don't ask again"
+      // returns `denied` instantly from request() — the system dialog never
+      // shows. Skip those here so the dialog below can route the user to
+      // system settings instead of dead-looping on ungrantable prompts.
+      Future<void> requestIfNeeded(Permission permission) async {
+        final status = await permission.status;
+        if (status.isPermanentlyDenied || status.isRestricted) return;
+        if (status.isDenied) await permission.request();
+      }
+
       // Request storage permission (photos/videos for Android 13+, storage for older)
       if (!(_permissionStatus['storage'] ?? false)) {
         // Try Android 13+ permissions first
-        final photosStatus = await Permission.photos.status;
-        if (photosStatus.isDenied) {
-          await Permission.photos.request();
-        }
-        
-        final videosStatus = await Permission.videos.status;
-        if (videosStatus.isDenied) {
-          await Permission.videos.request();
-        }
-        
+        await requestIfNeeded(Permission.photos);
+        await requestIfNeeded(Permission.videos);
+
         // Fallback to storage for older Android versions
-        if (await Permission.storage.isDenied) {
-          await Permission.storage.request();
-        }
+        await requestIfNeeded(Permission.storage);
       }
 
       // Request notification permission
       if (!(_permissionStatus['notifications'] ?? false)) {
-        if (await Permission.notification.isDenied) {
-          await Permission.notification.request();
-        }
+        await requestIfNeeded(Permission.notification);
+      }
+
+      // Recommended (not required): the manifest declares
+      // REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, but nothing ever asked for it —
+      // so aggressive OEM battery savers (MIUI/HyperOS etc.) kept killing
+      // background receives. Firing the system "always run in background?"
+      // dialog once here makes the declaration real.
+      if (!(await Permission.ignoreBatteryOptimizations.isGranted)) {
+        await Permission.ignoreBatteryOptimizations.request();
       }
 
       await _checkPermissions();
@@ -159,6 +180,26 @@ class _PermissionsOnboardingScreenState
   }
 
   Future<void> _showPermissionDeniedDialog() async {
+    // Distinguish "can still be asked" from "permanently denied — Settings is
+    // the only way", so the guidance matches what the user can actually do.
+    final permanentlyDenied = <String>[];
+    if (Platform.isAndroid) {
+      if (await Permission.photos.status.isPermanentlyDenied) {
+        permanentlyDenied.add('Photos');
+      }
+      if (await Permission.videos.status.isPermanentlyDenied) {
+        permanentlyDenied.add('Videos');
+      }
+      if (await Permission.storage.status.isPermanentlyDenied) {
+        permanentlyDenied.add('Storage');
+      }
+      if (await Permission.notification.status.isPermanentlyDenied) {
+        permanentlyDenied.add('Notifications');
+      }
+    }
+
+    if (!mounted) return;
+
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -173,7 +214,21 @@ class _PermissionsOnboardingScreenState
                 'Syndro requires certain permissions to function properly. '
                 'Without these permissions, some features may not work.',
               ),
-const SizedBox(height: AppSpacing.lg),
+              if (permanentlyDenied.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  '${permanentlyDenied.join(", ")} '
+                  '${permanentlyDenied.length == 1 ? 'was' : 'were'} permanently '
+                  'denied — grant ${permanentlyDenied.length == 1 ? 'it' : 'them'} '
+                  'from system Settings.',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.warningColor,
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.lg),
               Text(
                 'You can grant permissions in Settings, or continue with limited functionality.',
                 style: TextStyle(fontSize: 14, color: AppTheme.textTertiary),
@@ -181,19 +236,20 @@ const SizedBox(height: AppSpacing.lg),
             ],
           ),
           actions: <Widget>[
-            TextButton(
-              child: const Text('Continue Anyway'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _continue();
-              },
-            ),
-            TextButton(
+            // Primary action: the actual fix (opens system app settings).
+            FilledButton.tonal(
               child: const Text('Open Settings'),
               onPressed: () {
                 Navigator.of(context).pop();
                 // Open app settings
                 openAppSettings();
+              },
+            ),
+            TextButton(
+              child: const Text('Continue Anyway'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _continue();
               },
             ),
           ],

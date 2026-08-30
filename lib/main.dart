@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -578,6 +579,16 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      builder: (context, child) {
+        // PLATFORM (Android 15 edge-to-edge): guarantee status-bar icon
+        // contrast on screens that have no AppBar (onboarding, text share,
+        // quick send, multi-transfer). AppBar screens override this locally
+        // via `appBarTheme.systemOverlayStyle`.
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppTheme.overlayStyleFor(Theme.of(context).brightness),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: _buildHome(incomingFilesState),
     );
   }

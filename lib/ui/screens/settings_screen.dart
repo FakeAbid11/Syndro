@@ -280,8 +280,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         decoration: BoxDecoration(
           gradient: AppTheme.backgroundGradient,
         ),
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+        // DESKTOP: cap the content width so tiles don't stretch across
+        // large windows.
+        child: ResponsiveCenter(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
             // ============================================
             // DEVICE SECTION
@@ -627,6 +630,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 100),
           ],
+        ),
         ),
       ),
     );

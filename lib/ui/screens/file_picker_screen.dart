@@ -491,7 +491,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                     child: child,
                   );
                 },
-                transitionDuration: const Duration(milliseconds: 400),
+                transitionDuration: AppMotion.slow,
               ),
             );
           }
@@ -710,7 +710,7 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
                 children: [
                   // Header with file count
                   _AnimatedCard(
-                    delay: const Duration(milliseconds: 150),
+                    delay: AppMotion.fast,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: AppSpacing.lg),
@@ -942,7 +942,7 @@ class _AnimatedCardState extends State<_AnimatedCard>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: AppMotion.slow,
     );
 
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
@@ -1053,7 +1053,7 @@ class _AnimatedListItemState extends State<_AnimatedListItem>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: AppMotion.slow,
     );
 
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
@@ -1241,7 +1241,7 @@ class _AnimatedEmptyStateWithDropState extends State<_AnimatedEmptyStateWithDrop
                     );
 
                     final folderButton = _AnimatedButton(
-                      delay: const Duration(milliseconds: 400),
+                      delay: AppMotion.slow,
                       onPressed: widget.onPickFolder,
                       icon: Icons.folder_rounded,
                       label: 'Select Folder',
@@ -1326,7 +1326,7 @@ class _AnimatedButtonState extends State<_AnimatedButton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: AppMotion.slow,
     );
 
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1).animate(

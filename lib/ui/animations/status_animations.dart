@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
+import '../theme/app_dimens.dart';
 /// Success animation widget
 class SuccessAnimation extends StatefulWidget {
   final VoidCallback? onComplete;
@@ -226,7 +227,9 @@ class _PulseAnimationState extends State<PulseAnimation>
       builder: (context, child) {
         return Transform.scale(
           scale: _animation.value,
-          child: widget.child,
+          // PERF: The pulsing icon never repaints — only its layer is
+          // re-composited with a new scale, so the raster is cached here.
+          child: RepaintBoundary(child: child),
         );
       },
       child: widget.child,
@@ -244,7 +247,7 @@ class FadeInAnimation extends StatefulWidget {
     super.key,
     required this.child,
     this.delay = Duration.zero,
-    this.duration = const Duration(milliseconds: 400),
+    this.duration = AppMotion.slow,
   });
 
   @override

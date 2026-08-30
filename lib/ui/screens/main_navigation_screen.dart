@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
@@ -20,6 +21,9 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 
 class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   int _selectedIndex = 0;
+
+  /// Index of the nav item under the mouse cursor (desktop hover feedback).
+  int? _hoveredIndex;
 
   @override
   void initState() {
@@ -80,10 +84,29 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isDesktop()) {
-      return _buildDesktopLayout();
+      return _wrapDesktopShortcuts(_buildDesktopLayout());
     } else {
       return _buildMobileLayout();
     }
+  }
+
+  /// UX: desktop keyboard shortcuts — Ctrl+1/2/3 switch between
+  /// Devices / History / Settings without touching the mouse.
+  Widget _wrapDesktopShortcuts(Widget child) {
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.digit1, control: true):
+            () => _onDestinationSelected(0),
+        const SingleActivator(LogicalKeyboardKey.digit2, control: true):
+            () => _onDestinationSelected(1),
+        const SingleActivator(LogicalKeyboardKey.digit3, control: true):
+            () => _onDestinationSelected(2),
+      },
+      child: Focus(
+        autofocus: true,
+        child: child,
+      ),
+    );
   }
 
   /// Desktop layout with NavigationRail (side navigation)
@@ -103,7 +126,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               selectedIndex: _selectedIndex,
               onDestinationSelected: _onDestinationSelected,
               backgroundColor: Colors.transparent,
-              extended: true,
+              // Responsive: collapse the labels when the window is narrow so
+              // a half-screen desktop window doesn't get a cramped rail.
+              extended: MediaQuery.of(context).size.width >= 1000,
               minExtendedWidth: 200,
               leading: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -156,10 +181,15 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: AppSpacing.xxl,
+            // PLATFORM: Android 15 (targetSdk 35) enforces edge-to-edge, so
+            // this Stack extends behind the system navigation bar. Anchor the
+            // pill above the real inset — a fixed margin disappears behind
+            // the 3-button nav bar (~48dp).
+            bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.sm,
             child: Center(
               child: Container(
-                height: 68,
+                // A11Y: intrinsic height (icon + padding) instead of a fixed
+                // 68px box so the pill survives large accessibility text.
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.md,
                   vertical: AppSpacing.sm,
@@ -212,7 +242,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     );
   }
 
-  /// FIX: Build individual navigation item with instant state change (no animation)
+  /// FIX: Build individual navigation item with instant state change (no animation).
+  /// A11Y: exposed as a button with selection state; UX: hover highlight +
+  /// click cursor on desktop instead of a bare [GestureDetector].
   Widget _buildNavItem({
     required int index,
     required IconData icon,
@@ -220,41 +252,63 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     required String label,
   }) {
     final isSelected = _selectedIndex == index;
+    final isHovered = _hoveredIndex == index;
 
-    return GestureDetector(
-      onTap: () => _onDestinationSelected(index),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xl,
-          vertical: AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryContainer : null,
-          borderRadius: AppRadius.pillAll,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? selectedIcon : icon,
-              color: isSelected
-                  ? AppTheme.onPrimaryContainer
-                  : AppTheme.textTertiary,
-              size: 26,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) {
+        if (!mounted) return;
+        setState(() => _hoveredIndex = index);
+      },
+      onExit: (_) {
+        if (!mounted) return;
+        if (_hoveredIndex == index) setState(() => _hoveredIndex = null);
+      },
+      child: Semantics(
+        button: true,
+        selected: isSelected,
+        label: label,
+        child: GestureDetector(
+          onTap: () => _onDestinationSelected(index),
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: AppMotion.fast,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xl,
+              vertical: AppSpacing.md,
             ),
-            if (isSelected) ...[
-              const SizedBox(width: AppSpacing.md),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppTheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
-                    ),
-              ),
-            ],
-          ],
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppTheme.primaryContainer
+                  : isHovered
+                      ? AppTheme.surfaceContainerHighest
+                      : null,
+              borderRadius: AppRadius.pillAll,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSelected ? selectedIcon : icon,
+                  color: isSelected
+                      ? AppTheme.onPrimaryContainer
+                      : AppTheme.textTertiary,
+                  size: 26,
+                ),
+                if (isSelected) ...[
+                  const SizedBox(width: AppSpacing.md),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: AppTheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

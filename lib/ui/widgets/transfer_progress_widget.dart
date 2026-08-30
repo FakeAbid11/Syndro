@@ -40,6 +40,7 @@ class TransferProgressWidget extends StatelessWidget {
                     icon: const Icon(Icons.close),
                     onPressed: onCancel,
                     color: AppTheme.errorColor,
+                    tooltip: 'Cancel transfer',
                   ),
               ],
             ),

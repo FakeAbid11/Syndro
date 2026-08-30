@@ -876,7 +876,8 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
             ),
         ],
       ),
-      body: _buildBody(),
+      // DESKTOP: cap the content width on large windows.
+      body: ResponsiveCenter(child: _buildBody()),
     );
   }
 

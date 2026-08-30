@@ -594,25 +594,25 @@
 - **Used in**: HistoryScreen loading state
 
 ### SuccessAnimation
-- **File**: `lib/ui/widgets/status_animations.dart` and `lib/ui/animations/status_animations.dart`
+- **File**: `lib/ui/animations/status_animations.dart`
 - **Purpose**: Animated success checkmark with scale-in effect
 - **Visual description**: 80x80px circle (successColor at 20%). Animation: 600ms total. First 300ms: scale from 0→1 with `elasticOut` curve. Last 300ms: check_circle icon scales from 0→1 with `easeOut`. Calls `onComplete` when done.
 - **Used in**: Transfer completion states
 
 ### ErrorAnimation
-- **File**: `lib/ui/widgets/status_animations.dart` and `lib/ui/animations/status_animations.dart`
+- **File**: `lib/ui/animations/status_animations.dart`
 - **Purpose**: Animated error icon with shake effect
 - **Visual description**: 80x80px circle (errorColor at 20%). Animation: 600ms total. First 200ms: scale 0→1. Last 400ms: horizontal shake (-8→8px, elasticIn). Error icon 60px. Calls `onComplete` when done.
 - **Used in**: Transfer failure states
 
 ### PulseAnimation (Widget)
-- **File**: `lib/ui/widgets/status_animations.dart` and `lib/ui/animations/status_animations.dart`
+- **File**: `lib/ui/animations/status_animations.dart`
 - **Purpose**: Continuous pulsing scale effect for loading/scanning states
 - **Visual description**: Wraps child, scales 1.0→1.1 continuously (1500ms, repeat, reverse, easeInOut). Can be toggled on/off via `animate` parameter.
 - **Used in**: Scanning indicators, loading states
 
 ### FadeInAnimation
-- **File**: `lib/ui/widgets/status_animations.dart` and `lib/ui/animations/status_animations.dart`
+- **File**: `lib/ui/animations/status_animations.dart`
 - **Purpose**: Fade-in + slide-up animation for new items appearing
 - **Visual description**: Wraps child. 400ms animation (configurable delay). Opacity 0→1 (easeOut) + slide from (0, 0.1) to (0, 0) (easeOut).
 - **Used in**: List items appearing, new content
@@ -625,13 +625,13 @@
 - **Used in**: Inline transfer status displays
 
 ### TransferRequestSheet
-- **File**: `lib/ui/widgets/transfer_request_sheet.dart`
+- **File**: built inline in `lib/ui/screens/home_screen.dart` (`_showTransferRequestSheet`)
 - **Purpose**: Bottom sheet for incoming transfer requests with accept/reject/trust options
 - **Visual description**: `surfaceColor` background, 24px top border radius. Handle bar (40x4px). Download icon (48px) in primaryColor container. "Incoming Transfer" title. Sender name + "wants to send you:" + optional "Trusted" badge (green pill with verified_user icon). File details card. Scrollable file list (max 150px height) if multiple files. Buttons: Decline (red outlined), Accept (green elevated), "Accept & Always Trust This Device" (primaryColor text button)
 - **Used in**: Transfer request handling
 
 ### TransferRequestStrings
-- **File**: `lib/ui/widgets/transfer_request_strings.dart`
+- **File**: `lib/ui/screens/home_screen_strings.dart` (shared strings for the sheet)
 - **Purpose**: Localization constants for transfer request UI
 - **Strings**: "Incoming Transfer", "wants to send you:", "Decline", "Accept", "Accept & Always Trust This Device", "Transfer accepted", "Transfer rejected"
 

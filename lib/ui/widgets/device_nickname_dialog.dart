@@ -67,6 +67,7 @@ class _DeviceNicknameDialogState extends State<DeviceNicknameDialog> {
                       onPressed: () {
                         _controller.clear();
                       },
+                      tooltip: 'Clear name',
                     )
                   : null,
             ),

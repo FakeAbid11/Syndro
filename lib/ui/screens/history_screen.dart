@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
+import '../widgets/shimmer_loading.dart';
 import '../../core/models/transfer_history_entry.dart';
 import '../../core/providers/history_provider.dart';
 import '../../core/utils/byte_formatter.dart';
@@ -160,13 +161,28 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           gradient: AppTheme.backgroundGradient,
         ),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Padding(
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child: Column(
+                  children: [
+                    HistoryItemSkeleton(),
+                    SizedBox(height: AppSpacing.md),
+                    HistoryItemSkeleton(),
+                    SizedBox(height: AppSpacing.md),
+                    HistoryItemSkeleton(),
+                    SizedBox(height: AppSpacing.md),
+                    HistoryItemSkeleton(),
+                  ],
+                ),
+              )
             : _transfers.isEmpty
                 ? _buildEmptyState()
                 : Column(
                     children: [
-                      _buildStatistics(),
-                      Expanded(child: _buildHistoryList()),
+                      ResponsiveCenter(child: _buildStatistics()),
+                      Expanded(
+                        child: ResponsiveCenter(child: _buildHistoryList()),
+                      ),
                     ],
                   ),
       ),

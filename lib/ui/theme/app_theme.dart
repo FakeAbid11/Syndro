@@ -1,6 +1,7 @@
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_dimens.dart';
 
@@ -130,6 +131,17 @@ class AppTheme {
 
   /// Whether the active palette is the dark one.
   static bool get isDarkActive => backgroundColor == _darkBackground;
+
+  /// Status-bar / nav-bar icon contrast for the active [brightness].
+  ///
+  /// PLATFORM (Android 15): targeting SDK 35 enforces edge-to-edge, so the
+  /// app draws behind the system bars. The global `AnnotatedRegion` in
+  /// `main.dart` applies this for screens without an AppBar; AppBar screens
+  /// get the same value via `appBarTheme.systemOverlayStyle`.
+  static SystemUiOverlayStyle overlayStyleFor(Brightness brightness) =>
+      brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark;
 
   /// Swap the active palette to match [mode]. Resolves `ThemeMode.system`
   /// from the platform's current brightness. Call before building the widget
@@ -310,6 +322,10 @@ class AppTheme {
           letterSpacing: -0.2,
         ),
         iconTheme: IconThemeData(color: textPrimary),
+        // PLATFORM: deterministic status-bar icon contrast (edge-to-edge).
+        systemOverlayStyle: brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
       ),
 
       // Card Theme — tonal surface, clipped, gentle radius (M3).

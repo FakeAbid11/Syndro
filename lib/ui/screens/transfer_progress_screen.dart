@@ -265,6 +265,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
           leading: IconButton(
             icon: const Icon(Icons.close),
             onPressed: () => Navigator.of(context).maybePop(),
+            tooltip: 'Close',
           ),
         ),
         body: Container(

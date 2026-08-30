@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 /// Fade-in animation wrapper widget
 class FadeAnimation extends StatefulWidget {
   final Widget child;
@@ -10,7 +11,7 @@ class FadeAnimation extends StatefulWidget {
   const FadeAnimation({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 400),
+    this.duration = AppMotion.slow,
     this.delay = Duration.zero,
     this.curve = Curves.easeOut,
   });

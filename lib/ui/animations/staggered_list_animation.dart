@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_dimens.dart';
 /// Animated list item that staggers based on index
 class StaggeredListItem extends StatefulWidget {
   final Widget child;
@@ -12,7 +13,7 @@ class StaggeredListItem extends StatefulWidget {
     super.key,
     required this.child,
     required this.index,
-    this.duration = const Duration(milliseconds: 400),
+    this.duration = AppMotion.slow,
     this.staggerDelay = const Duration(milliseconds: 50),
     this.curve = Curves.easeOutCubic,
   });

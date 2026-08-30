@@ -518,7 +518,8 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
             ),
         ],
       ),
-      body: _buildBody(),
+      // DESKTOP: cap the content width on large windows.
+      body: ResponsiveCenter(child: _buildBody()),
     );
   }
 
