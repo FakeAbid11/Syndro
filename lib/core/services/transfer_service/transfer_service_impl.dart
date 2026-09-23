@@ -16,6 +16,7 @@ import '../../models/device.dart';
 import '../../models/transfer.dart';
 import '../../models/transfer_checkpoint.dart';
 import '../../database/database_helper.dart';
+import '../../utils/http_header_codec.dart';
 import '../encryption_service.dart';
 import '../file_service.dart';
 import '../app_settings_service.dart';
@@ -2098,6 +2099,24 @@ class TransferService {
     }
   }
 
+  /// The filename as declared on the wire.
+  ///
+  /// Prefers the percent-encoded companion header and falls back to the legacy
+  /// ASCII value so peers predating the encoding change still transfer.
+  /// Returns null on malformed encoding so the caller can reject the request
+  /// before anything reaches the disk.
+  String? _wireFileName(HttpRequest request) {
+    try {
+      return HttpHeaderCodec.decode(
+        encoded: request.headers.value(HttpHeaderCodec.fileNameEncodedHeader),
+        legacy: request.headers.value('x-file-name'),
+      );
+    } on FormatException {
+      AppLogger.warn('Security: Malformed encoded filename header');
+      return null;
+    }
+  }
+
   Future<void> _handleEncryptedFileUpload(HttpRequest request) async {
     IOSink? fileSink;
     String? tempFilePath;
@@ -2105,7 +2124,7 @@ class TransferService {
 
     try {
       transferId = request.headers.value('x-transfer-id');
-      final fileName = request.headers.value('x-file-name');
+      final fileName = _wireFileName(request);
       final originalSizeHeader = request.headers.value('x-original-size');
       final senderId = request.headers.value('x-sender-id');
       final senderToken = request.headers.value('x-sender-token');
@@ -2441,7 +2460,7 @@ class TransferService {
 
     try {
       transferId = request.headers.value('x-transfer-id');
-      final fileName = request.headers.value('x-file-name');
+      final fileName = _wireFileName(request);
       final fileSizeHeader = request.headers.value('x-file-size');
       final senderId = request.headers.value('x-sender-id');
       final senderToken = request.headers.value('x-sender-token');
@@ -3252,7 +3271,10 @@ class TransferService {
     request.headers['x-transfer-id'] = transferId;
     request.headers['x-sender-id'] = sender.id;
     request.headers['x-sender-token'] = senderToken;
-    request.headers['x-file-name'] = item.name;
+    // Header values must stay ASCII; the exact name rides in the companion.
+    request.headers['x-file-name'] = HttpHeaderCodec.toAscii(item.name);
+    request.headers[HttpHeaderCodec.fileNameEncodedHeader] =
+        HttpHeaderCodec.encode(item.name);
     request.headers['x-original-size'] = fileSize.toString();
     request.headers['x-file-hash'] = fileHash;
     // Add file metadata timestamps
@@ -3378,9 +3400,14 @@ class TransferService {
     request.headers['x-transfer-id'] = transferId;
     request.headers['x-sender-id'] = sender.id;
     request.headers['x-sender-token'] = senderToken;
-    request.headers['x-file-name'] = item.name;
+    // Header values must stay ASCII; the exact name rides in the companion.
+    request.headers['x-file-name'] = HttpHeaderCodec.toAscii(item.name);
+    request.headers[HttpHeaderCodec.fileNameEncodedHeader] =
+        HttpHeaderCodec.encode(item.name);
     request.headers['x-file-size'] = fileSize.toString();
-    request.headers['x-relative-path'] = item.parentPath ?? '';
+    // No receiver reads this today, but it must not be able to abort a send.
+    request.headers['x-relative-path'] =
+        HttpHeaderCodec.toAscii(item.parentPath ?? '');
     // Compute and send file hash for integrity verification on receiver side
     final fileHash = await _calculateHashFromFile(file);
     request.headers['x-file-hash'] = fileHash;
