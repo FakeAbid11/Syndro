@@ -973,7 +973,38 @@ class TransferService {
     return 'ckpt_$hashHex';
   }
 
+  /// Whether the transfer server is currently bound and being served.
+  ///
+  /// Recovery code must consult this rather than assuming a listener exists:
+  /// Android recreates `TransferService` on its own, and a recreated native
+  /// service does not rebind this socket — the Dart isolate that owns it may or
+  /// may not still be running.
+  bool get isServerRunning => _server != null && !_isDisposed;
+
   Future<void> startServer(int port) async {
+    // Startup is idempotent so a retry, a resumed activity or a service
+    // recreation can call it unconditionally. Without this guard a second call
+    // would bind another listener on the port range and overwrite `_server`,
+    // orphaning the first socket while the service still reported itself
+    // healthy — the invariant being: no server → start exactly one, live
+    // server → reuse it.
+    if (isServerRunning) {
+      AppLogger.info(
+          'Transfer server already listening on port ${_server!.port}; '
+          'reusing the existing listener');
+      return;
+    }
+
+    // A server bound after dispose() would never be served: _serve() exits on
+    // the disposed flag, so it would hold a port while answering nothing.
+    if (_isDisposed) {
+      throw TransferException(
+        'Transfer service has been disposed; refusing to bind a server that '
+        'would never be served.',
+        code: 'SERVICE_DISPOSED',
+      );
+    }
+
     if (_deviceId.isEmpty) {
       _deviceId = const Uuid().v4();
     }

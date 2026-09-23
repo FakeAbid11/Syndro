@@ -81,6 +81,36 @@ class TransferService : Service() {
     // instead of holding locks forever.
     private val pendingReceiveTimeoutMs = 90_000L
 
+    // Upper bound on holding locks with no evidence of transfer progress. The
+    // 30-minute acquire() timeout this replaces did double duty: it also
+    // bounded a transfer whose Dart side died before sending its end signal.
+    // With no timeout on acquire(), that watchdog has to be explicit or a
+    // silent Dart failure would pin the CPU awake indefinitely. It is re-armed
+    // by progress, never polled.
+    private val lockStallTimeoutMs = 10 * 60_000L
+    private var lockStallRunnable: Runnable? = null
+
+    /** Re-arm the no-progress lock watchdog. Called on real transfer activity. */
+    private fun scheduleLockStallWatch() {
+        cancelLockStallWatch()
+        val r = Runnable {
+            lockStallRunnable = null
+            Log.w(
+                "TransferService",
+                "No transfer activity for ${lockStallTimeoutMs / 60_000} min; " +
+                    "releasing locks"
+            )
+            releaseLocks()
+        }
+        lockStallRunnable = r
+        idleHandler.postDelayed(r, lockStallTimeoutMs)
+    }
+
+    private fun cancelLockStallWatch() {
+        lockStallRunnable?.let { idleHandler.removeCallbacks(it) }
+        lockStallRunnable = null
+    }
+
     /** Acquire CPU + Wi-Fi locks (idempotent). */
     private fun acquireLocks() {
         try {
@@ -91,7 +121,11 @@ class TransferService : Service() {
                     "syndro:transfer"
                 )
             }
-            if (wakeLock?.isHeld == false) wakeLock?.acquire(30 * 60 * 1000L)
+            // No timeout: a multi-hundred-GB LAN transfer routinely runs past
+            // 30 minutes, and the lock must be released by lifecycle events
+            // (completion, cancellation, idle stop, onDestroy) rather than by
+            // an expiry that silently drops it mid-transfer.
+            if (wakeLock?.isHeld == false) wakeLock?.acquire()
 
             if (wifiLock == null) {
                 val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -111,6 +145,7 @@ class TransferService : Service() {
 
     /** Release CPU + Wi-Fi locks (idempotent). */
     private fun releaseLocks() {
+        cancelLockStallWatch()
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (e: Exception) {
@@ -145,12 +180,38 @@ class TransferService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null) {
+            // A sticky restart after process death is delivered with no intent.
+            // Nothing can be resumed from here: the Dart isolate that owns the
+            // HTTP server died with the process and this service holds no
+            // FlutterEngine, so there is no socket to rebind and no transfer to
+            // continue. Lingering as a restarted-but-inert service would
+            // advertise a transfer endpoint that does not exist, so come down
+            // deliberately and let the next app launch rebind the server.
+            // Persisted checkpoints and history rows are untouched by this
+            // path, so a later recovery layer still has them.
+            Log.w(
+                "TransferService",
+                "Restarted without an intent: no Dart transfer server to " +
+                    "restore, stopping instead of pretending to recover"
+            )
+            cancelIdleStop()
+            releaseLocks()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        var stickyWhileWorking = false
+
+        when (intent.action) {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "Transferring files..."
                 val fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: ""
                 cancelIdleStop()
                 acquireLocks()
+                scheduleLockStallWatch()
+                stickyWhileWorking = true
                 // Clear any incoming-request notification now that we're receiving.
                 (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                     .cancel(NOTIFICATION_REQUEST)
@@ -172,6 +233,10 @@ class TransferService : Service() {
                 val timeRemaining = intent.getStringExtra(EXTRA_TIME_REMAINING)
                 cancelIdleStop()
                 acquireLocks()
+                // Progress is the evidence that a transfer is genuinely alive,
+                // so it re-arms the watchdog instead of any timer polling.
+                scheduleLockStallWatch()
+                stickyWhileWorking = true
                 updateProgressNotification(title, fileName, progress, speed, timeRemaining)
             }
 
@@ -285,7 +350,15 @@ class TransferService : Service() {
             }
         }
 
-        return START_STICKY
+        // START_STICKY is returned only while a transfer is genuinely running,
+        // and even then it buys no transfer recovery: it asks Android to
+        // recreate this Service, which cannot recreate the Dart isolate or
+        // rebind its HTTP server. Restarting after an explicit stop, cancel or
+        // completion was pure downside (a null-intent resurrection of a service
+        // whose locks had just been released), so those are terminal here.
+        // Rebinding the server after process death needs a FlutterEngine owned
+        // by the service and is deliberately out of scope for this phase.
+        return if (stickyWhileWorking) START_STICKY else START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
