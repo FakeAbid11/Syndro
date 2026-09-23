@@ -1427,10 +1427,12 @@ class TransferService {
 
   /// Verify the presented token against the trusted device's record.
   ///
-  /// Returns `true` when the raw static token matches (legacy path)
-  /// OR when a pinned public key is set and the bound token matches
-  /// (new TOFU path). Always falls back to static token for backward
-  /// compatibility with unpinned devices.
+  /// A device with an active public-key pin authenticates **only** with the
+  /// token derived from that pin. The raw static token is never accepted for a
+  /// pinned device: it is the value an attacker would already hold from before
+  /// the pin existed, so falling back to it would make pinning decorative.
+  ///
+  /// Unpinned devices — peers that predate TOFU — keep the raw comparison.
   Future<bool> _verifyDeviceToken({
     required String senderId,
     required String presentedToken,
@@ -1439,25 +1441,21 @@ class TransferService {
         _trustedDevicesHandler.getTrustedDevice(senderId);
     if (trustedDevice == null) return false;
 
-    // Fast path: raw static token matches (legacy / unpinned)
-    if (_secureTokenCompare(trustedDevice.token, presentedToken)) {
-      return true;
+    if (!trustedDevice.hasActivePin) {
+      return _secureTokenCompare(trustedDevice.token, presentedToken);
     }
 
-    // New path: pinned device → compare bound token
-    if (trustedDevice.hasActivePin) {
-      try {
-        final expectedBound = await EncryptionService.deriveBoundToken(
-          senderToken: trustedDevice.token,
-          pinnedPubKeyBase64Url: trustedDevice.pinnedPubKey!,
-        );
-        return _secureTokenCompare(expectedBound, presentedToken);
-      } catch (_) {
-        return false;
-      }
+    try {
+      final expectedBound = await EncryptionService.deriveBoundToken(
+        senderToken: trustedDevice.token,
+        pinnedPubKeyBase64Url: trustedDevice.pinnedPubKey!,
+      );
+      return _secureTokenCompare(expectedBound, presentedToken);
+    } catch (_) {
+      // Derivation failure is simply a failed authentication; nothing about the
+      // token, pin or secret is surfaced to the caller or the logs.
+      return false;
     }
-
-    return false;
   }
 
   /// Transfer-scoped authorization gate for upload/chunk/complete endpoints.
@@ -2206,7 +2204,7 @@ class TransferService {
       _transferController.add(_activeTransfers[transferId]!);
 
       final downloadDir = await _fileService.getDownloadDirectory();
-      final finalFilePath =
+      var finalFilePath =
           '$downloadDir${Platform.pathSeparator}$sanitizedFileName';
       // Scope temp path to the transfer id to avoid same-name collisions.
       tempFilePath = '$finalFilePath.$transferId.tmp';
@@ -2332,13 +2330,15 @@ class TransferService {
       }
       AppLogger.info('✅ File integrity verified');
 
-      final tempFileRef = File(tempFilePath);
+      // P0-2: never delete a file that is already there. Move the completed
+      // temp file to a collision-free destination and use that path for
+      // everything downstream — metadata, integrity-failure cleanup,
+      // notifications and history all describe the file that exists.
+      finalFilePath = await _fileService.moveFileIntoPlace(
+        tempFilePath,
+        finalFilePath,
+      );
       final finalFile = File(finalFilePath);
-
-      if (await finalFile.exists()) {
-        await finalFile.delete();
-      }
-      await tempFileRef.rename(finalFilePath);
       tempFilePath = null;
 
       // Verify file integrity using SHA-256 hash
@@ -2555,7 +2555,7 @@ class TransferService {
       _transferController.add(_activeTransfers[transferId]!);
 
       final downloadDir = await _fileService.getDownloadDirectory();
-      final finalFilePath =
+      var finalFilePath =
           '$downloadDir${Platform.pathSeparator}$sanitizedFileName';
       // Scope temp path to the transfer id so two concurrent transfers of the
       // same filename cannot collide on a shared "<name>.tmp" scratch file.
@@ -2624,13 +2624,15 @@ class TransferService {
       await fileSink.close();
       fileSink = null;
 
-      final tempFileRef = File(tempFilePath);
+      // P0-2: never delete a file that is already there. Move the completed
+      // temp file to a collision-free destination and use that path for
+      // everything downstream — metadata, integrity-failure cleanup,
+      // notifications and history all describe the file that exists.
+      finalFilePath = await _fileService.moveFileIntoPlace(
+        tempFilePath,
+        finalFilePath,
+      );
       final finalFile = File(finalFilePath);
-
-      if (await finalFile.exists()) {
-        await finalFile.delete();
-      }
-      await tempFileRef.rename(finalFilePath);
       tempFilePath = null;
 
       // Apply file metadata (modification time)

@@ -172,6 +172,75 @@ class FileService {
     }
   }
 
+  /// A destination path that will not clobber an existing file.
+  ///
+  /// Returns [desiredPath] unchanged when nothing occupies it. Otherwise a
+  /// numeric suffix is inserted before the extension — `photo.jpg` becomes
+  /// `photo (1).jpg`, `archive.tar.gz` becomes `archive.tar (1).gz`, and the
+  /// extension-less `README` becomes `README (1)` — until a free name is found.
+  ///
+  /// An existing file is never removed: receiving a file must not be able to
+  /// destroy what the user already has simply because the names collide. Only
+  /// the basename changes, so a path already validated by [sanitizeFilename]
+  /// and [isPathWithinDirectory] stays inside the same directory.
+  Future<String> resolveUniqueFilePath(String desiredPath) async {
+    if (!await File(desiredPath).exists()) return desiredPath;
+
+    final directory = path.dirname(desiredPath);
+    final base = path.basename(desiredPath);
+    final extension = path.extension(base);
+    final stem = extension.isEmpty
+        ? base
+        : base.substring(0, base.length - extension.length);
+
+    const maxAttempts = 10000;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      final candidate = path.join(directory, '$stem ($attempt)$extension');
+      if (!await File(candidate).exists()) return candidate;
+    }
+
+    // Practically unreachable, and still a new name rather than a replacement.
+    return path.join(directory,
+        '$stem (${DateTime.now().millisecondsSinceEpoch})$extension');
+  }
+
+  /// Moves [tempPath] to [desiredPath], choosing a collision-free name.
+  ///
+  /// Returns the path actually written to, which callers must then use for
+  /// metadata, history and notifications. Throws if the move cannot be
+  /// completed.
+  ///
+  /// Note the residual race: the existence check and the rename are not atomic,
+  /// and POSIX rename replaces silently, so a file created by another process
+  /// in that window can still be replaced. Resolving first narrows it to the
+  /// span of a single rename; retrying on failure covers the platforms whose
+  /// rename reports an error instead of replacing.
+  Future<String> moveFileIntoPlace(
+    String tempPath,
+    String desiredPath,
+  ) async {
+    const maxAttempts = 3;
+    Object? lastError;
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final destination = await resolveUniqueFilePath(desiredPath);
+      try {
+        await File(tempPath).rename(destination);
+        return destination;
+      } on FileSystemException catch (e) {
+        // Another writer claimed the name, or the platform refuses to replace.
+        lastError = e;
+        if (!await File(tempPath).exists()) rethrow;
+      }
+    }
+
+    throw FileServiceException(
+      'Could not place received file without overwriting an existing one: '
+      '$lastError',
+      code: 'COLLISION_UNRESOLVED',
+    );
+  }
+
   /// Get a safe file path within the download directory
   ///
   /// Combines [sanitizeFilename] with path validation to ensure
@@ -528,15 +597,10 @@ class FileService {
       await sink.close();
       sink = null;
 
-      final finalFile = File(finalPath);
+      // P0-2: place without clobbering an existing destination.
+      final placedPath = await moveFileIntoPlace(tempPath, finalPath);
 
-      if (await finalFile.exists()) {
-        await finalFile.delete();
-      }
-
-      await File(tempPath).rename(finalPath);
-
-      return File(finalPath);
+      return File(placedPath);
     } catch (e) {
       if (sink != null) {
         try {
@@ -600,15 +664,11 @@ class FileService {
       await sink.close();
       sink = null;
 
-      final destFile = File(destinationPath);
+      // P0-2: place without clobbering an existing destination.
+      final placedPath =
+          await moveFileIntoPlace(tempPath, destinationPath);
 
-      if (await destFile.exists()) {
-        await destFile.delete();
-      }
-
-      await File(tempPath).rename(destinationPath);
-
-      return File(destinationPath);
+      return File(placedPath);
     } catch (e) {
       if (sink != null) {
         try {
@@ -717,15 +777,10 @@ class FileService {
       await sink.close();
       sink = null;
 
-      final finalFile = File(filePath);
+      // P0-2: place without clobbering an existing destination.
+      final placedPath = await moveFileIntoPlace(tempPath, filePath);
 
-      if (await finalFile.exists()) {
-        await finalFile.delete();
-      }
-
-      await File(tempPath).rename(filePath);
-
-      return File(filePath);
+      return File(placedPath);
     } catch (e) {
       if (sink != null) {
         try {
