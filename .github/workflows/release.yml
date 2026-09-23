@@ -437,4 +437,92 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ──────────────────────────────────────────────────────────────────────
+  # Sign the published payloads so clients will install them in-app.
+  #
+  # A release without a matching update-manifest.json is still downloadable,
+  # but every client shows "Download" instead of "Update now" — the app refuses
+  # to execute bytes it cannot authenticate (lib/core/utils/update_trust.dart).
+  # ──────────────────────────────────────────────────────────────────────
+  sign:
+    name: Sign release manifest
+    needs: [prepare, windows, android]
+    # !cancelled() is load-bearing: `android` is skipped whenever KEYSTORE_BASE64
+    # is absent (Build Release APK, above), and a job whose `needs` were skipped
+    # is skipped too. That would publish Windows releases with no manifest and
+    # silently disable the in-app updater for every keystore-less build.
+    if: ${{ !cancelled() &&
+             needs.prepare.outputs.do_release == 'true' &&
+             needs.windows.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VER: ${{ needs.prepare.outputs.version }}
+      SYNDRO_UPDATE_SIGNING_SEED: ${{ secrets.SYNDRO_UPDATE_SIGNING_SEED }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # Unlike the APK keystore, a missing seed fails the job rather than
+      # skipping it: publishing unsigned is the outcome being prevented.
+      - name: Check signing secret
+        run: |
+          set -euo pipefail
+          if [ -z "${SYNDRO_UPDATE_SIGNING_SEED:-}" ]; then
+            echo "::error::SYNDRO_UPDATE_SIGNING_SEED is not set. $TAG would"
+            echo "  publish with no signed payload, turning off in-app updates"
+            echo "  for every client. Add the secret (tool/gen_update_key.dart)"
+            echo "  and re-run this job."
+            exit 1
+          fi
+
+      - name: Download published assets
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --dir release-assets
+          ls -la release-assets
+
+      - name: Sign manifest
+        run: |
+          set -euo pipefail
+          args=()
+          for f in release-assets/*; do
+            base=$(basename "$f")
+            # A re-run must not sign a previous manifest as if it were a payload.
+            if [ "$base" = "update-manifest.json" ]; then continue; fi
+            args+=(--asset "$f")
+          done
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "::error::Release $TAG has no assets to sign."
+            exit 1
+          fi
+          dart run tool/sign_update_manifest.dart \
+            --version "$VER" \
+            --out update-manifest.json \
+            "${args[@]}"
+
+      - name: Attach manifest to Release
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$TAG" update-manifest.json --clobber; then
+              echo "Attached update-manifest.json to $TAG"
+              exit 0
+            fi
+            echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
+            sleep 30
+          done
+          exit 1
+
 

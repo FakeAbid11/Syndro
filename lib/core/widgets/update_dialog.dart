@@ -12,18 +12,21 @@ import '../services/update_service.dart';
 /// [allowSkip] adds a "Skip this version" action (used by the startup check) so
 /// the user isn't nagged about the same release again.
 ///
-/// On Windows with an installer asset, the primary action becomes "Update now":
-/// the asset is downloaded in-app with live progress and the Inno Setup
-/// installer is then run silently, which relaunches the updated app. Pass
-/// [useInstaller] explicitly in tests; by default it is derived from the
-/// platform and the available asset.
+/// On Windows with a signed installer asset, the primary action becomes "Update
+/// now": the asset is downloaded in-app, verified against the publisher's
+/// signature, and the Inno Setup installer is then run silently, which
+/// relaunches the updated app. A release whose manifest is missing or fails
+/// verification offers the browser download instead, because opening a page
+/// cannot execute code. Pass [useInstaller] explicitly in tests; by default it
+/// is derived from the platform, the asset name and the verified digest.
 Future<void> showUpdateDialog(
   BuildContext context,
   UpdateInfo info, {
   bool allowSkip = false,
   bool? useInstaller,
 }) {
-  final installer = useInstaller ?? (Platform.isWindows && info.isWindowsInstaller);
+  final installer = useInstaller ??
+      (Platform.isWindows && info.isWindowsInstaller && info.hasVerifiedPayload);
   return showDialog<void>(
     context: context,
     builder: (context) {
@@ -94,7 +97,7 @@ class _UpdateDialogBodyState extends State<_UpdateDialogBody> {
       _phase = _UpdatePhase.downloading;
       _errorMessage = null;
       _receivedBytes = 0;
-      _totalBytes = widget.info.assetSize;
+      _totalBytes = widget.info.manifestSize ?? widget.info.assetSize;
     });
 
     String? installerPath;
@@ -128,7 +131,21 @@ class _UpdateDialogBodyState extends State<_UpdateDialogBody> {
 
     setState(() => _phase = _UpdatePhase.installing);
 
-    final started = await UpdateService.installUpdate(installerPath);
+    final bool started;
+    try {
+      started = await UpdateService.installUpdate(
+        installerPath,
+        expectedSha256: widget.info.trustedSha256,
+      );
+    } on UpdateDownloadException catch (e) {
+      // Integrity refusals land here too; the installer was not run.
+      if (!mounted) return;
+      setState(() {
+        _phase = _UpdatePhase.error;
+        _errorMessage = e.message;
+      });
+      return;
+    }
     if (!mounted) return;
     if (!started) {
       setState(() {
@@ -157,6 +174,16 @@ class _UpdateDialogBodyState extends State<_UpdateDialogBody> {
             'A newer version of Syndro is available.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          if (widget.installer) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'The installer is checked against Syndro\'s published signature '
+              'before it runs.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textTertiary,
+                  ),
+            ),
+          ],
           if (info.notes.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.lg),
             Text(

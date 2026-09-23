@@ -13,10 +13,23 @@ void main() {
     assetSize: 12345,
   );
 
+  const verifiedInfo = UpdateInfo(
+    version: '2.0.0',
+    releaseUrl: 'https://github.com/FakeAbid11/Syndro/releases/tag/v2.0.0',
+    notes: 'Bug fixes and performance improvements.',
+    assetUrl: 'https://example.com/Syndro-Setup-2.0.0.exe',
+    assetName: 'Syndro-Setup-2.0.0.exe',
+    assetSize: 12345,
+    trustedSha256:
+        '2222222222222222222222222222222222222222222222222222222222222222',
+    manifestSize: 12345,
+  );
+
   Future<void> pumpDialog(
     WidgetTester tester, {
-    required bool useInstaller,
+    bool? useInstaller,
     bool allowSkip = false,
+    UpdateInfo info = verifiedInfo,
   }) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -38,6 +51,27 @@ void main() {
     await tester.tap(find.text('check'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('an unverifiable release is never offered for in-app install',
+      (tester) async {
+    // The derived default: no trusted digest, so the app must fall back to the
+    // browser regardless of platform. `info` above has no trustedSha256.
+    await pumpDialog(tester, info: info);
+
+    expect(find.text('Update now'), findsNothing);
+    expect(find.text('Download'), findsOneWidget);
+  });
+
+  testWidgets('mentions signature checking when the in-app path is offered',
+      (tester) async {
+    await pumpDialog(tester, useInstaller: true);
+
+    expect(
+      find.text('The installer is checked against Syndro\'s published '
+          'signature before it runs.'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('shows Update now on Windows with an installer asset',
       (tester) async {

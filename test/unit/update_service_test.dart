@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syndro/core/services/update_service.dart';
@@ -136,8 +137,10 @@ void main() {
   group('UpdateService.downloadUpdate', () {
     late HttpServer server;
     late Directory targetDir;
+    late int requests;
 
     setUp(() async {
+      requests = 0;
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       targetDir = await Directory.systemTemp.createTemp('syndro-update-test');
     });
@@ -149,28 +152,51 @@ void main() {
       }
     });
 
-    UpdateInfo infoFor(String payload, {int? assetSize}) {
+    void serve(List<int> bytes, {int status = 200}) {
+      server.listen((req) {
+        requests++;
+        if (status != 200) {
+          req.response.statusCode = status;
+          req.response.close();
+          return;
+        }
+        req.response.headers.contentLength = bytes.length;
+        req.response.add(bytes);
+        req.response.close();
+      });
+    }
+
+    /// Points at the loopback server. [digest] is what the publisher signed and
+    /// defaults to the true hash of [served]; pass a different one to model a
+    /// payload that is not what the manifest vouched for.
+    UpdateInfo infoFor({
+      required List<int> served,
+      String? digest,
+      int? advertisedAssetSize,
+      int? signedSize,
+    }) {
       return UpdateInfo(
         version: '9.9.9',
         releaseUrl: 'https://example.com',
         notes: '',
         assetUrl: 'http://127.0.0.1:${server.port}/Syndro-Setup-9.9.9.exe',
         assetName: 'Syndro-Setup-9.9.9.exe',
-        assetSize: assetSize ?? utf8.encode(payload).length,
+        assetSize: advertisedAssetSize ?? served.length,
+        trustedSha256: digest ?? crypto.sha256.convert(served).toString(),
+        manifestSize: signedSize,
       );
     }
 
+    String installerPath() => '${targetDir.path}${Platform.pathSeparator}'
+        'Syndro-Setup-9.9.9.exe';
+
     test('downloads the asset and reports progress', () async {
       final payload = List<int>.generate(200000, (i) => i % 251);
-      server.listen((req) {
-        req.response.headers.contentLength = payload.length;
-        req.response.add(payload);
-        req.response.close();
-      });
+      serve(payload);
 
       final progress = <(int, int?)>[];
       final path = await UpdateService.downloadUpdate(
-        infoFor('', assetSize: payload.length),
+        infoFor(served: payload),
         targetDir: targetDir,
         onProgress: (received, total) => progress.add((received, total)),
       );
@@ -185,33 +211,93 @@ void main() {
       expect(progress.last.$2, payload.length);
     });
 
-    test('throws and deletes the file when the size does not match', () async {
-      final payload = utf8.encode('this payload is shorter than advertised');
-      server.listen((req) {
-        req.response.headers.contentLength = payload.length;
-        req.response.add(payload);
-        req.response.close();
-      });
+    test('rejects a payload that differs from the signed digest even at the '
+        'advertised length', () async {
+      // The regression that matters: the old gate compared the received byte
+      // count against a figure from the same unsigned response, so swapping the
+      // payload for something else of identical length passed straight
+      // through to Process.start.
+      final signed = utf8.encode('SYNDRO-INSTALLER-ORIGINAL-BYTES');
+      final served = List<int>.of(signed);
+      served[0] = served[0] == 0x58 ? 0x59 : 0x58; // same length, new bytes
+      expect(served.length, signed.length);
+      serve(served);
 
       await expectLater(
         UpdateService.downloadUpdate(
-          infoFor('', assetSize: payload.length + 10),
+          infoFor(served: served, digest: crypto.sha256.convert(signed).toString()),
+          targetDir: targetDir,
+        ),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+      expect(await File(installerPath()).exists(), isFalse,
+          reason: 'an unauthenticated payload must not survive on disk');
+    });
+
+    test('refuses an unsigned release without contacting the server', () async {
+      final payload = utf8.encode('whatever');
+      serve(payload);
+
+      final info = UpdateInfo(
+        version: '9.9.9',
+        releaseUrl: 'https://example.com',
+        notes: '',
+        assetUrl: 'http://127.0.0.1:${server.port}/Syndro-Setup-9.9.9.exe',
+        assetName: 'Syndro-Setup-9.9.9.exe',
+        assetSize: payload.length,
+      );
+
+      await expectLater(
+        UpdateService.downloadUpdate(info, targetDir: targetDir),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+      expect(requests, 0, reason: 'refuse before downloading anything');
+      expect(await targetDir.list().toList(), isEmpty);
+    });
+
+    test('prefers the signed size over the release object\'s claim', () async {
+      final payload = utf8.encode('installer bytes');
+      serve(payload);
+
+      // assetSize understates the truth, but the signed size is authoritative,
+      // so the download must still be accepted.
+      final path = await UpdateService.downloadUpdate(
+        infoFor(
+          served: payload,
+          advertisedAssetSize: 1,
+          signedSize: payload.length,
+        ),
+        targetDir: targetDir,
+      );
+      expect(await File(path).length(), payload.length);
+    });
+
+    test('throws and deletes the file when the size does not match', () async {
+      final payload = utf8.encode('this payload is shorter than advertised');
+      serve(payload);
+
+      await expectLater(
+        UpdateService.downloadUpdate(
+          infoFor(
+            served: payload,
+            advertisedAssetSize: payload.length + 10,
+            digest: 'f' * 64,
+          ),
           targetDir: targetDir,
         ),
         throwsA(isA<UpdateDownloadException>()),
       );
-      expect(await File('${targetDir.path}${Platform.pathSeparator}'
-          'Syndro-Setup-9.9.9.exe').exists(), isFalse);
+      expect(await File(installerPath()).exists(), isFalse);
     });
 
     test('throws when the server returns a non-200 status', () async {
-      server.listen((req) {
-        req.response.statusCode = 404;
-        req.response.close();
-      });
+      serve(const [], status: 404);
 
       await expectLater(
-        UpdateService.downloadUpdate(infoFor(''), targetDir: targetDir),
+        UpdateService.downloadUpdate(
+          infoFor(served: const [], digest: 'e' * 64),
+          targetDir: targetDir,
+        ),
         throwsA(isA<UpdateDownloadException>()),
       );
       expect(await targetDir.list().toList(), isEmpty);
@@ -229,6 +315,116 @@ void main() {
         UpdateService.downloadUpdate(info, targetDir: targetDir),
         throwsA(isA<UpdateDownloadException>()),
       );
+    });
+  });
+
+  group('UpdateService.installUpdate', () {
+    late Directory updatesDir;
+    late List<int> payload;
+
+    setUp(() async {
+      updatesDir =
+          await Directory.systemTemp.createTemp('syndro-install-updates');
+      payload = utf8.encode('installer-payload-bytes');
+    });
+
+    tearDown(() async {
+      if (await updatesDir.exists()) {
+        await updatesDir.delete(recursive: true);
+      }
+    });
+
+    Future<String> writeInstaller({
+      String name = 'Syndro-Setup-9.9.9.exe',
+      List<int>? bytes,
+      Directory? dir,
+    }) async {
+      final target = dir ?? updatesDir;
+      final file = File('${target.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(bytes ?? payload, flush: true);
+      return file.path;
+    }
+
+    String trueDigest() => crypto.sha256.convert(payload).toString();
+
+    test('refuses to run anything with no authenticated digest', () async {
+      final path = await writeInstaller();
+      await expectLater(
+        UpdateService.installUpdate(path, targetDir: updatesDir),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+    });
+
+    test('refuses an installer whose bytes changed after verification',
+        () async {
+      // Narrows the swap window between downloadUpdate and Process.start.
+      final path = await writeInstaller(bytes: utf8.encode('substituted-payload'));
+      await expectLater(
+        UpdateService.installUpdate(
+          path,
+          expectedSha256: trueDigest(),
+          targetDir: updatesDir,
+        ),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+    });
+
+    test('refuses a path outside the updates directory', () async {
+      final elsewhere =
+          await Directory.systemTemp.createTemp('syndro-install-elsewhere');
+      try {
+        final path = await writeInstaller(dir: elsewhere);
+        await expectLater(
+          UpdateService.installUpdate(
+            path,
+            expectedSha256: crypto.sha256.convert(payload).toString(),
+            targetDir: updatesDir,
+          ),
+          throwsA(isA<UpdateIntegrityException>()),
+        );
+      } finally {
+        await elsewhere.delete(recursive: true);
+      }
+    });
+
+    test('refuses a correctly-placed file that is not a setup binary', () async {
+      final path = await writeInstaller(name: 'notepad.exe');
+      await expectLater(
+        UpdateService.installUpdate(
+          path,
+          expectedSha256: trueDigest(),
+          targetDir: updatesDir,
+        ),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+    });
+
+    test('refuses a file that has gone missing', () async {
+      final path = await writeInstaller();
+      await File(path).delete();
+      await expectLater(
+        UpdateService.installUpdate(
+          path,
+          expectedSha256: trueDigest(),
+          targetDir: updatesDir,
+        ),
+        throwsA(isA<UpdateIntegrityException>()),
+      );
+    });
+
+    test('runs every integrity check on a matching installer', () async {
+      // What this asserts is that nothing was *refused*: the call reaches the
+      // launch attempt instead of throwing. The result is false on every
+      // platform — on the CI runner the Windows guard stops it, on Windows a
+      // placeholder binary is not a runnable PE. Both outcomes prove the policy
+      // passed without executing anything.
+      final path = await writeInstaller();
+      final started = await UpdateService.installUpdate(
+        path,
+        expectedSha256: trueDigest(),
+        targetDir: updatesDir,
+      );
+      expect(started, isFalse);
     });
   });
 
