@@ -1,0 +1,7 @@
+# Test-suite configuration for `flutter test` / `dart test`.
+#
+# Registers the tags used under test/ so runs do not warn about unknown tags.
+# The `acceptance` tag marks the runtime feature-acceptance suite in
+# test/feature_acceptance/, which boots real TransferService nodes on loopback.
+tags:
+  acceptance:
