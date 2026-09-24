@@ -244,6 +244,15 @@ Future<void> pumpShellForScreenshot(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  // The palette the hardcoded AppTheme.* call sites read is a set of mutable
+  // statics that main.dart swaps in build(). A screenshot test that only picked
+  // ThemeData would render light surfaces with dark-palette text, so swap it
+  // the same way and put it back afterwards.
+  AppTheme.applyMode(
+    brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+  );
+  addTearDown(() => AppTheme.applyMode(ThemeMode.dark));
+
   final service = TransferService(FileService());
   final complaints = <String>[];
 
