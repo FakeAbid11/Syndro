@@ -1,5 +1,30 @@
 # Syndro UI Documentation
 
+## Design Direction
+
+Syndro is a utility. Interaction speed matters more than visual spectacle, so
+glow and gradient are accents, not a surface treatment.
+
+- Gradients belong to the wordmark, the primary CTA, and small accents such as
+  a section bar. `GradientIconTile`'s purple halo is off by default; a tile
+  that glows is a tile that has to earn it.
+- Cards are flat tonal surfaces with a hairline border. Selection is carried by
+  fill plus border weight, never by a shadow.
+- Body panes sit on the scaffold's flat base colour. The three-stop background
+  gradient is no longer painted under the largest surface in the app.
+- Animation is 150–250 ms and ends. Nothing loops while the user reads — the
+  drop zone's perpetual pulse and the transfer screen's breathing icon are gone.
+- State is never colour alone: every transfer status pairs an icon with a word,
+  and an online peer pairs a dot with "Online".
+
+`test/ui/` enforces the layout half of this. The shell and both home layouts are
+pumped at three desktop and two phone window sizes, at a 1.4x text scaler, and
+any framework-reported layout error fails the build — neither target can be
+built on the author's machine, so that harness is the substitute for opening the
+app. Run `SYNDRO_GOLDENS=1 flutter test test/ui/desktop_goldens_test.dart
+--update-goldens` to render screenshots for review; the PNGs are deliberately not
+committed.
+
 ## Theme & Design Language
 
 ### Color Palette (from `lib/ui/theme/app_theme.dart`)
@@ -68,22 +93,23 @@
 | Input fields | `12px` |
 | Snackbar | `12px` |
 
-### Glassmorphism & Visual Effects
+### Gradients & Effects
 
-- **Glassmorphism**: `AppTheme.glassmorphicDecoration()` — White background at 10% opacity, 1px white border at 10% opacity, black box shadow at 20% opacity with configurable blur (default 10px) and offset (0, 4)
-- **Background Gradient**: Three-stop linear gradient from `#0A0A0F` (top-left) → `#141420` → `#1E1E2E` (bottom-right)
-- **Logo Gradient**: Linear gradient from `#5B8DEF` (blue, top-left) → `#7B5EF2` (purple, bottom-right)
-- **Primary Gradient**: Same as logo gradient, used for buttons
-- **Gradient Shader**: Used for gradient text effects via `ShaderMask` — applies logo gradient to text rendering
-- **Card Shadows**: Every card uses layered `BoxShadow` with `primaryColor` at 8-15% opacity, blur 10-20px, offset (0, 4-8)
-- **Selected Card Glow**: Selected device cards have `primaryColor` shadow at 25% opacity, blur 20px, offset (0, 8)
-- **Navigation Bar**: Floating bar with gradient surface color (95% → 85% opacity), 30px blur purple glow shadow, 1.5px purple border at 20% opacity
+- **Logo Gradient**: Linear gradient from `#5B8DEF` (blue, top-left) → `#7B5EF2` (purple, bottom-right). Used by the brand mark, the wordmark and `GradientIconTile`.
+- **Primary Gradient**: Same stops, horizontal. Reserved for primary CTAs.
+- **Gradient Shader**: `AppTheme.gradientShader` applies the logo gradient to text via `ShaderMask` — the wordmark in the desktop brand bar.
+- **Background Gradient**: Still defined (`AppTheme.backgroundGradient`, three-stop `#0A0A0F` → `#141420` → `#1E1E2E`) but no longer painted under a page body; the desktop and history/settings bodies use the flat scaffold base.
+- **Card Shadows**: None. Cards are `AppTheme.surfaceContainer` with a 1px `outlineVariant` border.
+- **Selected Card Glow**: Removed. A selected device card gets `primaryContainer` fill and a 1.6px `primaryColor` border; keyboard focus gets 2.5px so Tab is visible.
+- **Mobile Navigation Bar**: Floating pill, `surfaceContainerHigh`, 1px `outlineVariant` border, one black shadow for elevation. No gradient fill and no purple glow.
+- **Glassmorphism**: `AppTheme.glassmorphicDecoration()` remains available but is not used by the desktop or mobile shells.
 
 ### Dark/Light Mode
 
 - **Dark Theme** (primary): Full implementation with `Brightness.dark`, Material 3 enabled. Uses `ColorScheme.dark` with primary/secondary/surface/error.
-- **Light Theme**: Partial implementation. Scaffold background `#FFFFFF`, surface `#F8FAFC`, card color `#F8FAFC`, text colors inverted to dark (`#0F172A` for primary, `#475569` for body). AppBar has white background with dark icons/text. Only basic text theme defined.
-- The app defaults to dark mode. Light theme is defined but the navigation between modes is not exposed in the settings screen UI.
+- **Light Theme**: Complete mirror of the dark theme — same `ColorScheme` roles, tonal surface scale, container roles and text theme, on a `#F6F7FB` scaffold.
+- The app defaults to dark mode. Theme choice (Dark / Light / System) is exposed in Settings → General → Appearance and persisted in `SharedPreferences` under `app_theme_mode`.
+- Both palettes are also reachable through mutable statics (`AppTheme.backgroundColor`, `textTertiary`, …) that `AppTheme.applyMode()` swaps; `main.dart` calls it during build. Any new widget should prefer `Theme.of(context).colorScheme` over those statics.
 
 ---
 
@@ -112,17 +138,30 @@
 - **Tap behavior**: Instant state change (no animation), `GestureDetector` with `HitTestBehavior.opaque`
 - **Layout**: Row with 8px spacing between items
 
-### Desktop (Windows/Linux)
+### Desktop (Windows / Linux / macOS)
 
-**Navigation Rail** — left side, extended mode, 200px minimum width.
+Two parts: a full-width brand bar, then a navigation rail beside the content.
 
-- Background: `surfaceColor`, transparent inside widget
-- Right border: 1px `primaryColor` at 10% opacity
-- Selected indicator: `primaryColor` at 20% opacity
-- Selected icons: `primaryColor`, 24px
-- Unselected icons: `textTertiary`, 24px
-- Selected labels: `primaryColor`, w600
-- Unselected labels: `textTertiary`
+**Brand bar** — 52px, `surfaceContainerLow`, 1px bottom border.
+
+- Left: 26px `GradientIconTile` (no glow) + "Syndro" wordmark in the logo gradient.
+- Right: live network summary — a `StatusBadge` reading "N devices online" with a
+  status dot, counting discovered peers that are online and excluding this device.
+  While discovery has not produced a list it reads "Looking for devices".
+- The brand bar owns the app identity, so no screen repeats the logo in its own
+  `AppBar`: the desktop home header reads "Devices" with the subtitle "Your
+  devices on this network".
+
+**Navigation Rail** — 200px with labels, 80px icon-only below a 760px window.
+
+- Heading "NAVIGATE" above the destinations, and destinations pinned to the top
+  (`groupAlignment: -1`; the NavigationRail default centres them and leaves a
+  gap under the heading).
+- Background `surfaceContainerLow`, 1px right border `outlineVariant`, selected
+  indicator `primaryContainer` — all from `navigationRailTheme`.
+- Ctrl+1 / Ctrl+2 / Ctrl+3 switch Devices / History / Settings.
+- macOS uses this chrome too; it previously got the mobile pill nav around a
+  two-pane desktop page.
 
 **Rail Destinations (3):**
 
@@ -254,79 +293,31 @@
 - **Special effects**: None beyond standard navigation transitions
 
 ### HomeScreen
-- **File**: `lib/ui/screens/home_screen.dart`
-- **Route/entry**: Index 0 in MainNavigationScreen
-- **Mobile layout**: AppBar + column with device card + "Nearby Devices" header + device list + FABs. Bottom padding 120px to clear floating nav bar.
-- **Desktop layout**: Same content, no bottom padding needed (no floating nav)
-- **Key UI elements**:
-  - **AppBar**: Background `backgroundColor`, elevation 0, centered title. Title: Row with logo icon (20px, white, logo gradient background, 8px border radius) + "Syndro" text (20px, w600, `textPrimary`)
-  - **Current Device Card**: Container with gradient (cardColor 80% → surfaceColor 60%), 20px border radius, 1px border at 20%, shadow blur 20px. Contains:
-    - Logo icon: 28px, white, logo gradient background, 16px border radius, purple glow
-    - "This Device" label: `bodySmall`, `textTertiary`
-    - Online badge: 6px green dot + "Online" text, green at 15% background, 6px border radius
-    - Device name: `titleLarge`, w700
-    - IP address: `Icons.wifi_rounded` 14px + IP text, `textSecondary`, `bodySmall`
-  - **"Nearby Devices" header**: 4px wide vertical gradient bar + "Nearby Devices" text (`titleLarge`) + device count badge (primaryColor pill, white text, 14px bold)
-  - **Device count badge states**: Data: purple pill with count. Loading: gray pill with "...". Error: red pill with "!"
-  - **Refreshing indicator**: 12px `CircularProgressIndicator` + "Scanning..." text, `textTertiary`, 12px
-  - **Device list**: `ListView.builder`, horizontal padding 16px, item spacing 12px
-  - **Empty state**: `Icons.devices` 64px `textTertiary` + "No devices found" title + troubleshooting text (WiFi, VPN, firewall ports) + "Scan Again" `OutlinedButton`
-  - **Loading state**: `Icons.devices` 64px + "Scanning for devices..." + `CircularProgressIndicator`
-  - **Error state**: `Icons.error_outline` 64px `errorColor` + "Error discovering devices" + error text + "Retry" `ElevatedButton`
-  - **Browser Share FAB**: Bottom-right, 64x64px circle, `surfaceColor` background, `Icons.language` 30px `primaryColor`, 1.5px `cardColor` border, shadow blur 20px
-  - **Send Files FAB** (single device selected): 56px height, auto width, row with `Icons.send` 24px + "Send Files" 16px w600, `surfaceColor` background, 28px border radius
-  - **Multi-select Send FAB**: Same shape but with logo gradient background, white text "Send to N"
-  - **Multi-select Cancel FAB**: 56x56px circle, `surfaceColor`, `Icons.close` 24px `errorColor`, red border at 50%
-  - **Transfer Request Bottom Sheet**: `_TransferRequestSheetContent` — 24px padding, `cardColor` background, 24px top border radius. Handle bar: 40x4px, `textTertiary`. Icon: 64x64px container, `primaryColor` at 20%, `Icons.file_download_rounded` 32px. "Incoming Transfer" 20px bold. Sender name 16px `textSecondary`. File count/size 14px `textTertiary`. Buttons: REJECT (outlined, `errorColor`), ACCEPT (elevated, `successColor`), both 12px border radius, vertical padding 16
-- **User interactions**: Tap device card (select), long press (multi-select), tap Browser Share FAB, tap Send Files, pull to refresh, accept/reject transfer requests
-- **Special effects**: `RefreshIndicator` for pull-to-refresh. Haptic feedback on interactions.
-
+- **File**: `lib/ui/screens/home_screen.dart` (facade) + `lib/ui/screens/home/home_desktop.dart`, `home_mobile.dart`, `home_device_views.dart`
+- The facade owns incoming-request and received-text handling, the share-mode and text-compose dialogs, and the platform split; each family renders its own layout file.
+- **Desktop layout**: `AppBar` reading "Devices / Your devices on this network" with Browser Share and Send Text actions (icon-only under 720px), then a two-pane body at ≥700px content width — master device column clamped to 300–380px, hairline divider, send pane capped at 860px. Below 700px the master column takes the window and the send actions become contextual FABs at `AppSpacing.xl` from the bottom (the desktop shell has no bottom bar to clear).
+- **Whole page is a drop target**: entering the window lights the send zone; releasing anywhere on the page opens the recipient confirmation rather than only when the cursor was inside the frame.
+- **Mobile layout**: unchanged single column with the floating pill nav and FAB stack, and its own logo-bearing app bar.
+- Shared views in `home_device_views.dart`: "This Device" card, the Nearby Devices header with a live count badge and scanning spinner, skeleton list, empty/scanning state and error state.
+- Transfer request approval is a non-dismissable bottom sheet on Android and an equally modal centered dialog elsewhere.
 ### HistoryScreen
 - **File**: `lib/ui/screens/history_screen.dart`
-- **Route/entry**: Index 1 in MainNavigationScreen
-- **Mobile/Desktop layout**: Same layout — AppBar + statistics card + history list
-- **Key UI elements**:
-  - **AppBar**: "Transfer History" title with `Icons.history` in logo gradient container. Clear All button: `Icons.delete_sweep` in `errorColor` at 15% background
-  - **Statistics Card**: Gradient (cardColor 90% → surfaceColor 70%), 20px border radius, 20px padding, border at 20%, shadow blur 20px. Contains 3 stat items in a Row:
-    - Total: `Icons.swap_horiz`, value (bold titleLarge)
-    - Completed: `Icons.check_circle`, green, value
-    - Data: `Icons.data_usage`, formatted byte value
-    - Each stat: 48px icon container (12px padding, gradient background, 14px border radius), 12px spacing, value (titleLarge bold), label (bodyMedium, `textTertiary`)
-  - **History list**: `ListView.builder`, horizontal padding 16px, item spacing 12px
-  - **Transfer item card**: Gradient (cardColor 90% → surfaceColor 70%), 16px border radius, status-colored border at 20%. Contains:
-    - Status icon: 48x48px gradient container matching status color. Icons: completed=`check_circle`, failed=`error`, cancelled=`cancel`, other=`sync`
-    - Receiver name: `titleMedium` w600
-    - File count badge: `surfaceColor` at 50% background, 6px border radius, folder/drive_file icon 12px + "N file(s)" text
-    - Total size: `primaryColor`, w600
-    - Timestamp: `Icons.access_time_rounded` 12px + formatted time, `textTertiary`
-    - Chevron right icon in surface container
-  - **Empty state**: `Icons.history` 64px + "No transfer history" + "Your completed transfers will appear here"
-  - **Dismiss swipe**: Red background with delete icon (end-to-start swipe)
-- **User interactions**: Swipe to delete transfer, tap Clear All, tap history item
-- **Special effects**: `Dismissible` with red background for swipe-to-delete
-
+- A transfer log, not a stack of cards. Rows are two lines — device and `N files • size` on the left, time and status word on the right — grouped under `TODAY` / `YESTERDAY` / dated headings.
+- Status leads with an icon and repeats itself as a word; cancelled is amber and failed is red, so the two are not the same colour with a different name.
+- Statistics are a flat strip (transfers / completed / data moved) instead of three gradient tiles.
+- Content is capped at 860px so a maximised window does not stretch every row across the screen.
+- Swipe-to-dismiss still deletes a record, and now confirms first; the delete affordance behind the row is drawn at the leading edge, which is where `endToStart` actually reveals it.
+- Empty state: `EmptyState` with "No transfer history".
 ### SettingsScreen
 - **File**: `lib/ui/screens/settings_screen.dart`
-- **Route/entry**: Index 2 in MainNavigationScreen
-- **Mobile/Desktop layout**: Same layout — AppBar + scrollable ListView with sections
-- **Key UI elements**:
-  - **AppBar**: "Settings" title with `Icons.settings` in logo gradient container
-  - **Device Section**:
-    - Section header: "Device", `titleSmall`, w600, `primaryColor`
-    - Card container: Same gradient treatment, 20px border radius
-    - **Device Name tile**: `Icons.devices_rounded` at 22px, `primaryColor`. Shows name + "Custom" badge (logo gradient, 10px white text) if nickname set. Edit button: `Icons.edit_rounded` 18px in surface container
-    - **IP Address tile**: `Icons.wifi_rounded`, `secondaryColor`. Shows IP. Copy button: `Icons.copy_rounded` 18px
-    - **Auto-accept toggle**: `SwitchListTile` with `Icons.check_circle_outline` at 24px, `successColor`. Title: "Auto-accept from trusted devices". Subtitle: "Automatically accept transfers from devices you trust", 12px
-    - Dividers: 1px, indent 60px
-  - **About Section**:
-    - Section header: "About"
-    - Version tile: `Icons.info_outline`, shows version string
-    - Syndro tile: `Icons.share`, "Fast & secure file sharing"
-  - **Developer Credit**: "Made by FakeAbid" (FakeAbid in `primaryColor` w600) + "Built with Flutter" badge (logo gradient, 13px white, heart icon)
-  - **Edit Device Name Dialog**: AlertDialog with `surfaceColor`, 20px border radius. Title row: edit icon in `primaryColor` container + "Edit Device Name". TextField: 30 maxLength, input formatters to deny special chars. Buttons: Reset, Cancel, Save
-- **User interactions**: Tap to edit device name, toggle auto-accept, copy IP, tap version
-- **Special effects**: None
-
+- Grouped General / Transfer / Network / Security / About, each group one flat `Material` holding rows split by hairlines (a plain `Container` makes `ListTile` warn that its own ink may be invisible).
+- **General**: device name (edit dialog), appearance as a `SegmentedButton` of Dark / Light / System.
+- **Transfer**: auto-accept from trusted devices; download location, read-only, resolved through `FileService.getDownloadDirectory()`.
+- **Network**: IP address with a copy button; transfer port range, read-only, from `AppConfig.defaultTransferPort`.
+- **Security**: encryption state as reported by the running `TransferService`; trusted devices with count, per-device pin status, reset-trust and revoke.
+- **About**: version, check for updates, and the repository link.
+- Only controls the app actually backs are rendered. There is no discovery switch, no preferred-interface picker and no download-location picker, because none of them exist.
+- Content capped at 760px.
 ### FilePickerScreen
 - **File**: `lib/ui/screens/file_picker_screen.dart`
 - **Route/entry**: From HomeScreen — tap device card then Send Files, or from QuickSendScreen
@@ -424,25 +415,13 @@
 
 ### TransferProgressScreen
 - **File**: `lib/ui/screens/transfer_progress_screen.dart`
-- **Route/entry**: After FilePickerScreen sends files (single device)
-- **Mobile/Desktop layout**: Same
-- **Key UI elements**:
-  - **AppBar**: "Sending Files" / "Receiving Files" title, close button (shows confirmation dialog for active transfers)
-  - **Device Card**: Gradient container, 20px border radius. Upload/download icon (32px) in gradient container. Device name (20px w700). Status badge pill (12px, colored by status: Connecting=warning, Transferring=primary, Completed=success, Failed=error, Cancelled=textTertiary)
-  - **Waiting State**: Pulsing circle (`_pulseController`, 1500ms repeat) with upload/download icon 64px. "Connecting..." / "Waiting for approval..." text 20px w600. `CircularProgressIndicator`
-  - **Transferring State**:
-    - Current file card: File icon (24px, colored), file name (16px w500), "File N of M" (12px `textTertiary`)
-    - Progress bar: `LinearProgressIndicator`, 12px height, 8px border radius, `primaryColor` value, `cardColor` track
-    - Size info: "X / Y" formatted + percentage (16px bold `primaryColor`)
-    - Stats row: Speed card (`Icons.speed`, accentColor, "Calculating..." for first 2s then "X/s") + Remaining time card (`Icons.timer_outlined`, secondaryColor, "Xm Xs")
-    - File list: `ListView` in surface container, 16px border radius. Each item: status icon (check_circle for completed, file type for current/pending), name, size
-  - **Completed State**: 80x80px green circle + `Icons.check_circle` 80px + "Transfer Complete!" (24px bold) + "N files sent/received successfully"
-  - **Failed State**: 80x80px red circle + `Icons.error_outline` 80px + "Transfer Failed" + error message
-  - **Cancelled State**: 80x80px gray circle + `Icons.cancel_outlined` 80px + "Transfer Cancelled"
-  - **Action Button**: Completed="Done" (green), Failed/Cancelled="Close" (surface), Active="Cancel Transfer" (red outlined)
-- **User interactions**: Tap close (with confirmation), cancel transfer
-- **Special effects**: Pulse animation (1500ms, repeat, reverse) on waiting state icon. Speed calculation every 1 second. Auto-pop after 2 seconds on completion.
-
+- Header card: 34px tonal direction glyph, "Sending to" / "Receiving from" plus the peer name, and a status badge.
+- One compact progress card while transferring: current file and `File i of n`, percentage, a 6px bar, then bytes / rate / estimate as three icon-labelled figures on one line. This replaces a file card plus two separate stat cards.
+- Rate and estimate report honestly: speed shows "Calculating…" until its sample window fills, and the estimate shows `--:--` while the speed is zero.
+- Below it, the per-file list with completed / current / pending markers.
+- Waiting, paused, completed, failed and cancelled are centred status columns wrapped in `_StatusColumn`, which gains a scroll axis when the window is shorter than the message — they overflowed by ~50px at 915x412 before that.
+- Nothing pulses: the waiting and paused glyphs used to breathe on a 1500ms loop that a 30-second timer existed to stop.
+- Content capped at 720px. Back navigation is guarded by a `PopScope` that confirms before cancelling a live transfer.
 ### MultiTransferProgressScreen
 - **File**: `lib/ui/screens/multi_transfer_progress_screen.dart`
 - **Route/entry**: After FilePickerScreen sends files to multiple devices
@@ -465,17 +444,22 @@
 
 ## Widgets
 
+### DropRecipientDialog
+- **File**: `lib/ui/widgets/drop_send_sheet.dart`
+- Shown after files are dropped on the desktop home page. Reports how many files and their total size, then asks which online peers should receive them via `FilterChip`s with a checkmark, a selected state and a semantics label — so the choice is not carried by colour.
+- Opened by `pickDropRecipients(context, items)`; returns the chosen `List<Device>` or null. Send stays disabled until at least one peer is picked, and the dialog says so plainly when nothing else is reachable.
+- The chosen recipients then go through `FilePickerScreen` with `preselectedFiles`, the same path a hand-picked send uses.
+
 ### DeviceCard
 - **File**: `lib/ui/widgets/device_card.dart`
-- **Purpose**: Reusable card displaying a discovered device with platform icon, name/nickname, IP, and online status
-- **Visual description**: 20px border radius container with gradient background. Left: 60x60px platform icon container (16px border radius, platform-colored gradient). Center: device name (titleLarge w700), optional original name (11px textTertiary), platform badge (14px icon + text), IP (12px textTertiary with router icon). Right: 14px online indicator dot (green with glow when online, gray when offline) + "Online"/"Offline" text badge (10px, 8px border radius)
-- **States**:
-  - **Normal**: cardColor background, no border, subtle shadow
-  - **Selected**: primaryColor border (2px), primaryColor at 12% background, purple glow shadow (blur 20px)
-  - **Tapped**: Scales to 0.97 via `Matrix4`, 150ms `AnimatedContainer`
-  - **Has nickname**: Shows edit icon badge (12px, primaryColor) next to name, original name below
-- **Used in**: HomeScreen device list, QuickSendScreen device list
-
+- Three-line hierarchy: device name (titleMedium w700), then `Platform • ip address` on one line, then connection state.
+- Leading 36px tonal platform tile (`platform.iconColor` at 12%), no gradient.
+- `● Online` / `● Offline` — dot plus the word, so state is never colour alone.
+- Hover (pointer devices only): background lifts to `surfaceContainerHigh` over `AppMotion.fast` and the trailing slot cross-fades from the status label to a `Send files` arrow button. The slot keeps a stable width so nothing reflows under the cursor.
+- Right-click (pointer devices only): Send files, Rename device, View details, and Remove trust when the peer is already trusted. There is deliberately no "Trust device" entry — trust is granted during a transfer approval, with a key pin, and cannot be created from a browse result. `Quick Send` is likewise absent: the quick-send screen is reached from the shell's right-click "Send with Syndro" file hand-off, not from a peer row.
+- Keyboard: Tab reaches the card and Enter activates it; focus draws a 2.5px `primaryColor` border, heavier than the 1.6px selection border.
+- `onTap` selects (single- or multi-select depending on mode), `onLongPress` enters multi-select or opens the rename dialog — unchanged from before the redesign.
+- **Params**: `device`, `onTap`, `onLongPress`, `onSendFiles`, `isSelected`
 ### DeviceNicknameDialog
 - **File**: `lib/ui/widgets/device_nickname_dialog.dart`
 - **Purpose**: AlertDialog for editing a device's display nickname
@@ -488,23 +472,13 @@
 
 ### DropZoneWidget
 - **File**: `lib/ui/widgets/drop_zone_widget.dart`
-- **Purpose**: Wraps content to enable drag-and-drop file receiving on desktop platforms
-- **Visual description**: Wraps child widget. When dragging: overlay with 16px margin, `primaryColor` at 10% background, 3px `primaryColor` border, 24px border radius. Center: 64px download icon in circle + "Drop files here" (24px bold) + "Release to add files for transfer" (16px textSecondary)
-- **States**:
-  - **Idle**: No visual change
-  - **Dragging**: Overlay appears with scale animation (0.98), fade in 200ms
-  - **Dropped**: Overlay disappears, files processed
-- **Used in**: FilePickerScreen (desktop), general drag-and-drop areas
-
+- Wrapper that turns a subtree into a desktop drop target with a scale-and-fade overlay. Desktop-only: returns `child` untouched on Android/iOS.
+- File/folder decoding is shared with `EmptyDropZone` through `transferItemsFromDrop()`, which walks a dropped directory once to total its size.
 ### EmptyDropZone
 - **File**: `lib/ui/widgets/drop_zone_widget.dart`
-- **Purpose**: Standalone empty-state drop zone with pick buttons
-- **Visual description**: AnimatedContainer (200ms) with folder icon that pulses (1500ms, 1.0→1.05 scale). "No files selected" title + subtitle + two action buttons (Files/Folder) in primary-colored outlined containers (12px border radius)
-- **States**:
-  - **Idle**: Folder icon pulsing, surface background, borderColor border
-  - **Dragging**: Download icon, primaryColor border (3px), primaryColor background at 10%, icon scales to 1.1
-- **Used in**: As an alternative empty state in file picking scenarios
-
+- The framed drop target in the desktop send pane: circular tonal glyph, "Drop files to send" / "No files selected", supporting line, and a `Wrap` of Files / Folder buttons (a Row overflowed in a narrow detail pane).
+- `dragOverWindow` lights the zone while a drag is anywhere over the page; `handlesOwnDrop: false` stops it registering a second DropTarget when an ancestor already owns the window.
+- No looping animation. The 1500ms pulse that used to scale the glyph forever is gone.
 ### FilePreviewWidget
 - **File**: `lib/ui/widgets/file_preview_widgets.dart`
 - **Purpose**: Shows file thumbnail (image/video) or type-colored icon for any file
@@ -702,6 +676,20 @@
 - **FadeInAnimation**: Opacity + slide up (0.1 offset), 400ms
 
 ---
+
+## Layout verification
+
+`test/ui/` is the layout contract for everything above. It pumps the real
+`MainNavigationScreen`, both home layouts, `DeviceCard` and both progress screens
+at 900x600, 1280x800 and 1920x1080, plus 412x915 and 915x412, and at a 1.4x text
+scaler, and fails on any framework-reported layout error.
+
+Two things make it more than an absence of crashes. One test asserts it catches a
+deliberately overflowing tree, so a clean pass means something. The progress
+screen's tests drive a real `TransferService` over loopback, so the screen is
+opened against a transfer the service was actually offered. `takeException()` is
+not used: measured on this toolchain it returns null for a genuine `RenderFlex`
+overflow, so the harness installs its own `FlutterError.onError` recorder.
 
 ## Summary of Screen-to-Screen Navigation
 
