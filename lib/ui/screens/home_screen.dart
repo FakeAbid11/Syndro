@@ -10,6 +10,7 @@ import 'package:animations/animations.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
+import '../widgets/drop_send_sheet.dart';
 import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/device_provider.dart';
@@ -1217,26 +1218,24 @@ Future<void> _showTextComposeDialog(Device device) async {
     );
   }
 
-  /// Handles files/folders dropped onto the desktop send pane.
-  void _handleDesktopFilesDropped(List<TransferItem> items) {
-    if (items.isEmpty) return;
-    final selectedDevices = ref.read(selectedDevicesProvider);
-    final selectedDevice = ref.read(selectedDeviceProvider);
-    if (selectedDevice == null && selectedDevices.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select a device first, then drop files to send'),
-          backgroundColor: AppTheme.warningColor,
-        ),
-      );
-      return;
-    }
+  /// Handles files/folders dropped anywhere on the desktop home page.
+  ///
+  /// A drop carries no intent, so the recipients are confirmed before the
+  /// transfer is set up; the preselected files then go through the same picker
+  /// screen a hand-picked send uses.
+  Future<void> _handleDesktopFilesDropped(List<TransferItem> items) async {
+    if (items.isEmpty || !mounted) return;
+
+    var recipients = await pickDropRecipients(context, items);
+    if (recipients == null || recipients.isEmpty || !mounted) return;
+
+    // One chosen peer still goes through the single-recipient path, which is
+    // what the rest of the app assumes for a one-target send.
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (routeContext) => FilePickerScreen(
-          recipientDevice: selectedDevice,
-          recipientDevices:
-              selectedDevices.isNotEmpty ? selectedDevices.toList() : null,
+          recipientDevice: recipients.length == 1 ? recipients.first : null,
+          recipientDevices: recipients.length == 1 ? null : recipients,
           preselectedFiles: items,
         ),
       ),

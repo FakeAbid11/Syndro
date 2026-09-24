@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:syndro/core/models/device.dart';
+import 'package:syndro/core/models/transfer.dart';
 import 'package:syndro/core/models/transfer_history_entry.dart';
 import 'package:syndro/core/providers/device_provider.dart';
 import 'package:syndro/core/providers/history_provider.dart';
@@ -63,6 +64,12 @@ final List<Device> twoDevices = [
 
 const _secureStorageChannel =
     MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
+/// A two-file drop totalling 248 MB, for the drop-confirmation UI.
+const droppedFiles = <TransferItem>[
+  TransferItem(name: 'holiday-photos.zip', path: '', size: 180 * 1024 * 1024),
+  TransferItem(name: 'itinerary.pdf', path: '', size: 68 * 1024 * 1024),
+];
 const _transferEventsChannel = EventChannel('com.syndro.app/transfer_events');
 const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 

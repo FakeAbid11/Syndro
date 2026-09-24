@@ -1,3 +1,4 @@
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,7 +17,7 @@ import 'home_device_views.dart';
 /// `HomeMobileLayout` instead, so changes here cannot affect the mobile
 /// layout and vice versa. Pure presentation: all data arrives as constructor
 /// params and all behavior as callbacks from the facade.
-class HomeDesktopLayout extends StatelessWidget {
+class HomeDesktopLayout extends StatefulWidget {
   final Device currentDevice;
   final AsyncValue<List<Device>> discoveredDevicesAsync;
   final Device? selectedDevice;
@@ -54,10 +55,17 @@ class HomeDesktopLayout extends StatelessWidget {
   });
 
   @override
+  State<HomeDesktopLayout> createState() => _HomeDesktopLayoutState();
+}
+
+class _HomeDesktopLayoutState extends State<HomeDesktopLayout> {
+  /// True while a file drag is anywhere over the page, so the send zone lights
+  /// up before the cursor reaches it.
+  bool _dragOverWindow = false;
+
+  @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final compactActions = width < 720;
-    final hasMulti = selectedDevices.isNotEmpty;
+    final compactActions = MediaQuery.sizeOf(context).width < 720;
 
     return Scaffold(
       appBar: AppBar(
@@ -80,87 +88,105 @@ class HomeDesktopLayout extends StatelessWidget {
         ),
         actions: _buildAppBarActions(compactActions),
       ),
-      // No gradient pane here: the Scaffold background is already the palette
-      // base, and a gradient under the largest surface is what made the old
-      // desktop UI read as heavy.
-      body: LayoutBuilder(
-          builder: (context, constraints) {
-            final masterWidth = (constraints.maxWidth * 0.42)
-                .clamp(300.0, 380.0)
-                .toDouble();
-            final deviceColumn = HomeDeviceColumn(
-              currentDevice: currentDevice,
-              discoveredDevicesAsync: discoveredDevicesAsync,
-              selectedDevice: selectedDevice,
-              isInitialized: isInitialized,
-              isRefreshing: isRefreshing,
-              onRefresh: onRefresh,
-              onSendFilesTo: onSendFilesTo,
-            );
+      // Dropping a file is the primary desktop way to start a send, so the
+      // whole page is the target rather than only the framed zone on the
+      // right — which a user aiming at the window should not have to find.
+      body: DropTarget(
+        onDragEntered: (_) {
+          if (mounted) setState(() => _dragOverWindow = true);
+        },
+        onDragExited: (_) {
+          if (mounted) setState(() => _dragOverWindow = false);
+        },
+        onDragDone: (details) async {
+          if (!mounted) return;
+          setState(() => _dragOverWindow = false);
+          final items = await transferItemsFromDrop(details);
+          if (items.isNotEmpty) widget.onFilesDropped(items);
+        },
+        child: _buildBody(context),
+      ),
+    );
+  }
 
-            // Wide window: two-pane master–detail.
-            if (constraints.maxWidth >= 700) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    width: masterWidth,
-                    child: deviceColumn,
-                  ),
-                  VerticalDivider(width: 1, color: AppTheme.outlineVariant),
-                  Expanded(child: _buildSendPane(context)),
-                ],
-              );
-            }
+  Widget _buildBody(BuildContext context) {
+    final hasMulti = widget.selectedDevices.isNotEmpty;
 
-            // Narrow desktop window: master column full width; the send
-            // actions live in the app bar plus contextual FABs below.
-            return Stack(
-              children: [
-                deviceColumn,
-                if (selectedDevice != null)
-                  Positioned(
-                    right: AppSpacing.xl,
-                    // The desktop shell navigates from the rail, so unlike the
-                    // mobile layout nothing has to be cleared at the bottom.
-                    bottom: AppSpacing.xl,
-                    child: FloatingActionButton.extended(
-                      heroTag: null,
-                      onPressed: onOpenPicker,
-                      backgroundColor: AppTheme.surfaceContainerHigh,
-                      foregroundColor: AppTheme.primaryColor,
-                      icon: const Icon(Icons.send, size: 24),
-                      label: const Text('Send Files'),
-                    ),
-                  ),
-                if (hasMulti)
-                  Positioned(
-                    right: AppSpacing.xl,
-                    bottom: AppSpacing.xl,
-                    child: FloatingActionButton.extended(
-                      heroTag: null,
-                      onPressed: () => onSendToMultiple(selectedDevices.toList()),
-                      icon: const Icon(Icons.send, size: 24),
-                      label: Text('Send to ${selectedDevices.length}'),
-                    ),
-                  ),
-                if (hasMulti)
-                  Positioned(
-                    left: AppSpacing.xl,
-                    bottom: AppSpacing.xl,
-                    child: FloatingActionButton(
-                      heroTag: null,
-                      onPressed: onClearMultiSelect,
-                      backgroundColor: AppTheme.errorContainer,
-                      foregroundColor: AppTheme.onErrorContainer,
-                      shape: const CircleBorder(),
-                      child: const Icon(Icons.close, size: 24),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final masterWidth = (constraints.maxWidth * 0.42)
+            .clamp(300.0, 380.0)
+            .toDouble();
+        final deviceColumn = HomeDeviceColumn(
+          currentDevice: widget.currentDevice,
+          discoveredDevicesAsync: widget.discoveredDevicesAsync,
+          selectedDevice: widget.selectedDevice,
+          isInitialized: widget.isInitialized,
+          isRefreshing: widget.isRefreshing,
+          onRefresh: widget.onRefresh,
+          onSendFilesTo: widget.onSendFilesTo,
+        );
+
+        // Wide window: two-pane master–detail.
+        if (constraints.maxWidth >= 700) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: masterWidth, child: deviceColumn),
+              VerticalDivider(width: 1, color: AppTheme.outlineVariant),
+              Expanded(child: _buildSendPane(context)),
+            ],
+          );
+        }
+
+        // Narrow desktop window: master column full width; the send actions
+        // live in the app bar plus contextual FABs below.
+        return Stack(
+          children: [
+            deviceColumn,
+            if (widget.selectedDevice != null && !hasMulti)
+              Positioned(
+                right: AppSpacing.xl,
+                // The desktop shell navigates from the rail, so unlike the
+                // mobile layout nothing has to be cleared at the bottom.
+                bottom: AppSpacing.xl,
+                child: FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: widget.onOpenPicker,
+                  backgroundColor: AppTheme.surfaceContainerHigh,
+                  foregroundColor: AppTheme.primaryColor,
+                  icon: const Icon(Icons.send, size: 24),
+                  label: const Text('Send Files'),
+                ),
+              ),
+            if (hasMulti)
+              Positioned(
+                right: AppSpacing.xl,
+                bottom: AppSpacing.xl,
+                child: FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: () =>
+                      widget.onSendToMultiple(widget.selectedDevices.toList()),
+                  icon: const Icon(Icons.send, size: 24),
+                  label: Text('Send to ${widget.selectedDevices.length}'),
+                ),
+              ),
+            if (hasMulti)
+              Positioned(
+                left: AppSpacing.xl,
+                bottom: AppSpacing.xl,
+                child: FloatingActionButton(
+                  heroTag: null,
+                  onPressed: widget.onClearMultiSelect,
+                  backgroundColor: AppTheme.errorContainer,
+                  foregroundColor: AppTheme.onErrorContainer,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.close, size: 24),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -172,12 +198,12 @@ class HomeDesktopLayout extends StatelessWidget {
       return [
         IconButton(
           tooltip: 'Browser Share',
-          onPressed: onOpenShareDialog,
+          onPressed: widget.onOpenShareDialog,
           icon: const Icon(Icons.language),
         ),
         IconButton(
           tooltip: 'Send text or link',
-          onPressed: onSendText,
+          onPressed: widget.onSendText,
           icon: const Icon(Icons.notes),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -185,13 +211,13 @@ class HomeDesktopLayout extends StatelessWidget {
     }
     return [
       TextButton.icon(
-        onPressed: onOpenShareDialog,
+        onPressed: widget.onOpenShareDialog,
         icon: const Icon(Icons.language, size: 18),
         label: const Text('Browser Share'),
       ),
       const SizedBox(width: AppSpacing.xs),
       TextButton.icon(
-        onPressed: onSendText,
+        onPressed: widget.onSendText,
         icon: const Icon(Icons.notes, size: 18),
         label: const Text('Send Text'),
       ),
@@ -199,27 +225,26 @@ class HomeDesktopLayout extends StatelessWidget {
     ];
   }
 
-  /// The send pane — a drag-and-drop target for the selected device(s).
-  /// This is the primary Windows interaction: drag files onto the window,
-  /// pick files/folders, and send — no FAB hunting required.
+  /// The send pane — what a drop is aimed at, and the fallback for people who
+  /// would rather click.
   Widget _buildSendPane(BuildContext context) {
-    final hasMulti = selectedDevices.isNotEmpty;
+    final hasMulti = widget.selectedDevices.isNotEmpty;
     // Local copy so the null-check below promotes the type (fields don't).
-    final device = selectedDevice;
+    final device = widget.selectedDevice;
 
     final Widget header;
     if (hasMulti) {
       header = SectionHeader(
-        title: 'Send to ${selectedDevices.length} devices',
+        title: 'Send to ${widget.selectedDevices.length} devices',
         trailing: TextButton(
-          onPressed: onClearMultiSelect,
+          onPressed: widget.onClearMultiSelect,
           child: const Text('Clear selection'),
         ),
       );
     } else if (device != null) {
       header = SectionHeader(title: 'Send to ${device.name}');
     } else {
-      header = const SectionHeader(title: 'Send Files');
+      header = const SectionHeader(title: 'Drop files here to send');
     }
 
     return Center(
@@ -244,9 +269,13 @@ class HomeDesktopLayout extends StatelessWidget {
                         constraints:
                             BoxConstraints(minHeight: constraints.maxHeight),
                         child: EmptyDropZone(
-                          onFilesDropped: onFilesDropped,
-                          onPickFiles: onOpenPicker,
-                          onPickFolder: onOpenPicker,
+                          onFilesDropped: widget.onFilesDropped,
+                          onPickFiles: widget.onOpenPicker,
+                          onPickFolder: widget.onOpenPicker,
+                          // The page-level DropTarget already registers this
+                          // window; a second one would ask twice.
+                          handlesOwnDrop: false,
+                          dragOverWindow: _dragOverWindow,
                         ),
                       ),
                     );

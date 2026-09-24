@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syndro/ui/screens/main_navigation_screen.dart';
+import 'package:syndro/ui/widgets/drop_send_sheet.dart';
 
 import 'harness.dart';
 
@@ -65,6 +66,30 @@ void main() {
       });
       expect(sawRail, isTrue,
           reason: 'desktop window sizes must render the rail-based shell');
+    });
+
+    testWidgets('the drop confirmation renders clean at ${window.label}',
+        (tester) async {
+      await pumpAndExpectCleanLayout(
+        tester,
+        window,
+        Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => pickDropRecipients(context, droppedFiles),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+        overrides: staticNetwork(),
+        interact: (t) async {
+          await t.tap(find.text('open'));
+        },
+      );
+      expect(find.text('Send to'), findsOneWidget);
+      expect(find.text('2 files selected'), findsOneWidget);
     });
 
     testWidgets('History renders clean at ${window.label}', (tester) async {

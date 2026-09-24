@@ -8,6 +8,47 @@ import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
 import '../../core/utils/app_logger.dart';
+
+/// Turns the files a desktop drag delivered into transfer items.
+///
+/// Shared by every drop target in the app: a folder has to be walked for its
+/// size here and nowhere else, and the two copies of this loop that used to
+/// exist had already started to differ.
+Future<List<TransferItem>> transferItemsFromDrop(DropDoneDetails drop) async {
+  final items = <TransferItem>[];
+  for (final xFile in drop.files) {
+    try {
+      final path = xFile.path;
+      final file = File(path);
+      final directory = Directory(path);
+
+      if (await file.exists()) {
+        final stat = await file.stat();
+        items.add(TransferItem(
+          name: xFile.name,
+          path: path,
+          size: stat.size,
+          isDirectory: false,
+        ));
+      } else if (await directory.exists()) {
+        var folderSize = 0;
+        await for (final entity in directory.list(recursive: true)) {
+          if (entity is File) folderSize += await entity.length();
+        }
+        items.add(TransferItem(
+          name: xFile.name,
+          path: path,
+          size: folderSize,
+          isDirectory: true,
+        ));
+      }
+    } catch (e) {
+      AppLogger.info('Error processing dropped file: $e');
+    }
+  }
+  return items;
+}
+
 class DropZoneWidget extends StatefulWidget {
   final Widget child;
   final Function(List<TransferItem> items) onFilesDropped;
@@ -61,52 +102,10 @@ class _DropZoneWidgetState extends State<DropZoneWidget>
   Future<void> _handleDrop(DropDoneDetails details) async {
     if (!widget.enabled) return;
 
-    final items = <TransferItem>[];
+    final items = await transferItemsFromDrop(details);
+    if (items.isNotEmpty) widget.onFilesDropped(items);
 
-    for (final xFile in details.files) {
-      try {
-        final path = xFile.path;
-        final file = File(path);
-        final directory = Directory(path);
-
-        if (await file.exists()) {
-          final stat = await file.stat();
-          items.add(TransferItem(
-            name: xFile.name,
-            path: path,
-            size: stat.size,
-            isDirectory: false,
-          ));
-        } else if (await directory.exists()) {
-          // Calculate folder size
-          int folderSize = 0;
-          await for (final entity in directory.list(recursive: true)) {
-            if (entity is File) {
-              folderSize += await entity.length();
-            }
-          }
-
-          items.add(TransferItem(
-            name: xFile.name,
-            path: path,
-            size: folderSize,
-            isDirectory: true,
-          ));
-        }
-      } catch (e) {
-        AppLogger.info('Error processing dropped file: $e');
-      }
-    }
-
-    if (items.isNotEmpty) {
-      widget.onFilesDropped(items);
-    }
-
-    // FIXED (Bug #23): Add mounted check before setState
-    if (mounted) {
-      setState(() => _isDragging = false);
-      _animationController.reverse();
-    }
+    if (mounted) setState(() => _isDragging = false);
   }
 
   void _handleDragEntered(DropEventDetails details) {
@@ -211,11 +210,21 @@ class EmptyDropZone extends StatefulWidget {
   final VoidCallback onPickFiles;
   final VoidCallback onPickFolder;
 
+  /// True while a drag is anywhere over the window, so the target the user is
+  /// aiming at lights up before the cursor reaches it.
+  final bool dragOverWindow;
+
+  /// False when an ancestor already registers the window as a drop target.
+  /// Both would otherwise fire for one drop and ask twice.
+  final bool handlesOwnDrop;
+
   const EmptyDropZone({
     super.key,
     required this.onFilesDropped,
     required this.onPickFiles,
     required this.onPickFolder,
+    this.dragOverWindow = false,
+    this.handlesOwnDrop = true,
   });
 
   @override
@@ -226,73 +235,31 @@ class _EmptyDropZoneState extends State<EmptyDropZone> {
   bool _isDragging = false;
 
   Future<void> _handleDrop(DropDoneDetails details) async {
-    final items = <TransferItem>[];
-
-    for (final xFile in details.files) {
-      try {
-        final path = xFile.path;
-        final file = File(path);
-        final directory = Directory(path);
-
-        if (await file.exists()) {
-          final stat = await file.stat();
-          items.add(TransferItem(
-            name: xFile.name,
-            path: path,
-            size: stat.size,
-            isDirectory: false,
-          ));
-        } else if (await directory.exists()) {
-          int folderSize = 0;
-          await for (final entity in directory.list(recursive: true)) {
-            if (entity is File) {
-              folderSize += await entity.length();
-            }
-          }
-
-          items.add(TransferItem(
-            name: xFile.name,
-            path: path,
-            size: folderSize,
-            isDirectory: true,
-          ));
-        }
-      } catch (e) {
-        AppLogger.info('Error processing dropped file: $e');
-      }
-    }
-
-    if (items.isNotEmpty) {
-      widget.onFilesDropped(items);
-    }
-
-    // FIXED (Bug #23): Add mounted check before setState
-    if (mounted) {
-      setState(() => _isDragging = false);
-    }
+    final items = await transferItemsFromDrop(details);
+    if (items.isNotEmpty) widget.onFilesDropped(items);
+    if (mounted) setState(() => _isDragging = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final isDesktop =
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final active = _isDragging || widget.dragOverWindow;
 
     Widget content = AnimatedContainer(
-      duration: AppMotion.normal,
+      duration: AppMotion.fast,
       // Centres the prompt when the caller gives the zone room to fill, and
       // is a no-op when it is only as tall as its own content.
       alignment: Alignment.center,
       padding: const EdgeInsets.all(AppSpacing.xxxl),
       decoration: BoxDecoration(
-        color: _isDragging
-            ? AppTheme.primaryColor.withValues(alpha: 0.1)
+        color: active
+            ? AppTheme.primaryColor.withValues(alpha: 0.08)
             : AppTheme.surfaceContainer,
         borderRadius: AppRadius.xxlAll,
         border: Border.all(
-          color: _isDragging
-              ? AppTheme.primaryColor
-              : AppTheme.outlineVariant,
-          width: _isDragging ? 3 : 2,
+          color: active ? AppTheme.primaryColor : AppTheme.outlineVariant,
+          width: active ? 2 : 1,
           strokeAlign: BorderSide.strokeAlignInside,
         ),
       ),
@@ -305,12 +272,12 @@ class _EmptyDropZoneState extends State<EmptyDropZone> {
             padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withValues(
-                alpha: _isDragging ? 0.2 : 0.1,
+                alpha: (active ? 0.2 : 0.1),
               ),
               shape: BoxShape.circle,
             ),
             child: Icon(
-              _isDragging
+              active
                   ? Icons.file_download_rounded
                   : Icons.folder_open_rounded,
               size: 48,
@@ -319,7 +286,7 @@ class _EmptyDropZoneState extends State<EmptyDropZone> {
           ),
           const SizedBox(height: AppSpacing.xxl),
           Text(
-            _isDragging ? 'Drop files here!' : 'No files selected',
+            active ? 'Drop files to send' : 'No files selected',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: _isDragging
@@ -362,7 +329,7 @@ class _EmptyDropZoneState extends State<EmptyDropZone> {
       ),
     );
 
-    if (isDesktop) {
+    if (isDesktop && widget.handlesOwnDrop) {
       return DropTarget(
         onDragDone: _handleDrop,
         onDragEntered: (_) {
