@@ -73,155 +73,259 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     }
   }
 
-  String _formatTimestamp(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays == 0) {
-      return 'Today ${_formatTime(dateTime)}';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday ${_formatTime(dateTime)}';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-    }
-  }
-
-  String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-
-  Color _getStatusColor(String status) {
+  /// Status colour, paired with an icon and a word everywhere it is used.
+  Color _statusColor(String status) {
     switch (status) {
       case 'completed':
         return AppTheme.successColor;
       case 'failed':
-      case 'cancelled':
         return AppTheme.errorColor;
+      case 'cancelled':
+        return AppTheme.warningColor;
       default:
         return AppTheme.textTertiary;
     }
   }
 
-  IconData _getStatusIcon(String status) {
+  IconData _statusIcon(String status) {
     switch (status) {
       case 'completed':
-        return Icons.check_circle;
+        return Icons.check_circle_outline;
       case 'failed':
-        return Icons.error;
+        return Icons.error_outline;
       case 'cancelled':
-        return Icons.cancel;
+        return Icons.cancel_outlined;
       default:
         return Icons.sync;
     }
   }
 
+  String _statusLabel(String status) => switch (status) {
+        'completed' => 'Completed',
+        'failed' => 'Failed',
+        'cancelled' => 'Cancelled',
+        _ => 'In progress',
+      };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GradientIconTile(
-              icon: Icons.history,
-              size: 36,
-              iconSize: 20,
-              radius: AppRadius.sm,
-            ),
-            SizedBox(width: AppSpacing.md),
-            Text('Transfer History'),
-          ],
-        ),
+        titleSpacing: AppSpacing.lg,
+        title: const Text('Transfer History'),
         actions: [
           if (_transfers.isNotEmpty)
             IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: AppTheme.errorColor.withValues(alpha: 0.15),
-                  borderRadius: AppRadius.smAll,
-                ),
-                child: const Icon(
-                  Icons.delete_sweep,
-                  color: AppTheme.errorColor,
-                  size: 20,
-                ),
-              ),
+              icon: const Icon(Icons.delete_sweep_outlined),
+              color: AppTheme.errorColor,
               onPressed: _clearAllHistory,
               tooltip: 'Clear All',
             ),
+          const SizedBox(width: AppSpacing.sm),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
-        child: _isLoading
-            ? const Padding(
-                padding: EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  children: [
-                    HistoryItemSkeleton(),
-                    SizedBox(height: AppSpacing.md),
-                    HistoryItemSkeleton(),
-                    SizedBox(height: AppSpacing.md),
-                    HistoryItemSkeleton(),
-                    SizedBox(height: AppSpacing.md),
-                    HistoryItemSkeleton(),
-                  ],
-                ),
-              )
-            : _transfers.isEmpty
-                ? _buildEmptyState()
-                : Column(
-                    children: [
-                      ResponsiveCenter(child: _buildStatistics()),
-                      Expanded(
-                        child: ResponsiveCenter(child: _buildHistoryList()),
+      body: _isLoading
+          ? const Padding(
+              padding: EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                children: [
+                  HistoryItemSkeleton(),
+                  SizedBox(height: AppSpacing.md),
+                  HistoryItemSkeleton(),
+                  SizedBox(height: AppSpacing.md),
+                  HistoryItemSkeleton(),
+                  SizedBox(height: AppSpacing.md),
+                  HistoryItemSkeleton(),
+                ],
+              ),
+            )
+          : _transfers.isEmpty
+              ? const EmptyState(
+                  icon: Icons.history,
+                  title: 'No transfer history',
+                  message: 'Your completed transfers will appear here',
+                )
+              : ResponsiveCenter(
+                  maxWidth: 860,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: _buildStatistics(),
+                      ),
+                      for (final section in _sections(_transfers)) ...[
+                        SliverToBoxAdapter(
+                          child: _SectionHeading(label: section.label),
+                        ),
+                        SliverList.separated(
+                          itemCount: section.entries.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (context, index) =>
+                              _buildRow(section.entries[index]),
+                        ),
+                      ],
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: AppSpacing.xxl),
                       ),
                     ],
                   ),
-      ),
+                ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return const EmptyState(
-      icon: Icons.history,
-      title: 'No transfer history',
-      message: 'Your completed transfers will appear here',
-    );
+  /// Groups rows by calendar day, newest first, as the provider returns them.
+  ///
+  /// The list is already ordered by `created_at DESC` in SQL, so one pass over
+  /// it is enough; a device that has been used for months gets a heading per
+  /// day rather than one undifferentiated wall.
+  List<({String label, List<TransferHistoryEntry> entries})> _sections(
+    List<TransferHistoryEntry> entries,
+  ) {
+    final today = DateTime.now();
+    DateTime dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
+    final result =
+        <({String label, List<TransferHistoryEntry> entries})>[];
+
+    for (final entry in entries) {
+      final day = dayOf(entry.createdAt);
+      final difference = dayOf(today).difference(day).inDays;
+      final label = switch (difference) {
+        0 => 'Today',
+        1 => 'Yesterday',
+        _ when difference < 0 => 'Upcoming',
+        _ => '${day.day} ${_months[day.month - 1]}'
+            '${day.year == today.year ? '' : ' ${day.year}'}',
+      };
+      if (result.isNotEmpty && result.last.label == label) {
+        result.last.entries.add(entry);
+      } else {
+        result.add((label: label, entries: [entry]));
+      }
+    }
+    return result;
   }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
 
   Widget _buildStatistics() {
     if (_statistics.isEmpty) return const SizedBox.shrink();
 
+    final total = _statistics['totalTransfers'] ?? 0;
+    final completed = _statistics['completedTransfers'] ?? 0;
+    final bytes = _statistics['totalBytes'] ?? 0;
+
     return Container(
-      margin: const EdgeInsets.all(AppSpacing.lg),
-      child: AppCard(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceContainer,
+        borderRadius: AppRadius.lgAll,
+        border: Border.all(color: AppTheme.outlineVariant, width: 1),
+      ),
+      child: Row(
+        children: [
+          _Stat(label: 'Transfers', value: '$total'),
+          const _StatDivider(),
+          _Stat(label: 'Completed', value: '$completed'),
+          const _StatDivider(),
+          _Stat(label: 'Data moved', value: ByteFormatter.format(bytes)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRow(TransferHistoryEntry transfer) {
+    final status = transfer.status;
+    final color = _statusColor(status);
+    final fileCount = transfer.fileCount;
+
+    return Dismissible(
+      key: Key(transfer.id),
+      direction: DismissDirection.endToStart,
+      // A swipe is irreversible from the user's point of view, so it asks
+      // first; the record itself is only removed once the answer is yes.
+      confirmDismiss: (_) => _confirmDelete(transfer),
+      onDismissed: (_) {
+        // Provider state updates synchronously so the row leaves the
+        // tree immediately (Dismissible requirement); the DB delete and
+        // statistics refresh happen in the background.
+        ref.read(historyProvider.notifier).delete(transfer.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Transfer removed from history'),
+              backgroundColor: AppTheme.successColor,
+            ),
+          );
+        }
+      },
+      background: const _DismissBackground(),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceContainer,
+          borderRadius: AppRadius.mdAll,
+          border: Border.all(color: AppTheme.outlineVariant, width: 1),
+        ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildStatItem(
-              'Total',
-              _statistics['totalTransfers']?.toString() ?? '0',
-              Icons.swap_horiz,
+            Icon(_statusIcon(status), color: color, size: 20),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    transfer.displayName,
+                    style: Theme.of(context).textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${fileCount == 1 ? '1 file' : '$fileCount files'}'
+                    ' • ${transfer.totalBytesFormatted}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-            _buildStatItem(
-              'Completed',
-              _statistics['completedTransfers']?.toString() ?? '0',
-              Icons.check_circle,
-              color: AppTheme.successColor,
-            ),
-            _buildStatItem(
-              'Data',
-              ByteFormatter.format(_statistics['totalBytes'] ?? 0),
-              Icons.data_usage,
+            const SizedBox(width: AppSpacing.md),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _time(transfer.createdAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _statusLabel(status),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
             ),
           ],
         ),
@@ -229,219 +333,139 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon,
-      {Color? color}) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                (color ?? AppTheme.primaryColor).withValues(alpha: 0.2),
-                (color ?? AppTheme.primaryColor).withValues(alpha: 0.1),
-              ],
-            ),
-            borderRadius: AppRadius.mdAll,
-            border: Border.all(
-              color: (color ?? AppTheme.primaryColor).withValues(alpha: 0.3),
-              width: 1,
-            ),
+  /// The row's own confirmation, so a swipe cannot silently delete a record.
+  Future<bool> _confirmDelete(TransferHistoryEntry transfer) async {
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove from history?'),
+        content: Text(
+          'The record for ${transfer.displayName} will be deleted. '
+          'Files already transferred are not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
           ),
-          child: Icon(
-            icon,
-            color: color ?? AppTheme.primaryColor,
-            size: 26,
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
+            child: const Text('Remove'),
           ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-        ),
-        const SizedBox(height: AppSpacing.xs + 2),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppTheme.textTertiary,
-              ),
-        ),
-      ],
+        ],
+      ),
     );
+    return confirmed == true;
   }
 
-  Widget _buildHistoryList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      itemCount: _transfers.length,
-      itemBuilder: (context, index) {
-        final transfer = _transfers[index];
+  String _time(DateTime dateTime) {
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+}
 
-        // Typed row — null handling lives in TransferHistoryEntry.fromRow.
-        final transferId = transfer.id;
-        final status = transfer.status;
-        final receiverName = transfer.displayName;
-        final fileCount = transfer.fileCount;
-        final totalBytes = transfer.totalBytes;
-        final createdAt = transfer.createdAt;
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.label});
 
-        return Dismissible(
-          key: Key(transferId),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: AppSpacing.xl),
-            margin: const EdgeInsets.only(bottom: AppSpacing.md),
-            decoration: const BoxDecoration(
-              color: AppTheme.errorColor,
-              borderRadius: AppRadius.lgAll,
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: AppTheme.textTertiary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
             ),
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-          onDismissed: (_) {
-            // Provider state updates synchronously so the row leaves the
-            // tree immediately (Dismissible requirement); the DB delete and
-            // statistics refresh happen in the background.
-            ref.read(historyProvider.notifier).delete(transferId);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Transfer removed from history'),
-                  backgroundColor: AppTheme.successColor,
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-              );
-            }
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: AppSpacing.md),
-            child: AppCard(
-              onTap: () {},
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          _getStatusColor(status)
-                              .withValues(alpha: 0.2),
-                          _getStatusColor(status)
-                              .withValues(alpha: 0.1),
-                        ],
-                      ),
-                      borderRadius: AppRadius.mdAll,
-                      border: Border.all(
-                        color: _getStatusColor(status)
-                            .withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(
-                      _getStatusIcon(status),
-                      color: _getStatusColor(status),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          receiverName,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                        const SizedBox(height: AppSpacing.xs + 2),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.sm,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                                borderRadius: AppRadius.smAll,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _getFileTypeIcon(fileCount),
-                                    size: 12,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                  const SizedBox(width: AppSpacing.xs),
-                                  Text(
-                                    '$fileCount file(s)',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          color: AppTheme.textTertiary,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Text(
-                              ByteFormatter.format(totalBytes),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.primaryColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppSpacing.xs + 2),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.access_time_rounded,
-                              size: 12,
-                              color: AppTheme.textTertiary,
-                            ),
-                            const SizedBox(width: AppSpacing.xs),
-                            Text(
-                              _formatTimestamp(createdAt),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.textTertiary,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                      borderRadius: AppRadius.smAll,
-                    ),
-                    child: Icon(
-                      Icons.chevron_right,
-                      color: AppTheme.textTertiary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        );
-      },
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
     );
   }
+}
 
-  IconData _getFileTypeIcon(int fileCount) {
-    if (fileCount > 1) return Icons.folder;
-    return Icons.insert_drive_file_rounded;
+class _StatDivider extends StatelessWidget {
+  const _StatDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 1,
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        color: AppTheme.outlineVariant,
+      );
+}
+
+/// Swipe-to-delete affordance.
+///
+/// The bin sits at the leading edge because `DismissDirection.endToStart`
+/// reveals whatever is behind it from right to left; the old centred-right
+/// icon ended up off-screen as the row slid away.
+class _DismissBackground extends StatelessWidget {
+  const _DismissBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.centerLeft,
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.only(left: AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppTheme.errorContainer,
+        borderRadius: AppRadius.mdAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.delete_outline, color: AppTheme.onErrorContainer),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            'Remove',
+            style: TextStyle(color: AppTheme.onErrorContainer),
+          ),
+        ],
+      ),
+    );
   }
 }
