@@ -20,6 +20,12 @@ class AppConfig {
   /// Developer/author name shown in the About section.
   static const String developerName = 'FakeAbid';
 
+  /// Public repository, surfaced in Settings → About.
+  ///
+  /// Matches the `owner`/`repo` the updater queries releases from; the two are
+  /// kept apart because the updater talks to the API and this is the human page.
+  static const String repositoryUrl = 'https://github.com/FakeAbid11/Syndro';
+
   // ============================================
   // TRANSFER CONFIGURATION
   // ============================================

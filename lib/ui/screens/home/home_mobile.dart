@@ -57,7 +57,6 @@ class HomeMobileLayout extends StatelessWidget {
               size: 36,
               iconSize: 20,
               radius: AppRadius.sm,
-              glow: false,
             ),
             SizedBox(width: AppSpacing.md),
             Text('Syndro'),

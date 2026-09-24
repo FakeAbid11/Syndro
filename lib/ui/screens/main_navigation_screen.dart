@@ -371,7 +371,6 @@ class _BrandBar extends ConsumerWidget {
             size: 26,
             iconSize: 15,
             radius: AppRadius.sm,
-            glow: false,
           ),
           const SizedBox(width: 10),
           // The wordmark is the one place the brand gradient is always on.

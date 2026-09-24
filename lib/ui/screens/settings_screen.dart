@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
@@ -27,11 +28,25 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _version = 'Loading...';
   bool _checkingUpdate = false;
+  String? _downloadDirectory;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadDownloadDirectory();
+  }
+
+  /// Where received files land. Read-only: the app picks it per platform and
+  /// there is no override to edit, so the row reports rather than pretends.
+  Future<void> _loadDownloadDirectory() async {
+    try {
+      final dir = await ref.read(fileServiceProvider).getDownloadDirectory();
+      if (mounted) setState(() => _downloadDirectory = dir);
+    } catch (e) {
+      AppLogger.info('Download directory unavailable: $e');
+      if (mounted) setState(() => _downloadDirectory = 'Not available');
+    }
   }
 
   Future<void> _handleCheckForUpdates() async {
@@ -269,6 +284,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final currentDevice = ref.watch(currentDeviceProvider);
     final customNickname = ref.watch(currentDeviceNicknameProvider);
+    final trustedCount = ref.watch(trustedDevicesProvider).length;
 
     final displayName = customNickname ?? currentDevice.name;
     final hasCustomNickname =
@@ -276,416 +292,291 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
-                borderRadius: AppRadius.smAll,
-              ),
-              child: const Icon(
-                Icons.settings,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            const Text('Settings'),
-          ],
-        ),
+        titleSpacing: AppSpacing.lg,
+        title: const Text('Settings'),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
-        // DESKTOP: cap the content width so tiles don't stretch across
-        // large windows.
-        child: ResponsiveCenter(
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+      body: ResponsiveCenter(
+        maxWidth: 760,
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            // ============================================
-            // DEVICE SECTION
-            // ============================================
-            _buildSectionHeader('Device'),
+            // ── GENERAL ────────────────────────────────────────────────
+            _buildSectionHeader('General'),
             const SizedBox(height: AppSpacing.md),
-
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  _buildSettingsTile(
-                    icon: Icons.devices_rounded,
-                    iconColor: AppTheme.primaryColor,
-                    iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-                    title: Row(
-                      children: [
-                        const Text('Device Name'),
-                        if (hasCustomNickname) ...[
-                          const SizedBox(width: AppSpacing.sm),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.sm,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: AppTheme.logoGradient,
-                              borderRadius: AppRadius.smAll,
-                            ),
-                            child: const Text(
-                              'Custom',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+            _Group(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.devices_rounded,
+                  title: 'Device name',
+                  subtitle: displayName,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasCustomNickname)
+                        const Padding(
+                          padding: EdgeInsets.only(right: AppSpacing.sm),
+                          child: StatusBadge(
+                            label: 'Renamed',
+                            variant: BadgeVariant.primary,
+                          ),
+                        ),
+                      Icon(Icons.edit_outlined,
+                          size: 18, color: AppTheme.textTertiary),
+                    ],
+                  ),
+                  onTap: _showEditNicknameDialog,
+                ),
+                const Divider(height: 1, indent: 60),
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.palette_outlined,
+                              size: 20, color: AppTheme.textSecondary),
+                          const SizedBox(width: AppSpacing.md),
+                          Text('Appearance',
+                              style: Theme.of(context).textTheme.titleSmall),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      // The theme's own SegmentedButtonTheme already carries
+                      // the selected state; the old inline style overrode it
+                      // with a solid purple fill on every segment.
+                      SegmentedButton<ThemeMode>(
+                        segments: const [
+                          ButtonSegment<ThemeMode>(
+                            value: ThemeMode.dark,
+                            icon: Icon(Icons.dark_mode_outlined, size: 18),
+                            label: Text('Dark'),
+                          ),
+                          ButtonSegment<ThemeMode>(
+                            value: ThemeMode.light,
+                            icon: Icon(Icons.light_mode_outlined, size: 18),
+                            label: Text('Light'),
+                          ),
+                          ButtonSegment<ThemeMode>(
+                            value: ThemeMode.system,
+                            icon: Icon(Icons.brightness_auto_outlined, size: 18),
+                            label: Text('System'),
                           ),
                         ],
-                      ],
-                    ),
-                    subtitle: Text(displayName),
-                    trailing: IconButton(
-                      icon: Container(
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                          borderRadius: AppRadius.smAll,
-                        ),
-                        child: const Icon(Icons.edit_rounded, size: 18),
-                      ),
-                      onPressed: _showEditNicknameDialog,
-                      tooltip: 'Edit device name',
-                    ),
-                    onTap: _showEditNicknameDialog,
-                  ),
-                  const Divider(height: 1, indent: 60),
-                  _buildSettingsTile(
-                    icon: Icons.wifi_rounded,
-                    iconColor: AppTheme.secondaryColor,
-                    iconBgColor: AppTheme.secondaryColor.withValues(alpha: 0.15),
-                    title: const Text('IP Address'),
-                    subtitle: Text(currentDevice.ipAddress),
-                    trailing: IconButton(
-                      icon: Container(
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                          borderRadius: AppRadius.smAll,
-                        ),
-                        child: const Icon(Icons.copy_rounded, size: 18),
-                      ),
-                      onPressed: () {
-                        Clipboard.setData(
-                          ClipboardData(text: currentDevice.ipAddress),
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('IP address copied to clipboard'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                      tooltip: 'Copy IP address',
-                    ),
-                  ),
-                  const Divider(height: 1, indent: 60),
-                  SwitchListTile(
-                    secondary: Container(
-                      padding: const EdgeInsets.all(AppSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: AppTheme.successColor.withValues(alpha: 0.15),
-                        borderRadius: AppRadius.mdAll,
-                      ),
-                      child: const Icon(
-                        Icons.check_circle_outline,
-                        color: AppTheme.successColor,
-                        size: 24,
-                      ),
-                    ),
-                    title: const Text('Auto-accept from trusted devices'),
-                    subtitle: const Text(
-                      'Automatically accept transfers from devices you trust',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    value: ref.watch(autoAcceptTrustedProvider),
-                    onChanged: (value) async {
-                      // FIXED: Capture ScaffoldMessenger before async gap
-                      final messenger = ScaffoldMessenger.of(context);
-
-                      await ref
-                          .read(autoAcceptTrustedProvider.notifier)
-                          .set(value);
-
-                      if (mounted) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              value
-                                  ? 'Auto-accept enabled for trusted devices'
-                                  : 'Will always ask for approval',
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xxxl),
-
-            // ============================================
-            // APPEARANCE SECTION
-            // ============================================
-            _buildSectionHeader('Appearance'),
-            const SizedBox(height: AppSpacing.md),
-
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                          borderRadius: AppRadius.mdAll,
-                        ),
-                        child: const Icon(
-                          Icons.palette_outlined,
-                          color: AppTheme.primaryColor,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Text(
-                        'Theme',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        selected: {ref.watch(themeModeProvider)},
+                        onSelectionChanged: (Set<ThemeMode> selected) => ref
+                            .read(themeModeProvider.notifier)
+                            .setThemeMode(selected.first),
                       ),
                     ],
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode_outlined, size: 18),
-                        label: Text('Dark'),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode_outlined, size: 18),
-                        label: Text('Light'),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.system,
-                        icon: Icon(Icons.brightness_auto_outlined, size: 18),
-                        label: Text('System'),
-                      ),
-                    ],
-                    selected: {ref.watch(themeModeProvider)},
-                    onSelectionChanged: (Set<ThemeMode> selected) {
-                      ref.read(themeModeProvider.notifier).setThemeMode(selected.first);
-                    },
-                    style: ButtonStyle(
-                      backgroundColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected)) {
-                          return AppTheme.primaryColor;
-                        }
-                        return Colors.transparent;
-                      }),
-                      foregroundColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected)) {
-                          return Colors.white;
-                        }
-                        return AppTheme.textSecondary;
-                      }),
-                      side: WidgetStateProperty.all(
-                        BorderSide(color: AppTheme.borderColor),
-                      ),
-                      shape: WidgetStateProperty.all(
-                        const RoundedRectangleBorder(
-                          borderRadius: AppRadius.mdAll,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+            const SizedBox(height: AppSpacing.xxl),
 
-            // ============================================
-            // TRUSTED DEVICES SECTION
-            // ============================================
-            _buildSectionHeader('Trusted Devices'),
+            // ── TRANSFER ───────────────────────────────────────────────
+            _buildSectionHeader('Transfer'),
             const SizedBox(height: AppSpacing.md),
+            _Group(
+              children: [
+                SwitchListTile(
+                  secondary: const _TileIcon(Icons.check_circle_outline),
+                  title: const Text('Auto-accept from trusted devices'),
+                  subtitle: const Text(
+                    'Automatically accept transfers from devices you trust',
+                  ),
+                  value: ref.watch(autoAcceptTrustedProvider),
+                  onChanged: (value) async {
+                    // FIXED: Capture ScaffoldMessenger before async gap
+                    final messenger = ScaffoldMessenger.of(context);
 
-            _buildTrustedDevicesSection(),
+                    await ref
+                        .read(autoAcceptTrustedProvider.notifier)
+                        .set(value);
 
-            const SizedBox(height: AppSpacing.xxxl),
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          value
+                              ? 'Auto-accept enabled for trusted devices'
+                              : 'Will always ask for approval',
+                        ),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildSettingsTile(
+                  icon: Icons.download_outlined,
+                  title: 'Download location',
+                  subtitle: _downloadDirectory ?? 'Loading…',
+                ),
+              ],
+            ),
 
-            // ============================================
-            // ABOUT SECTION
-            // ============================================
+            const SizedBox(height: AppSpacing.xxl),
+
+            // ── NETWORK ────────────────────────────────────────────────
+            _buildSectionHeader('Network'),
+            const SizedBox(height: AppSpacing.md),
+            _Group(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.wifi_rounded,
+                  title: 'IP address',
+                  subtitle: currentDevice.ipAddress,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    tooltip: 'Copy IP address',
+                    onPressed: () {
+                      Clipboard.setData(
+                        ClipboardData(text: currentDevice.ipAddress),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('IP address copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildSettingsTile(
+                  icon: Icons.numbers_outlined,
+                  title: 'Transfer port',
+                  subtitle: '${AppConfig.defaultTransferPort}–'
+                      '${AppConfig.defaultTransferPort + 5}',
+                  // The service binds the first free port in that range at
+                  // startup, so this is where to look when a peer is missing —
+                  // not a field the user can change.
+                  note: 'First free port in the range',
+                ),
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.xxl),
+
+            // ── SECURITY ───────────────────────────────────────────────
+            _buildSectionHeader('Security'),
+            const SizedBox(height: AppSpacing.md),
+            _Group(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.lock_outline,
+                  title: 'Encryption',
+                  subtitle: _encryptionSummary,
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildSettingsTile(
+                  icon: Icons.shield_outlined,
+                  title: 'Trusted devices',
+                  subtitle: trustedCount == 0
+                      ? 'Devices you approve for transfer will appear here'
+                      : '$trustedCount device'
+                          '${trustedCount == 1 ? '' : 's'} can send without asking',
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildTrustedDevicesBody(),
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.xxl),
+
+            // ── ABOUT ──────────────────────────────────────────────────
             _buildSectionHeader('About'),
             const SizedBox(height: AppSpacing.md),
-
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  _buildSettingsTile(
-                    icon: Icons.info_outline,
-                    iconColor: AppTheme.primaryColor,
-                    iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-                    title: const Text('Version'),
-                    subtitle: Text(_version),
-                  ),
-                  const Divider(height: 1, indent: 60),
-                  _buildSettingsTile(
-                    icon: Icons.system_update,
-                    iconColor: AppTheme.primaryColor,
-                    iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-                    title: const Text('Check for updates'),
-                    subtitle: Text(
-                      _checkingUpdate ? 'Checking…' : 'Get the latest version',
-                    ),
-                    trailing: _checkingUpdate
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(Icons.chevron_right,
-                            color: AppTheme.textTertiary),
-                    onTap: _checkingUpdate ? null : _handleCheckForUpdates,
-                  ),
-                  const Divider(height: 1, indent: 60),
-                  _buildSettingsTile(
-                    icon: Icons.share,
-                    iconColor: AppTheme.primaryColor,
-                    iconBgColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-                    title: const Text('Syndro'),
-                    subtitle: const Text('Fast & secure file sharing'),
-                  ),
-                ],
-              ),
+            _Group(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.info_outline,
+                  title: 'Version',
+                  subtitle: _version,
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildSettingsTile(
+                  icon: Icons.system_update_alt,
+                  title: 'Check for updates',
+                  subtitle: 'Get the latest version',
+                  trailing: _checkingUpdate
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.chevron_right, size: 18),
+                  onTap: _checkingUpdate ? null : _handleCheckForUpdates,
+                ),
+                const Divider(height: 1, indent: 60),
+                _buildSettingsTile(
+                  icon: Icons.code,
+                  title: 'GitHub',
+                  subtitle: 'Source, issues and releases',
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: _openRepository,
+                ),
+              ],
             ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+            const SizedBox(height: AppSpacing.xxl),
 
-            // Developer Credit
             Center(
-              child: Column(
-                children: [
-                  const Divider(),
-                  const SizedBox(height: AppSpacing.lg),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Made by ',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.textTertiary,
-                            ),
-                      ),
-                      Text(
-                        AppConfig.developerName,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.primaryColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg,
-                      vertical: AppSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.logoGradient,
-                      borderRadius: AppRadius.xlAll,
-                      // ignore: prefer_const_literals_to_create_immutables
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.favorite,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        SizedBox(width: AppSpacing.sm),
-                        Text(
-                          'Built with Flutter',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              child: Text(
+                'Made by ${AppConfig.developerName} · built with Flutter',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
             ),
-
-            const SizedBox(height: 100),
+            const SizedBox(height: AppSpacing.xxxl),
           ],
-        ),
         ),
       ),
     );
   }
 
-  Widget _buildTrustedDevicesSection() {
-    final trustedDevices = ref.watch(trustedDevicesProvider);
-    final transferService = ref.read(transferServiceProvider);
-
-    if (trustedDevices.isEmpty) {
-      return AppCard(
-        padding: EdgeInsets.zero,
-        child: _buildSettingsTile(
-          icon: Icons.shield_outlined,
-          iconColor: AppTheme.textTertiary,
-          iconBgColor: AppTheme.textTertiary.withValues(alpha: 0.15),
-          title: const Text('No trusted devices'),
-          subtitle: const Text(
-            'Devices you approve for transfer will appear here',
-            style: TextStyle(fontSize: 12),
-          ),
+  Future<void> _openRepository() async {
+    final uri = Uri.parse(AppConfig.repositoryUrl);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open the repository: $e'),
+          backgroundColor: AppTheme.errorColor,
         ),
       );
     }
+  }
 
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          for (int i = 0; i < trustedDevices.length; i++) ...[
-            if (i > 0) const Divider(height: 1, indent: 60),
-            _buildTrustedDeviceTile(trustedDevices[i], transferService),
-          ],
+  /// What the transfer service will actually do with an incoming payload.
+  ///
+  /// Reports the service's current setting rather than a promise: the desktop
+  /// build can run with encryption off, and the row would otherwise lie.
+  String get _encryptionSummary {
+    final enabled = ref.watch(transferServiceProvider).encryptionEnabled;
+    return enabled
+        ? 'Transfers between devices are encrypted'
+        : 'Disabled on this build — transfers are not encrypted';
+  }
+
+  /// The trusted-device list, inline under its own heading in the Security
+  /// group.
+  Widget _buildTrustedDevicesBody() {
+    final trustedDevices = ref.watch(trustedDevicesProvider);
+    if (trustedDevices.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        for (int i = 0; i < trustedDevices.length; i++) ...[
+          if (i > 0) const Divider(height: 1, indent: 60),
+          _buildTrustedDeviceTile(trustedDevices[i], ref.read(transferServiceProvider)),
         ],
-      ),
+      ],
     );
   }
 
@@ -698,27 +589,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return _buildSettingsTile(
       icon: hasPin ? Icons.verified_user : Icons.person_outline,
       iconColor: hasPin ? AppTheme.successColor : AppTheme.secondaryColor,
-      iconBgColor: (hasPin ? AppTheme.successColor : AppTheme.secondaryColor)
-          .withValues(alpha: 0.15),
-      title: Text(device.senderName),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            hasPin ? 'Pinned \u2022 $timeAgo' : 'No pin \u2022 $timeAgo',
-            style: const TextStyle(fontSize: 12),
-          ),
-        ],
-      ),
+      title: device.senderName,
+      subtitle: hasPin
+          ? 'Key pinned • trusted $timeAgo'
+          : 'No key pinned • trusted $timeAgo',
       trailing: PopupMenuButton<String>(
-        icon: Container(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-            borderRadius: AppRadius.smAll,
-          ),
-          child: const Icon(Icons.more_vert_rounded, size: 18),
-        ),
+        tooltip: 'Trust options',
+        icon: const Icon(Icons.more_vert_rounded, size: 20),
         onSelected: (value) async {
           if (value == 'rotate') {
             try {
@@ -805,12 +682,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return 'Just now';
   }
 
+  /// One row in a settings group: icon, label, current value, optional control.
+  ///
+  /// Read-only rows get no chevron and no ink response, so a value that cannot
+  /// be changed does not look like one that can.
   Widget _buildSettingsTile({
     required IconData icon,
-    required Color iconColor,
-    required Color iconBgColor,
-    required Widget title,
-    required Widget subtitle,
+    required String title,
+    String? subtitle,
+    String? note,
+    Color? iconColor,
     Widget? trailing,
     VoidCallback? onTap,
   }) {
@@ -823,41 +704,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      iconColor.withValues(alpha: 0.2),
-                      iconColor.withValues(alpha: 0.1),
-                    ],
-                  ),
-                  borderRadius: AppRadius.mdAll,
-                  border: Border.all(
-                    color: iconColor.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 22,
-                ),
-              ),
+              _TileIcon(icon, color: iconColor),
               const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    title,
-                    const SizedBox(height: AppSpacing.xs),
-                    subtitle,
+                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (note != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        note,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (trailing != null) trailing,
+              if (trailing != null) ...[
+                const SizedBox(width: AppSpacing.md),
+                trailing,
+              ],
             ],
           ),
         ),
@@ -866,6 +743,66 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildSectionHeader(String title) {
-    return SectionHeader(title: title);
+    return Padding(
+      padding: const EdgeInsets.only(left: AppSpacing.xs),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+      ),
+    );
   }
-} 
+}
+
+/// A settings group: one flat container holding rows split by hairlines.
+///
+/// The [Material] is not decoration — a [ListTile] inside a plain [Container]
+/// reports that its own ink and background may be invisible, because it looks
+/// for a surrounding Material that actually paints the group's colour.
+class _Group extends StatelessWidget {
+  const _Group({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surfaceContainer,
+      borderRadius: AppRadius.lgAll,
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.lgAll,
+          border: Border.all(color: AppTheme.outlineVariant, width: 1),
+        ),
+        child: Column(children: children),
+      ),
+    );
+  }
+}
+
+/// Leading glyph for a settings row. Tonal, not gradient: a screen where every
+/// icon glows is a screen where none of them mean anything.
+class _TileIcon extends StatelessWidget {
+  const _TileIcon(this.icon, {this.color});
+
+  final IconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = color ?? AppTheme.textSecondary;
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.12),
+        borderRadius: AppRadius.smAll,
+      ),
+      child: Icon(icon, size: 18, color: tone),
+    );
+  }
+}

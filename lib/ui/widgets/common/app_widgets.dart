@@ -11,9 +11,12 @@ import 'package:flutter/material.dart';
 import '../../theme/app_dimens.dart';
 import '../../theme/app_theme.dart';
 
-/// A rounded-square icon tile filled with the brand logo gradient and a soft
-/// purple glow. The signature Syndro accent used for logos, section markers
-/// and prominent leading icons.
+/// A rounded-square icon tile filled with the brand logo gradient.
+///
+/// [glow] is off by default. When every tile cast a purple halo, none of them
+/// read as important and the app looked like a gaming HUD; the gradient fill
+/// alone is the accent. Pass `glow: true` only where a mark should genuinely
+/// draw the eye.
 class GradientIconTile extends StatelessWidget {
   const GradientIconTile({
     super.key,
@@ -22,7 +25,7 @@ class GradientIconTile extends StatelessWidget {
     this.iconSize,
     this.radius = AppRadius.md,
     this.gradient,
-    this.glow = true,
+    this.glow = false,
   });
 
   final IconData icon;
