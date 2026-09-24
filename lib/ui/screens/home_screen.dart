@@ -1155,6 +1155,7 @@ Future<void> _showTextComposeDialog(Device device) async {
       onOpenShareDialog: _showShareModeDialog,
       onSendText: _sendTextToSelected,
       onOpenPicker: _openDesktopPicker,
+      onSendFilesTo: _openFilePickerForDevice,
       onFilesDropped: _handleDesktopFilesDropped,
       onSendToMultiple: _openFilePickerForDevices,
       onClearMultiSelect: _clearMultiSelect,

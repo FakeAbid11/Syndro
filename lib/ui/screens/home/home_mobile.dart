@@ -14,7 +14,7 @@ import 'home_device_views.dart';
 /// desktop layout and vice versa. Pure presentation: all data arrives as
 /// constructor params and all behavior as callbacks from the facade.
 class HomeMobileLayout extends StatelessWidget {
-  final dynamic currentDevice;
+  final Device currentDevice;
   final AsyncValue<List<Device>> discoveredDevicesAsync;
   final Device? selectedDevice;
   final bool isInitialized;

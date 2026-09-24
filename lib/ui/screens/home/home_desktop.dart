@@ -17,7 +17,7 @@ import 'home_device_views.dart';
 /// layout and vice versa. Pure presentation: all data arrives as constructor
 /// params and all behavior as callbacks from the facade.
 class HomeDesktopLayout extends StatelessWidget {
-  final dynamic currentDevice;
+  final Device currentDevice;
   final AsyncValue<List<Device>> discoveredDevicesAsync;
   final Device? selectedDevice;
   final bool isInitialized;
@@ -27,6 +27,10 @@ class HomeDesktopLayout extends StatelessWidget {
   final VoidCallback onOpenShareDialog;
   final VoidCallback onSendText;
   final VoidCallback onOpenPicker;
+
+  /// Opens the picker already aimed at one device, from that card's hover
+  /// action or right-click menu.
+  final void Function(Device device) onSendFilesTo;
   final void Function(List<TransferItem> items) onFilesDropped;
   final void Function(List<Device> devices) onSendToMultiple;
   final VoidCallback onClearMultiSelect;
@@ -43,6 +47,7 @@ class HomeDesktopLayout extends StatelessWidget {
     required this.onOpenShareDialog,
     required this.onSendText,
     required this.onOpenPicker,
+    required this.onSendFilesTo,
     required this.onFilesDropped,
     required this.onSendToMultiple,
     required this.onClearMultiSelect,
@@ -50,35 +55,39 @@ class HomeDesktopLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compactActions = MediaQuery.sizeOf(context).width < 720;
+    final width = MediaQuery.sizeOf(context).width;
+    final compactActions = width < 720;
     final hasMulti = selectedDevices.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
+        // The shell's brand bar owns the logo and app name, so this header
+        // names the screen instead of repeating the brand.
+        titleSpacing: AppSpacing.lg,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            GradientIconTile(
-              icon: Icons.share,
-              size: 36,
-              iconSize: 20,
-              radius: AppRadius.sm,
-              glow: false,
+            const Text('Devices'),
+            Text(
+              'Your devices on this network',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textTertiary,
+                    fontWeight: FontWeight.w400,
+                  ),
             ),
-            SizedBox(width: AppSpacing.md),
-            Text('Syndro'),
           ],
         ),
         actions: _buildAppBarActions(compactActions),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
-        child: LayoutBuilder(
+      // No gradient pane here: the Scaffold background is already the palette
+      // base, and a gradient under the largest surface is what made the old
+      // desktop UI read as heavy.
+      body: LayoutBuilder(
           builder: (context, constraints) {
-            final masterWidth =
-                (constraints.maxWidth * 0.45).clamp(300.0, 400.0).toDouble();
+            final masterWidth = (constraints.maxWidth * 0.42)
+                .clamp(300.0, 380.0)
+                .toDouble();
             final deviceColumn = HomeDeviceColumn(
               currentDevice: currentDevice,
               discoveredDevicesAsync: discoveredDevicesAsync,
@@ -86,6 +95,7 @@ class HomeDesktopLayout extends StatelessWidget {
               isInitialized: isInitialized,
               isRefreshing: isRefreshing,
               onRefresh: onRefresh,
+              onSendFilesTo: onSendFilesTo,
             );
 
             // Wide window: two-pane master–detail.
@@ -111,7 +121,9 @@ class HomeDesktopLayout extends StatelessWidget {
                 if (selectedDevice != null)
                   Positioned(
                     right: AppSpacing.xl,
-                    bottom: 80, // Raised from 20 for desktop
+                    // The desktop shell navigates from the rail, so unlike the
+                    // mobile layout nothing has to be cleared at the bottom.
+                    bottom: AppSpacing.xl,
                     child: FloatingActionButton.extended(
                       heroTag: null,
                       onPressed: onOpenPicker,
@@ -124,7 +136,7 @@ class HomeDesktopLayout extends StatelessWidget {
                 if (hasMulti)
                   Positioned(
                     right: AppSpacing.xl,
-                    bottom: 80,
+                    bottom: AppSpacing.xl,
                     child: FloatingActionButton.extended(
                       heroTag: null,
                       onPressed: () => onSendToMultiple(selectedDevices.toList()),
@@ -135,7 +147,7 @@ class HomeDesktopLayout extends StatelessWidget {
                 if (hasMulti)
                   Positioned(
                     left: AppSpacing.xl,
-                    bottom: 80,
+                    bottom: AppSpacing.xl,
                     child: FloatingActionButton(
                       heroTag: null,
                       onPressed: onClearMultiSelect,
@@ -149,7 +161,6 @@ class HomeDesktopLayout extends StatelessWidget {
             );
           },
         ),
-      ),
     );
   }
 
@@ -213,7 +224,7 @@ class HomeDesktopLayout extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: const BoxConstraints(maxWidth: 860),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
@@ -221,13 +232,25 @@ class HomeDesktopLayout extends StatelessWidget {
             children: [
               header,
               const SizedBox(height: AppSpacing.lg),
+              // The drop target is the point of this pane, so it takes the
+              // height it is given instead of floating as a fixed box in a
+              // mostly empty column — but still scrolls when the window is
+              // shorter than the prompt needs.
               Expanded(
-                child: SingleChildScrollView(
-                  child: EmptyDropZone(
-                    onFilesDropped: onFilesDropped,
-                    onPickFiles: onOpenPicker,
-                    onPickFolder: onOpenPicker,
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minHeight: constraints.maxHeight),
+                        child: EmptyDropZone(
+                          onFilesDropped: onFilesDropped,
+                          onPickFiles: onOpenPicker,
+                          onPickFolder: onOpenPicker,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

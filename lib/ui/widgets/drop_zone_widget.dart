@@ -222,34 +222,8 @@ class EmptyDropZone extends StatefulWidget {
   State<EmptyDropZone> createState() => _EmptyDropZoneState();
 }
 
-class _EmptyDropZoneState extends State<EmptyDropZone>
-    with SingleTickerProviderStateMixin {
+class _EmptyDropZoneState extends State<EmptyDropZone> {
   bool _isDragging = false;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    // FIXED (Bug #21): Stop repeating animation before disposing
-    if (_pulseController.isAnimating) {
-      _pulseController.stop();
-    }
-    _pulseController.dispose();
-    super.dispose();
-  }
 
   Future<void> _handleDrop(DropDoneDetails details) async {
     final items = <TransferItem>[];
@@ -305,6 +279,9 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
 
     Widget content = AnimatedContainer(
       duration: AppMotion.normal,
+      // Centres the prompt when the caller gives the zone room to fill, and
+      // is a no-op when it is only as tall as its own content.
+      alignment: Alignment.center,
       padding: const EdgeInsets.all(AppSpacing.xxxl),
       decoration: BoxDecoration(
         color: _isDragging
@@ -322,33 +299,28 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _isDragging ? 1.1 : _pulseAnimation.value,
-                child: Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: _isDragging
-                        ? AppTheme.primaryColor.withValues(alpha: 0.2)
-                        : AppTheme.primaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isDragging
-                        ? Icons.file_download_rounded
-                        : Icons.folder_open_rounded,
-                    size: 48,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              );
-            },
+          // A static icon, deliberately: the previous 1500ms pulse looped
+          // forever on a screen the user is reading, not waiting on.
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(
+                alpha: _isDragging ? 0.2 : 0.1,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _isDragging
+                  ? Icons.file_download_rounded
+                  : Icons.folder_open_rounded,
+              size: 48,
+              color: AppTheme.primaryColor,
+            ),
           ),
           const SizedBox(height: AppSpacing.xxl),
           Text(
             _isDragging ? 'Drop files here!' : 'No files selected',
+            textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: _isDragging
                       ? AppTheme.primaryColor
@@ -367,15 +339,18 @@ class _EmptyDropZoneState extends State<EmptyDropZone>
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.xxl),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          // Wrap, not Row: two labelled buttons do not fit a narrow detail
+          // pane, and this is the one place the drop zone has to say so.
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: AppSpacing.lg,
+            runSpacing: AppSpacing.md,
             children: [
               _ActionButton(
                 icon: Icons.insert_drive_file_rounded,
                 label: 'Files',
                 onTap: widget.onPickFiles,
               ),
-              const SizedBox(width: AppSpacing.lg),
               _ActionButton(
                 icon: Icons.folder_rounded,
                 label: 'Folder',

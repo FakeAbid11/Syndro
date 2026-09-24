@@ -89,3 +89,9 @@ coverage/
 # macOS (generated / ephemeral)
 **/macos/Flutter/ephemeral/
 **/macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Desktop UI screenshots rendered by test/ui/desktop_goldens_test.dart.
+# Produced with the test toolchain's placeholder font on one OS, so committing
+# them would make CI on the other platforms fail on differences that mean
+# nothing. Regenerate with SYNDRO_GOLDENS=1 --update-goldens to review by hand.
+test/ui/goldens/

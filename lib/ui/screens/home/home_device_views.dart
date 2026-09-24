@@ -18,13 +18,17 @@ import '../home_screen_strings.dart';
 /// Windows/Linux/macOS desktop layout. All provider interactions (selection,
 /// subnet filtering) live here; only refresh is delegated to the parent.
 class HomeDeviceColumn extends ConsumerWidget {
-  final dynamic currentDevice;
+  final Device currentDevice;
   final AsyncValue<List<Device>> discoveredDevicesAsync;
   final Device? selectedDevice;
   final bool isInitialized;
   final bool isRefreshing;
   final double bottomPadding;
   final Future<void> Function() onRefresh;
+
+  /// Opens the picker for one specific device, bypassing the selection step.
+  /// Desktop only; the mobile layout sends through the selection plus its FAB.
+  final void Function(Device device)? onSendFilesTo;
 
   const HomeDeviceColumn({
     super.key,
@@ -35,6 +39,7 @@ class HomeDeviceColumn extends ConsumerWidget {
     required this.isRefreshing,
     required this.onRefresh,
     this.bottomPadding = 0,
+    this.onSendFilesTo,
   });
 
   @override
@@ -109,11 +114,13 @@ class HomeDeviceColumn extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'This Device',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
+                    Flexible(
+                      child: Text(
+                        'This Device',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     const StatusBadge(
@@ -126,6 +133,8 @@ class HomeDeviceColumn extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.xs + 2),
                 Text(
                   displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -139,11 +148,13 @@ class HomeDeviceColumn extends ConsumerWidget {
                       color: AppTheme.textTertiary,
                     ),
                     const SizedBox(width: AppSpacing.xs),
-                    Text(
-                      currentDevice.ipAddress,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textTertiary,
-                          ),
+                    Flexible(
+                      child: Text(
+                        currentDevice.ipAddress,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ),
                   ],
                 ),
@@ -176,18 +187,7 @@ class HomeDeviceColumn extends ConsumerWidget {
     if (!isInitialized) {
       // Skeleton loaders match the card layout the list will settle into,
       // instead of a bare spinner (the discovery service takes a moment).
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-          ],
-        ),
-      );
+      return const DeviceSkeletonList();
     }
 
     return discoveredDevicesAsync.when(
@@ -276,6 +276,9 @@ class HomeDeviceColumn extends ConsumerWidget {
             itemCount: sameSubnetDevices.length,
             itemBuilder: (context, index) {
               final device = sameSubnetDevices[index];
+              // You cannot send a file to the machine already holding it, so
+              // the row for this device gets no send affordance.
+              final isSelf = device.id == currentDevice.id;
               final selectedDevices = ref.watch(selectedDevicesProvider);
               final isMultiSelectMode = selectedDevices.isNotEmpty;
               final isSelected = selectedDevices.any((d) => d.id == device.id) ||
@@ -310,24 +313,16 @@ class HomeDeviceColumn extends ConsumerWidget {
                       ref.read(selectedDeviceProvider.notifier).state = null;
                     }
                   },
+                  onSendFiles: isSelf || onSendFilesTo == null
+                      ? null
+                      : () => onSendFilesTo!(device),
                 ),
               );
             },
           ),
         );
       },
-      loading: () => const Padding(
-        padding: EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-            SizedBox(height: AppSpacing.md),
-            DeviceCardSkeleton(),
-          ],
-        ),
-      ),
+      loading: () => const DeviceSkeletonList(),
       error: (error, stack) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -360,6 +355,27 @@ class HomeDeviceColumn extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Placeholder cards shown while discovery has not produced a list yet.
+///
+/// Scrollable rather than a fixed [Column]: three cards are taller than the
+/// device list ever gets on a short desktop window, and a Column has no way to
+/// cope with that.
+class DeviceSkeletonList extends StatelessWidget {
+  const DeviceSkeletonList({super.key, this.count = 3});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      itemCount: count,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+      itemBuilder: (_, __) => const DeviceCardSkeleton(),
     );
   }
 }
