@@ -44,6 +44,7 @@ class DeviceCard extends ConsumerStatefulWidget {
 class _DeviceCardState extends ConsumerState<DeviceCard> {
   bool _isTapped = false;
   bool _isHovered = false;
+  bool _hasFocus = false;
   Timer? _tapDebounceTimer;
 
   static final bool _showsPointerActions =
@@ -218,17 +219,22 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
             borderRadius: AppRadius.xlAll,
             // Selection is carried by fill plus border weight, not by a glow:
             // a shadowed card next to a shadowed card stops meaning anything.
+            // Keyboard focus gets its own weight so Tab is visible without
+            // having to guess which card the ink ring is on.
             border: Border.all(
-              color: widget.isSelected
+              color: widget.isSelected || _hasFocus
                   ? AppTheme.primaryColor
                   : AppTheme.outlineVariant,
-              width: widget.isSelected ? 1.6 : 1,
+              width: _hasFocus ? 2.5 : (widget.isSelected ? 1.6 : 1),
             ),
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: _handleTap,
+              onFocusChange: (focused) {
+                if (mounted) setState(() => _hasFocus = focused);
+              },
               onLongPress: _handleLongPress,
               onSecondaryTapDown: _showsPointerActions
                   ? (event) => _showContextMenu(event.globalPosition)

@@ -155,6 +155,7 @@ Future<List<String>> pumpAndCollectLayoutErrors(
   int settleMs = 400,
   Future<void> Function(WidgetTester tester)? interact,
   TransferService? service,
+  double textScale = 1.0,
 }) async {
   tester.view.physicalSize = window.size;
   tester.view.devicePixelRatio = 1.0;
@@ -179,7 +180,19 @@ Future<List<String>> pumpAndCollectLayoutErrors(
           transferServiceProvider.overrideWithValue(ownedService),
           ...overrides,
         ],
-        child: MaterialApp(theme: AppTheme.darkTheme, home: child),
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          // MaterialApp's builder runs inside the view-derived MediaQuery, so
+          // overriding only the scaler leaves the window size intact.
+          builder: textScale == 1.0
+              ? null
+              : (context, appChild) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(textScale)),
+                  child: appChild!,
+                ),
+          home: child,
+        ),
       ),
     );
     // Two bounded passes after the first frame: an AsyncValue renders its
@@ -225,6 +238,7 @@ Future<void> pumpAndExpectCleanLayout(
   int settleMs = 400,
   Future<void> Function(WidgetTester tester)? interact,
   TransferService? service,
+  double textScale = 1.0,
 }) async {
   final messages = await pumpAndCollectLayoutErrors(
     tester,
@@ -234,6 +248,7 @@ Future<void> pumpAndExpectCleanLayout(
     settleMs: settleMs,
     interact: interact,
     service: service,
+    textScale: textScale,
   );
   if (messages.isEmpty) return;
   fail('${window.label} reported ${messages.length} layout error(s):\n'

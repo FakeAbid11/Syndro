@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syndro/ui/screens/main_navigation_screen.dart';
+import 'package:syndro/ui/widgets/device_card.dart';
 import 'package:syndro/ui/widgets/drop_send_sheet.dart';
 
 import 'harness.dart';
@@ -102,6 +104,54 @@ void main() {
       await shellAt(tester, window, interact: (t) async {
         await t.tap(find.byIcon(Icons.settings_outlined));
       });
+    });
+  }
+
+  // §12: large system text must not cost the user a control. The framework's
+  // test font is already about twice as wide as the real one per glyph, so
+  // this is a deliberately harsh version of the accessibility setting rather
+  // than a literal 1.3x — a pass here means the layout flexes, and a failure
+  // names the row that does not.
+  testWidgets('a device card can be focused and activated from the keyboard',
+      (tester) async {
+    var taps = 0;
+    await pumpAndExpectCleanLayout(
+      tester,
+      desktopWindows[1],
+      Center(
+        child: SizedBox(
+          width: 320,
+          child: DeviceCard(
+            device: testDevice(),
+            onTap: () => taps++,
+            onSendFiles: () {},
+          ),
+        ),
+      ),
+      interact: (t) async {
+        // Tab from nowhere rather than grabbing the node directly: the point is
+        // that the traversal order reaches the card, which is what a person on
+        // a keyboard actually does.
+        await t.sendKeyDownEvent(LogicalKeyboardKey.tab);
+        await t.pump();
+        expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue,
+            reason: 'Tab must land somewhere in the card');
+        await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      },
+    );
+    expect(taps, 1, reason: 'Enter should activate the card it focuses');
+  });
+
+  for (final window in desktopWindows) {
+    testWidgets('Devices survives enlarged text at ${window.label}',
+        (tester) async {
+      await pumpAndExpectCleanLayout(
+        tester,
+        window,
+        const MainNavigationScreen(),
+        overrides: [...staticNetwork(), ...seededHistory()],
+        textScale: 1.4,
+      );
     });
   }
 }
