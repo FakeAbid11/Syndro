@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,6 +64,7 @@ final List<Device> twoDevices = [
 const _secureStorageChannel =
     MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 const _transferEventsChannel = EventChannel('com.syndro.app/transfer_events');
+const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
 /// Stubs the plugin channels the shell touches during `build`, so a layout
 /// test never dies on `MissingPluginException` half-way through a tree.
@@ -85,6 +88,13 @@ void installUiChannelStubs({Map<String, Object> prefs = const {}}) {
     _transferEventsChannel,
     MockStreamHandler.inline(onListen: (a, e) {}, onCancel: (a) {}),
   );
+  // Settings resolves the download directory through path_provider on first
+  // build. Point it at a scratch directory: the alternative is a
+  // MissingPluginException, and the real user's Downloads is not a test dir.
+  final scratch = Directory.systemTemp.createTempSync('syndro-ui-test');
+  messenger.setMockMethodCallHandler(_pathProviderChannel, (call) async {
+    return scratch.path;
+  });
 }
 
 void uninstallUiChannelStubs() {
@@ -137,12 +147,16 @@ Future<List<String>> pumpAndCollectLayoutErrors(
   List<Override> overrides = const [],
   int settleMs = 400,
   Future<void> Function(WidgetTester tester)? interact,
+  TransferService? service,
 }) async {
   tester.view.physicalSize = window.size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final service = TransferService(FileService());
+  // A caller that brings its own service also owns disposing it; injecting a
+  // second override for the same provider would leave it ambiguous which one
+  // the tree actually reads.
+  final ownedService = service ?? TransferService(FileService());
 
   // Installed before the first pump: RenderFlex reports overflow while it is
   // painting, so a recorder added after `pumpWidget` misses the first frame —
@@ -155,7 +169,7 @@ Future<List<String>> pumpAndCollectLayoutErrors(
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          transferServiceProvider.overrideWithValue(service),
+          transferServiceProvider.overrideWithValue(ownedService),
           ...overrides,
         ],
         child: MaterialApp(theme: AppTheme.darkTheme, home: child),
@@ -175,13 +189,23 @@ Future<List<String>> pumpAndCollectLayoutErrors(
   } finally {
     recorder.restore();
   }
-  // The service constructor arms two periodic timers (pending-request and
-  // session cleanup). Left running, `flutter test` fails the test for pending
-  // timers regardless of what the layout did. Cancelling them needs real
-  // async (a platform-channel subscription close), which fake-async never
-  // delivers, hence runAsync.
-  await tester.runAsync(service.dispose);
+  if (service == null) {
+    // Cancelling the service's periodic cleanup needs real async (a
+    // platform-channel subscription close), which fake-async never delivers.
+    await tester.runAsync(ownedService.dispose);
+  }
   return recorder.messages;
+}
+
+/// Tears the tree down so every `State.dispose()` runs.
+///
+/// `flutter_test` fails a test that still owns a pending timer, and it checks
+/// before tearing the tree down — so a screen that arms its own periodic timer
+/// (the progress page samples speed once a second) needs this called after the
+/// last assertion.
+Future<void> unmountTree(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(milliseconds: 50));
 }
 
 /// [pumpAndCollectLayoutErrors] plus the assertion a layout test is really
@@ -193,6 +217,7 @@ Future<void> pumpAndExpectCleanLayout(
   List<Override> overrides = const [],
   int settleMs = 400,
   Future<void> Function(WidgetTester tester)? interact,
+  TransferService? service,
 }) async {
   final messages = await pumpAndCollectLayoutErrors(
     tester,
@@ -201,6 +226,7 @@ Future<void> pumpAndExpectCleanLayout(
     overrides: overrides,
     settleMs: settleMs,
     interact: interact,
+    service: service,
   );
   if (messages.isEmpty) return;
   fail('${window.label} reported ${messages.length} layout error(s):\n'
@@ -239,6 +265,7 @@ Future<void> pumpShellForScreenshot(
   Brightness brightness = Brightness.dark,
   List<Override> overrides = const [],
   Future<void> Function(WidgetTester tester)? interact,
+  Widget? child,
 }) async {
   tester.view.physicalSize = window.size;
   tester.view.devicePixelRatio = 1.0;
@@ -276,7 +303,7 @@ Future<void> pumpShellForScreenshot(
           theme: brightness == Brightness.dark
               ? AppTheme.darkTheme
               : AppTheme.lightTheme,
-          home: const MainNavigationScreen(),
+          home: child ?? const MainNavigationScreen(),
         ),
       ),
     );

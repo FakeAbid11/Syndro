@@ -10,6 +10,7 @@ import '../../core/models/device.dart';
 import '../../core/models/transfer.dart';
 import '../../core/providers/transfer_provider.dart';
 import '../../core/services/background_transfer_service.dart';
+import '../../core/utils/byte_formatter.dart';
 
 import '../../core/utils/app_logger.dart';
 class TransferProgressScreen extends ConsumerStatefulWidget {
@@ -31,9 +32,7 @@ class TransferProgressScreen extends ConsumerStatefulWidget {
       _TransferProgressScreenState();
 }
 
-class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
+class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen> {
   StreamSubscription<Transfer>? _transferSubscription;
   Transfer? _currentTransfer;
   int _currentFileIndex = 0;
@@ -46,17 +45,6 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   @override
   void initState() {
     super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    Timer(const Duration(seconds: 30), () {
-      if (mounted && _pulseController.isAnimating) {
-        _pulseController.stop();
-      }
-    });
 
     // Record transfer start time for speed calculation
     _transferStartTime = DateTime.now();
@@ -170,15 +158,6 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   void dispose() {
     // FIXED (Bug #5): Stop animation BEFORE disposing
     try {
-      if (_pulseController.isAnimating) {
-        _pulseController.stop();
-      }
-      _pulseController.dispose();
-    } catch (e) {
-      AppLogger.info('Error disposing pulse controller: $e');
-    }
-    
-    try {
       _transferSubscription?.cancel();
       _transferSubscription = null;
     } catch (e) {
@@ -268,18 +247,15 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
             tooltip: 'Close',
           ),
         ),
-        body: Container(
-          // FIX: Removed const - AppTheme.backgroundGradient is not a compile-time constant
-          decoration: BoxDecoration(
-            gradient: AppTheme.backgroundGradient,
-          ),
-          child: SafeArea(
+        body: SafeArea(
+          child: ResponsiveCenter(
+            maxWidth: 720,
             child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: Column(
                 children: [
                   _buildDeviceCard(),
-                  const SizedBox(height: AppSpacing.xxxl),
+                  const SizedBox(height: AppSpacing.lg),
                   Expanded(child: _buildProgressSection()),
                   _buildActionButton(),
                 ],
@@ -295,33 +271,43 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     final accent =
         widget.isSender ? AppTheme.primaryColor : AppTheme.successColor;
     return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.xl),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: [
-          GradientIconTile(
-            icon:
-                widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
-            size: 56,
-            radius: AppRadius.lg,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [accent, accent.withValues(alpha: 0.7)],
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: AppRadius.smAll,
+            ),
+            child: Icon(
+              widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
+              size: 18,
+              color: accent,
             ),
           ),
-          const SizedBox(width: AppSpacing.lg),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   widget.isSender ? 'Sending to' : 'Receiving from',
-                  style: Theme.of(context).textTheme.labelMedium,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: AppSpacing.xs + 2),
                 Text(
                   widget.remoteDevice?.name ?? 'Unknown Device',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -394,26 +380,22 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildWaitingState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _StatusColumn(
       children: [
-        AnimatedBuilder(
-          animation: _pulseController,
-          builder: (context, child) {
-            return Container(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor
-                    .withValues(alpha: 0.1 + _pulseController.value * 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
-                size: 64,
-                color: AppTheme.primaryColor,
-              ),
-            );
-          },
+        // A static disc. This used to breathe on a 1500ms loop until a 30s
+        // timer stopped it, which is the opposite of what a screen the user is
+        // waiting on should do.
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            widget.isSender ? Icons.upload_rounded : Icons.download_rounded,
+            size: 64,
+            color: AppTheme.primaryColor,
+          ),
         ),
         const SizedBox(height: AppSpacing.xxxl),
         Text(
@@ -446,29 +428,45 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
 
     return Column(
       children: [
+        // One compact card: what is moving, how far it has got, and the three
+        // numbers that matter. This used to be a file card plus two stat cards
+        // plus a list, which read as a dashboard rather than a progress bar.
         AppCard(
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  GradientIconTile(
-                    icon: _getFileIcon(currentFile.name),
-                    size: 44,
-                    radius: AppRadius.md,
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                      borderRadius: AppRadius.smAll,
+                    ),
+                    child: Icon(
+                      _getFileIcon(currentFile.name),
+                      size: 18,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           currentFile.name,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: AppSpacing.xs),
+                        const SizedBox(height: 2),
                         Text(
                           'File ${_currentFileIndex + 1} of ${widget.items.length}',
                           style: Theme.of(context).textTheme.bodySmall,
@@ -476,85 +474,53 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
                       ],
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.md),
+                  Text(
+                    '${percentage.toStringAsFixed(0)}%',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.md),
               ClipRRect(
                 borderRadius: AppRadius.smAll,
                 child: LinearProgressIndicator(
                   value: percentage / 100,
-                  minHeight: 12,
+                  minHeight: 6,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: AppSpacing.xl,
+                runSpacing: AppSpacing.xs,
                 children: [
-                  Text(
-                    '${_formatSize(bytesTransferred)} / ${_formatSize(totalBytes)}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  _StatChip(
+                    icon: Icons.swap_vert,
+                    label: '${ByteFormatter.format(bytesTransferred)} / '
+                        '${ByteFormatter.format(totalBytes)}',
                   ),
-                  Text(
-                    '${percentage.toStringAsFixed(1)}%',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppTheme.primaryColor,
-                        ),
+                  // Both report honestly: speed shows "Calculating…" until the
+                  // sample window fills, and the estimate is "--:--" while the
+                  // speed is still zero.
+                  _StatChip(
+                    icon: Icons.speed,
+                    label: _getSpeedDisplay(),
+                  ),
+                  _StatChip(
+                    icon: Icons.timer_outlined,
+                    label: _calculateRemainingTime(),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.xxl),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.speed,
-                label: 'Speed',
-                value: _getSpeedDisplay(),
-                color: AppTheme.accentColor,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.timer_outlined,
-                label: 'Remaining',
-                value: _calculateRemainingTime(),
-                color: AppTheme.secondaryColor,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xxl),
+        const SizedBox(height: AppSpacing.lg),
         Expanded(child: _buildFileList()),
       ],
-    );
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return AppCard(
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
     );
   }
 
@@ -619,26 +585,19 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   Widget _buildPausedState() {
     _speed = 0;
     _lastBytes = _currentTransfer?.progress.bytesTransferred ?? 0;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _StatusColumn(
       children: [
-        AnimatedBuilder(
-          animation: _pulseController,
-          builder: (context, child) {
-            return Container(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
-              decoration: BoxDecoration(
-                color: AppTheme.warningColor
-                    .withValues(alpha: 0.15 + _pulseController.value * 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.pause_circle_outline,
-                size: 80,
-                color: AppTheme.warningColor,
-              ),
-            );
-          },
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          decoration: BoxDecoration(
+            color: AppTheme.warningColor.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.pause_circle_outline,
+            size: 80,
+            color: AppTheme.warningColor,
+          ),
         ),
         const SizedBox(height: AppSpacing.xxxl),
         Text(
@@ -672,8 +631,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildCompletedState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _StatusColumn(
       children: [
         Container(
           padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -715,8 +673,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildFailedState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _StatusColumn(
       children: [
         Container(
           padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -755,8 +712,7 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
   }
 
   Widget _buildCancelledState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _StatusColumn(
       children: [
         Container(
           padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -921,15 +877,61 @@ class _TransferProgressScreenState extends ConsumerState<TransferProgressScreen>
     if (elapsed.inSeconds < _calculatingDurationSeconds) {
       return 'Calculating...';
     }
-    return '${_formatSize(_speed.toInt())}/s';
+    return '${ByteFormatter.format(_speed.toInt())}/s';
   }
+}
 
-  String _formatSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+/// One figure on the progress line: an icon, a value.
+///
+/// The icon is not decoration — the three figures are bytes, rate and estimate,
+/// and without a marker each is guessable from its shape alone.
+class _StatChip extends StatelessWidget {
+  const _StatChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppTheme.textTertiary),
+        const SizedBox(width: AppSpacing.sm - 2),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+/// A status message that stays readable in a window that is shorter than it.
+///
+/// Centres itself when the viewport has room, and gains a scroll axis when it
+/// does not. The plain `Column(mainAxisAlignment: center)` these states used to
+/// return overflowed by ~50px on a 915x412 landscape window.
+class _StatusColumn extends StatelessWidget {
+  const _StatusColumn({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: children,
+            ),
+          ),
+        );
+      },
+    );
   }
 }
