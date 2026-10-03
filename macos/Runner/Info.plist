@@ -38,5 +38,25 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2024 Syndro. All rights reserved.</string>
+
+	<!-- Syndro is a LAN-only app: it runs an HTTP server on 8765-8776 for
+	     peer-to-peer transfer and its own HTTP client talks cleartext to those
+	     peers. App Transport Security blocks arbitrary cleartext loads by
+	     default, so without NSAllowsLocalNetworking every transfer on macOS
+	     fails at the URLSession layer while the same code works on Android.
+	     Scoped to local networking rather than NSAllowsArbitraryLoads: the app
+	     does make one non-local request, to api.github.com for update checks,
+	     and that stays HTTPS. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<!-- macOS 15 (Sequoia) and later refuse local-network access without a
+	     declared purpose string. This app exists to reach other devices on the
+	     LAN, so the string is shown verbatim in the system permission prompt. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Syndro finds and transfers files directly to other devices on your local network.</string>
 </dict>
 </plist>
