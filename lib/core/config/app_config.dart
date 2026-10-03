@@ -83,11 +83,30 @@ class AppConfig {
   /// Distinct from all discovery/transfer/web-share ports above.
   static const int singleInstancePort = 8780;
 
-  /// List of ports to scan for device discovery
+  /// Ports probed when actively scanning for peers.
+  ///
+  /// Only the ports this build can actually bind. The transfer server walks
+  /// 8765–8770, the web share/receive servers 8766–8776, and the UDP discovery
+  /// socket 8771+. 50500 and 50050 were listed here but nothing in the app ever
+  /// bound them, so every scan cycle opened two dead TCP connections per host
+  /// for nothing.
+  ///
+  /// With [maxIpsPerScan] addresses that is the difference between 8 and 6
+  /// connection attempts per host, every [discoveryScanIntervalSeconds].
   static const List<int> discoveryPorts = [
-    8765, 8766, 8767, 8768, 8769, 8770,
-    50500, 50050,
+    8765, 8766, 8767, 8768, 8769, 8770, 8771,
   ];
+
+  /// Upper bound on hosts probed per scan cycle.
+  ///
+  /// A /16 sweep at 500 hosts x 7 ports is 3,500 outbound connections every
+  /// 10 seconds, sustained for as long as the app runs. Keep this modest: peers
+  /// announce themselves over UDP broadcast anyway, so the active scan is only
+  /// for the case where a datagram was missed.
+  static const int maxIpsPerScan = 64;
+
+  /// How often the active scan runs.
+  static const int discoveryScanIntervalSeconds = 30;
 
   /// Device discovery timeout in seconds
   static const int discoveryTimeoutSeconds = 30;

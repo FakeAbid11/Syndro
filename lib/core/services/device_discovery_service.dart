@@ -408,47 +408,60 @@ class DeviceDiscoveryService {
     if (_isDisposed) return;
 
     // FIX: Immediate initial scan (no delay) for faster first discovery
+    if (_isDisposed) return;
+
+    // Immediate initial scan (no delay) for faster first discovery
     _performScan();
 
-    // Then scan every 10 seconds (reduced from 5s to save CPU/battery)
-    _scanTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!_isDisposed) {
-        _performScan();
-      }
-    });
+    _scanTimer = Timer.periodic(
+      const Duration(seconds: AppConfig.discoveryScanIntervalSeconds),
+      (_) {
+        if (!_isDisposed) {
+          _performScan();
+        }
+      },
+    );
   }
 
   Future<void> _performScan() async {
-    if (_isScanning || _isDisposed) return;
+    if (_isDisposed) return;
 
-    // Refresh IPs periodically
-    try {
-      _localIps = await _getAllLocalIps();
-
-      // FIX: Handle empty IP list gracefully
-      if (_localIps.isEmpty) {
-        AppLogger.info('No valid IP addresses, skipping scan');
-        return;
-      }
-
-      _subnets = _localIps
-          .map((ip) => _getSubnetFromIp(ip))
-          .whereType<String>()
-          .toSet()
-          .toList();
-    } catch (e) {
-      AppLogger.error('Error refreshing IPs: $e');
-      return;
-    }
-
-    if (_subnets.isEmpty) {
-      AppLogger.info('No valid subnets, skipping scan');
-      return;
-    }
-
+    // Claim the scan slot *before* the first await.
+    //
+    // The guard used to be tested here and only set some lines later, after
+    // `_getAllLocalIps()` (up to 3s) and the subnet derivation. Two timer ticks
+    // could both pass that check while the first was still awaiting, so two full
+    // subnet sweeps ran concurrently and doubled the outbound connections for no
+    // benefit.
+    if (_isScanning) return;
     _setScanning(true);
 
     try {
+      // Refresh IPs periodically
+      try {
+        _localIps = await _getAllLocalIps();
+
+        // FIX: Handle empty IP list gracefully
+        if (_localIps.isEmpty) {
+          AppLogger.info('No valid IP addresses, skipping scan');
+          return;
+        }
+
+        _subnets = _localIps
+            .map((ip) => _getSubnetFromIp(ip))
+            .whereType<String>()
+            .toSet()
+            .toList();
+      } catch (e) {
+        AppLogger.error('Error refreshing IPs: $e');
+        return;
+      }
+
+      if (_subnets.isEmpty) {
+        AppLogger.info('No valid subnets, skipping scan');
+        return;
+      }
+
       await _scanNetwork();
     } catch (e) {
       AppLogger.error('Scan error: $e');
@@ -505,10 +518,9 @@ class DeviceDiscoveryService {
     }
 
     // OPTIMIZATION: Limit total IPs to scan per cycle to prevent overwhelming the network
-    const maxIpsPerScan = 500;
-    if (ipsToScan.length > maxIpsPerScan) {
-      // Take first maxIpsPerScan (prioritized nearby IPs)
-      ipsToScan.removeRange(maxIpsPerScan, ipsToScan.length);
+    if (ipsToScan.length > AppConfig.maxIpsPerScan) {
+      // Take the nearby IPs first — the list is already proximity-ordered.
+      ipsToScan.removeRange(AppConfig.maxIpsPerScan, ipsToScan.length);
     }
 
     if (ipsToScan.isEmpty) return;

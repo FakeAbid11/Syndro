@@ -37,6 +37,30 @@ import 'core/utils/app_logger.dart';
 /// Held for the process lifetime so the single-instance listener stays bound.
 SingleInstanceGuard? _instanceGuard;
 
+/// The app's DI container, held at file scope so the window-close path can
+/// dispose it.
+///
+/// It has to be reachable from `onWindowClose`, which is a callback on the
+/// window plugin rather than something inside `main()`'s scope. Without this,
+/// the container was never disposed and every `ref.onDispose` in the app was
+/// dead code: `TransferService.dispose()` (HTTP server, timers, stream
+/// controllers) and `DeviceDiscoveryService.dispose()` (UDP socket, timers)
+/// only ever ran by OS process teardown.
+ProviderContainer? _container;
+
+/// Disposes the DI container exactly once.
+Future<void> _disposeContainer() async {
+  final container = _container;
+  if (container == null) return;
+  _container = null;
+  try {
+    container.dispose();
+    AppLogger.info('✅ Provider container disposed');
+  } catch (e) {
+    AppLogger.warn('⚠️ Error disposing provider container: $e');
+  }
+}
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -169,6 +193,7 @@ void main(List<String> args) async {
 
   // Create the ProviderContainer to pre-initialize services
   final container = ProviderContainer();
+  _container = container;
 
   // PRE-INITIALIZE device discovery service BEFORE app loads
   AppLogger.info('🚀 Pre-initializing device discovery...');
@@ -523,7 +548,11 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
         } catch (e) {
           AppLogger.warn('⚠️ Error closing database: $e');
         }
-        
+
+        // Dispose the DI container so TransferService and
+        // DeviceDiscoveryService actually release their servers and timers.
+        await _disposeContainer();
+
         // Dispose system tray
         await SystemTrayService.dispose();
         
@@ -545,6 +574,7 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       } catch (dbError) {
         AppLogger.warn('⚠️ Database close error in fallback: $dbError');
       }
+      await _disposeContainer();
       try {
         await SystemTrayService.dispose();
         AppLogger.info('✅ System tray disposed in fallback');

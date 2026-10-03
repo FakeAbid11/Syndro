@@ -1043,6 +1043,11 @@ class TransferService {
     for (int p = port; p <= port + 5; p++) {
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, p);
+        // Bound how long a connection may sit idle. This was never set, so a
+        // client could open a socket and hold it, and each in-flight handler can
+        // buffer up to 10 MB of request body. `HttpServer.maxConnections` would
+        // cap the count too, but this SDK's dart:io does not expose it.
+        _server!.idleTimeout = const Duration(seconds: 30);
         AppLogger.info('🚀 Transfer server running on port ${_server!.port}');
         AppLogger.info(
             '🔐 Encryption: ${encryptionEnabled ? "ENABLED" : "DISABLED"}');
