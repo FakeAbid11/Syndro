@@ -82,12 +82,16 @@ jobs:
               # the released artifact was older than the one before it while
               # looking newer in the build-number field.
               CURRENT="$(grep -E '^version:' pubspec.yaml | head -1 | sed -E 's/^version:[[:space:]]*//; s/\+.*$//')"
-              if [ -n "$CURRENT" ]; then
-                HIGHEST="$(printf '%s\n%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)"
-                if [ "$HIGHEST" != "$VERSION" ] || [ "$VERSION" = "$CURRENT" ]; then
-                  echo "::error::Refusing to release $VERSION: pubspec.yaml is already at $CURRENT. A release must be strictly newer. (Current history: 1.2.2)"
-                  exit 1
-                fi
+              if [ -z "$CURRENT" ] || ! echo "$CURRENT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                # Fail closed. A guard that cannot read the current version and
+                # then lets the release through is not a guard.
+                echo "::error::Could not read a version from pubspec.yaml (got '$CURRENT'), so the release cannot be checked against it. Aborting rather than risking a downgrade."
+                exit 1
+              fi
+              HIGHEST="$(printf '%s\n%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)"
+              if [ "$HIGHEST" != "$VERSION" ] || [ "$VERSION" = "$CURRENT" ]; then
+                echo "::error::Refusing to release $VERSION: pubspec.yaml is already at $CURRENT. A release must be strictly newer. (Current history: 1.2.2)"
+                exit 1
               fi
 
               TAG="v$VERSION"
@@ -284,7 +288,7 @@ jobs:
             if gh release view "$TAG" >/dev/null 2>&1; then
               gh release upload "$TAG" dist/Syndro-Setup-*.exe dist/Syndro-Windows-*.zip --clobber && rc=0 || rc=$?
             else
-              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-Setup-*.exe dist/Syndro-Windows-*.zip && rc=0 || rc=$?
+              gh release create "$TAG" --title "Syndro $TAG" --draft dist/Syndro-Setup-*.exe dist/Syndro-Windows-*.zip && rc=0 || rc=$?
             fi
             if [ "$rc" -eq 0 ]; then
               echo "Attached installer + ZIP to $TAG"
@@ -443,7 +447,7 @@ jobs:
             if gh release view "$TAG" >/dev/null 2>&1; then
               gh release upload "$TAG" dist/Syndro-*.apk --clobber && rc=0 || rc=$?
             else
-              gh release create "$TAG" --title "Syndro $TAG" dist/Syndro-*.apk && rc=0 || rc=$?
+              gh release create "$TAG" --title "Syndro $TAG" --draft dist/Syndro-*.apk && rc=0 || rc=$?
             fi
             if [ "$rc" -eq 0 ]; then
               echo "Attached APKs to $TAG"
@@ -474,12 +478,18 @@ jobs:
              needs.prepare.outputs.do_release == 'true' &&
              needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ident.outputs.tag }}
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
       VER: ${{ needs.prepare.outputs.version }}
       SYNDRO_UPDATE_SIGNING_SEED: ${{ secrets.SYNDRO_UPDATE_SIGNING_SEED }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Identify release
+        id: ident
+        run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -537,6 +547,37 @@ jobs:
           for attempt in 1 2 3 4 5; do
             if gh release upload "$TAG" update-manifest.json --clobber; then
               echo "Attached update-manifest.json to $TAG"
+              exit 0
+            fi
+            echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
+            sleep 30
+          done
+          exit 1
+
+  # Publication is the last step, and only if signing succeeded.
+  #
+  # The release is created as a draft by the windows/android jobs because those
+  # have to run first to produce the assets that get signed. Undrafting used to
+  # happen as a side effect of `gh release create`, which meant the release was
+  # already public before the sign job ran: run 37154577642 published v1.2.3 and
+  # *then* failed on the missing seed, leaving a live release with no signed
+  # manifest. Failing closed while the release is already public prevents
+  # nothing. Nothing becomes visible until this job succeeds.
+  publish:
+    name: Publish release
+    needs: [sign]
+    if: ${{ always() && needs.sign.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.sign.outputs.tag }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Undraft release
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if gh release edit "$TAG" --draft=false; then
+              echo "Published $TAG"
               exit 0
             fi
             echo "::warning::Attempt $attempt failed (GitHub API flaky?) - retrying in 30s"
