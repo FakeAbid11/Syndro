@@ -71,7 +71,26 @@ void main() {
       );
 
       h.sender.service.resumeTransfer(transferId);
-      await sendFuture;
+
+      // Bound this so an orphaned pause gate reports itself instead of
+      // surfacing as an opaque test-level timeout. `resumeTransfer` completes the
+      // gate recorded in `_pauseGates`; if that entry has gone, the sender is
+      // left parked on `await gate.future` and the send never settles. That has
+      // reproduced roughly one run in three; naming it here makes the failure
+      // legible rather than a bare "test timed out after 90 seconds".
+      await sendFuture.timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => fail(
+          'the send never settled after resumeTransfer. The transfer was '
+          'paused at ${h.senderTransfer(h.receiver.deviceId)?.status} with '
+          '$frozenBytes bytes sent, which points at the pause gate being '
+          'orphaned rather than at the resume not being requested.',
+        ),
+      );
+
+      expect(h.senderTransfer(h.receiver.deviceId)?.status,
+          TransferStatus.completed,
+          reason: 'the resumed send should finish, not stall mid-transfer');
 
       await waitUntil(
         () => h.receiverTransfer(h.sender.deviceId)?.status ==
