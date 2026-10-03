@@ -138,34 +138,69 @@ class FileService {
   ///
   /// Returns true if the file is within the allowed directory,
   /// false otherwise.
+  /// Resolve the deepest existing ancestor of [target] and re-append the parts
+  /// that do not exist yet.
+  ///
+  /// A destination file is validated before it is created, so resolving it
+  /// directly throws. Falling back to the raw string there mixed two forms of
+  /// the same path: the directory got resolved to its real name while the file
+  /// kept the name it was constructed from. Whenever those differ, containment
+  /// failed and a legitimate upload was rejected as path traversal:
+  ///
+  ///  * Windows 8.3 short names — `C:\Users\RUNNER~1\AppData\Local\Temp` resolves
+  ///    to `C:\Users\runneradmin\AppData\Local\Temp`.
+  ///  * macOS `/var/folders/...`, which is a symlink to `/private/var/folders/...`,
+  ///    so browser-receive uploads failed on macOS specifically.
+  ///  * Any user whose Downloads folder is a junction or symlink.
+  ///
+  /// Resolving the deepest directory that *does* exist and rebuilding the tail
+  /// puts both sides of the comparison in the same form.
+  static String _resolveDeepestExisting(String target) {
+    var current = path.normalize(path.absolute(target));
+    final tail = <String>[];
+
+    while (true) {
+      try {
+        var resolved = Directory(current).resolveSymbolicLinksSync();
+        for (final part in tail.reversed) {
+          resolved = path.join(resolved, part);
+        }
+        return resolved;
+      } catch (_) {
+        final parent = path.dirname(current);
+        if (parent == current) {
+          // Walked up to the root without finding anything resolvable.
+          var out = current;
+          for (final part in tail.reversed) {
+            out = path.join(out, part);
+          }
+          return out;
+        }
+        tail.add(path.basename(current));
+        current = parent;
+      }
+    }
+  }
+
+  /// Returns true if [filePath] is inside [allowedDirectory].
   bool isPathWithinDirectory(String filePath, String allowedDirectory) {
     try {
-      // FIX: Use canonical path for more reliable comparison
-      final file = File(filePath);
-      final allowedDir = Directory(allowedDirectory);
+      var normalizedFile =
+          path.normalize(_resolveDeepestExisting(filePath));
+      var normalizedDir =
+          path.normalize(_resolveDeepestExisting(allowedDirectory));
 
-      // Get canonical paths - this resolves symlinks
-      String resolvedFilePath;
-      String resolvedAllowedDir;
-
-      try {
-        resolvedFilePath = file.resolveSymbolicLinksSync();
-      } catch (e) {
-        // If file doesn't exist, resolve parent directory
-        resolvedFilePath = filePath;
+      // Windows and macOS filesystems are case-insensitive by default, so
+      // `C:\Users\X\file` and `c:\users\x\FILE` name the same file. Comparing
+      // them byte-wise rejected valid paths whenever the two halves of the
+      // check differed in case.
+      if (Platform.isWindows || Platform.isMacOS) {
+        normalizedFile = normalizedFile.toLowerCase();
+        normalizedDir = normalizedDir.toLowerCase();
       }
 
-      try {
-        resolvedAllowedDir = allowedDir.resolveSymbolicLinksSync();
-      } catch (e) {
-        resolvedAllowedDir = allowedDirectory;
-      }
-
-      final normalizedFile = path.normalize(path.absolute(resolvedFilePath));
-      final normalizedDir = path.normalize(path.absolute(resolvedAllowedDir));
-
-      return normalizedFile.startsWith(normalizedDir + Platform.pathSeparator) ||
-          normalizedFile == normalizedDir;
+      return normalizedFile == normalizedDir ||
+          normalizedFile.startsWith(normalizedDir + Platform.pathSeparator);
     } catch (e) {
       AppLogger.error('Error validating path: $e');
       return false;
