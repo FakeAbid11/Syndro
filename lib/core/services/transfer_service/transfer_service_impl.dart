@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -94,6 +95,22 @@ class TransferService {
   final Map<String, StreamController<TransferProgress>> _progressControllers =
       {};
 
+  /// Request ids that have been approved but whose receive session is still
+  /// being set up.
+  ///
+  /// `approveTransfer` removes the pending request immediately so the approval
+  /// sheet dismisses at once, then performs several awaits (foreground service,
+  /// trust persistence, key exchange, and — for a parallel transfer —
+  /// `handleInitiate`, which pre-allocates the temp file) before it registers
+  /// `_activeTransfers[id]`.
+  ///
+  /// `_handleApprovalCheck` used to answer `rejected` during that window,
+  /// because neither the pending request nor the active transfer existed. Both
+  /// senders treat `rejected` as terminal, so approving a transfer could abort
+  /// it. Answering `pending` keeps the sender polling without telling it to
+  /// upload before the receive side is ready.
+  final Set<String> _approvingRequests = <String>{};
+
   late final ParallelReceiverHandler _parallelReceiver;
   ParallelTransferService? _parallelSender;
   ParallelConfig? _parallelConfig;
@@ -149,6 +166,14 @@ class TransferService {
   // Using streaming transfer, only one chunk is loaded in memory at a time
   static const int _maxFileSizeBytes = 100 * 1024 * 1024 * 1024; // 100GB limit
   static const int _maxTextLengthBytes = 64 * 1024; // 64KB text-message limit
+
+  /// Cap for a small control-plane JSON body (initiate/cancel/key-exchange).
+  /// These messages carry only identifiers and counters; nothing legitimate
+  /// approaches this size.
+  static const int _maxControlBodyBytes = 16 * 1024;
+
+  /// Cap for a body that also carries a payload, such as a text message.
+  static const int _maxPayloadBodyBytes = 128 * 1024;
 
   static const Duration _sessionMaxAge = Duration(hours: 1);
   Timer? _sessionCleanupTimer;
@@ -507,7 +532,8 @@ class TransferService {
         return;
       }
 
-      final body = await utf8.decoder.bind(request).join();
+      final body = await _readBoundedBody(request, _maxControlBodyBytes);
+      if (body == null) return;
       final data = jsonDecode(body) as Map<String, dynamic>;
 
       final transferId = data['transferId'] as String? ?? '';
@@ -762,21 +788,29 @@ class TransferService {
 
   Future<void> _handleParallelComplete(HttpRequest request) async {
     try {
-      final body = await utf8.decoder.bind(request).join();
+      // The transfer id is the authorization key, so it has to be read out of
+      // the body before any credential check can run. The read is therefore
+      // necessarily bounded rather than deferred: _readBoundedBody caps it at
+      // _maxControlBodyBytes and refuses to buffer anything larger, so an
+      // unauthenticated caller cannot exhaust memory here.
+      final body = await _readBoundedBody(request, _maxControlBodyBytes);
+      if (body == null) return;
       final data = jsonDecode(body) as Map<String, dynamic>;
 
       final transferId = data['transferId'] as String;
       final fileHash = data['fileHash'] as String;
 
-      // Transfer-scoped identity check: the completing device must be the same
-      // sender the parallel receive session was approved for. (The completion
-      // request carries no body token; chunk uploads already enforce the token,
-      // so binding the finalize to the approved senderId is the invariant here.)
+      final senderToken = request.headers.value('x-sender-token');
       final callerId = request.headers.value('x-device-id');
       final parallelSession = _parallelReceiver.getSession(transferId);
       if (parallelSession == null ||
           callerId == null ||
-          parallelSession.senderId != callerId) {
+          parallelSession.senderId != callerId ||
+          !await _isTransferAuthorized(
+            transferId: transferId,
+            senderId: callerId,
+            presentedToken: senderToken,
+          )) {
         AppLogger.info(
             'Security: Unauthorized parallel complete for transfer $transferId');
         await _sendUnauthorized(request, 'Not authorized for this transfer');
@@ -824,18 +858,28 @@ class TransferService {
   /// session (deletes the temp file) so nothing leaks on this device.
   Future<void> _handleParallelCancel(HttpRequest request) async {
     try {
-      final body = await utf8.decoder.bind(request).join();
+      final body = await _readBoundedBody(request, _maxControlBodyBytes);
+      if (body == null) return;
       final data = jsonDecode(body) as Map<String, dynamic>;
       final transferId = data['transferId'] as String? ?? '';
       final callerId = request.headers.value('x-device-id');
+      final senderToken = request.headers.value('x-sender-token');
 
-      // Bind the cancel to the approved sender of the session, exactly like
-      // the parallel complete handler.
+      // Bind the cancel to the approved sender of the session *and* require a
+      // valid credential, exactly like the parallel complete handler. The body
+      // read has to happen first because the transfer id is the authz key; it
+      // is bounded by _readBoundedBody so an unauthenticated caller still
+      // cannot exhaust memory.
       final session = _parallelReceiver.getSession(transferId);
       if (transferId.isEmpty ||
           session == null ||
           callerId == null ||
-          session.senderId != callerId) {
+          session.senderId != callerId ||
+          !await _isTransferAuthorized(
+            transferId: transferId,
+            senderId: callerId,
+            presentedToken: senderToken,
+          )) {
         AppLogger.info(
             'Security: Unauthorized parallel cancel for transfer $transferId');
         await _sendUnauthorized(request, 'Not authorized for this transfer');
@@ -1224,7 +1268,8 @@ class TransferService {
 
   Future<void> _handleKeyExchange(HttpRequest request) async {
     try {
-      final body = await utf8.decoder.bind(request).join();
+      final body = await _readBoundedBody(request, _maxPayloadBodyBytes);
+      if (body == null) return;
       final data = _validateAndParseJson(body);
 
       if (data == null) {
@@ -1334,6 +1379,46 @@ class TransferService {
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode(info));
     await request.response.close();
+  }
+
+  /// Read a request body into a UTF-8 string, refusing anything over
+  /// [maxBytes].
+  ///
+  /// Rejects on a declared `Content-Length` first, then enforces the cap while
+  /// streaming so a missing or lying header cannot make the server buffer an
+  /// unbounded body in RAM. On rejection this replies `400` itself and returns
+  /// `null`, so callers only need `if (body == null) return;`.
+  Future<String?> _readBoundedBody(HttpRequest request, int maxBytes) async {
+    final path = AppLogger.sanitize(request.uri.path);
+
+    final declared = request.contentLength;
+    if (declared > maxBytes) {
+      AppLogger.warn(
+          '⚠️ Oversized body rejected at $path: declared $declared bytes, limit $maxBytes');
+      await _sendBadRequest(request, 'Request body too large');
+      return null;
+    }
+
+    final builder = BytesBuilder(copy: false);
+    var total = 0;
+    await for (final chunk in request) {
+      total += chunk.length;
+      if (total > maxBytes) {
+        AppLogger.warn(
+            '⚠️ Oversized body rejected at $path: passed $maxBytes bytes while streaming');
+        await _sendBadRequest(request, 'Request body too large');
+        return null;
+      }
+      builder.add(chunk);
+    }
+
+    try {
+      return utf8.decode(builder.takeBytes());
+    } on FormatException {
+      AppLogger.warn('⚠️ Non-UTF-8 body rejected at $path');
+      await _sendBadRequest(request, 'Request body is not valid UTF-8');
+      return null;
+    }
   }
 
   Future<void> _sendResponse(
@@ -1567,7 +1652,8 @@ class TransferService {
         return;
       }
 
-      final body = await utf8.decoder.bind(request).join();
+      final body = await _readBoundedBody(request, _maxPayloadBodyBytes);
+      if (body == null) return;
       final data = _validateAndParseJson(body);
 
       if (data == null) {
@@ -1729,7 +1815,17 @@ class TransferService {
   /// auto-accept enabled gets the message delivered immediately.
   Future<void> _handleTextTransfer(HttpRequest request) async {
     try {
-      final body = await utf8.decoder.bind(request).join();
+      // Text rides the same approval pipeline as file uploads, so it needs the
+      // same per-IP rate limit. Without one, any host on the LAN could loop
+      // approval prompts (or multi-gigabyte bodies) at will.
+      final remoteIp = request.connectionInfo?.remoteAddress.address ?? 'unknown';
+      if (!_checkInitiateRateLimit(remoteIp)) {
+        await _sendTooManyRequests(request);
+        return;
+      }
+
+      final body = await _readBoundedBody(request, _maxPayloadBodyBytes);
+      if (body == null) return;
       final data = _validateAndParseJson(body);
 
       if (data == null) {
@@ -1897,6 +1993,17 @@ class TransferService {
         return;
       }
 
+      // Approved, but the receive session is still being built. This is neither
+      // a rejection nor a failure: report `pending` so the sender keeps
+      // polling instead of aborting a transfer the user did accept.
+      if (_approvingRequests.contains(requestId)) {
+        await _sendResponse(request, HttpStatus.ok, {
+          'status': 'pending',
+          'message': 'Approved; preparing transfer',
+        });
+        return;
+      }
+
       await _sendResponse(request, HttpStatus.ok, {
         'status': 'rejected',
         'message': 'Request was rejected or expired',
@@ -1932,9 +2039,28 @@ class TransferService {
       return;
     }
 
+    // Mark as approving BEFORE removing the pending request, so a poll that
+    // lands in the setup window below is answered `pending` rather than
+    // `rejected`. Cleared in the finally once the receive side is registered.
+    _approvingRequests.add(requestId);
+    try {
+      await _completeApproval(pending, trustSender: trustSender);
+    } finally {
+      _approvingRequests.remove(requestId);
+    }
+  }
+
+  /// Second half of [approveTransfer]: everything that happens after the
+  /// pending request has been removed and the UI has been told the transfer was
+  /// accepted. Runs with the [PendingTransferRequest] `pending` already
+  /// resolved and the request id marked in `_approvingRequests`.
+  Future<void> _completeApproval(
+    PendingTransferRequest pending, {
+    required bool trustSender,
+  }) async {
     // FIX: Remove from pending list immediately to prevent double-handling.
     // The handler re-notifies pendingRequestsStream internally.
-    _trustedDevicesHandler.removePendingRequest(requestId);
+    _trustedDevicesHandler.removePendingRequest(pending.requestId);
 
     // Bridge the vulnerable window right after approval: the sender's upload
     // arrives a moment from now, but on Android (esp. MIUI/HyperOS) backgrounding
@@ -2022,7 +2148,7 @@ class TransferService {
       // The sender will check approval status and start uploading chunks
     } else {
       _approveTransferRequest(
-        requestId,
+        pending.requestId,
         pending.senderId,
         pending.senderName,
         pending.senderToken,
@@ -3813,6 +3939,10 @@ class TransferService {
               headers: {
                 'Content-Type': 'application/json',
                 'x-device-id': senderId,
+                'X-Sender-Id': senderId,
+                // The receiver authorizes the cancel with the same credential
+                // gate as upload/chunk/complete, so present our device token.
+                'X-Sender-Token': _deviceToken,
               },
               body: jsonEncode({'transferId': transferId}),
             )

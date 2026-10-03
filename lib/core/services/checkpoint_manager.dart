@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
@@ -9,100 +10,64 @@ import '../utils/app_logger.dart';
 
 /// Manages transfer checkpoints (save/load/clear) for resume-on-failure.
 ///
-/// **Important**: The file-based locking mechanism (`_fileLocks`) only provides
-/// mutual exclusion within a **single process**. If multiple Syndro instances
-/// are running concurrently, checkpoint files may be corrupted. Ensure only
-/// one instance of Syndro runs at a time, or use a cross-process lock
-/// (e.g. named mutex on Windows) if multi-instance support is needed.
+/// Concurrency is provided by a per-key future queue ([_queues]), which gives
+/// every operation a real exclusive critical section. The earlier
+/// exists()-then-write sequence was a TOCTOU race even within a single isolate.
+///
+/// Every method is best-effort: checkpoint I/O never throws, because a
+/// transfer that already streamed its files must not be reported as failed just
+/// because the resume metadata could not be written.
 class CheckpointManager {
   static const String _checkpointsDir = 'checkpoints';
 
-  // FIX (Bug #1): File-based locking for cross-process safety
-  final Map<String, bool> _fileLocks = {};
+  // A future queue gives every operation a real exclusive critical section.
+  // The old exists()->write sequence was a TOCTOU race even within one isolate.
+  final Map<String, Future<void>> _queues = {};
 
-  Future<bool> _acquireLock(String transferId) async {
-    // Check in-process lock first
-    if (_fileLocks[transferId] == true) {
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (_fileLocks[transferId] == true) {
-        return false;
-      }
-    }
-
-    // Try to acquire file-based lock for cross-process safety
-    try {
-      final dir = await _getCheckpointsDirectory();
-      final lockFile = File(path.join(dir.path, '$transferId.lock'));
-
-      // Try to create lock file exclusively
-      if (await lockFile.exists()) {
-        // Check if lock is stale (older than 30 seconds)
-        final stat = await lockFile.stat();
-        final age = DateTime.now().difference(stat.modified);
-        if (age.inSeconds > 30) {
-          // Stale lock, remove it
-          await lockFile.delete();
-        } else {
-          return false; // Lock held by another process
-        }
-      }
-
-      // Create lock file
-      await lockFile.writeAsString(DateTime.now().toIso8601String());
-      _fileLocks[transferId] = true;
-      return true;
-    } catch (e) {
-      AppLogger.warn('⚠️ Lock acquisition error: $e');
-      return false;
-    }
+  Future<T> _exclusive<T>(String key, Future<T> Function() operation) {
+    final previous = _queues[key] ?? Future<void>.value();
+    final done = Completer<void>();
+    _queues[key] = done.future;
+    return previous.then((_) => operation()).whenComplete(() async {
+      done.complete();
+      if (identical(_queues[key], done.future)) _queues.remove(key);
+    });
   }
 
-  Future<void> _releaseLock(String transferId) async {
-    _fileLocks.remove(transferId);
-
-    // Remove file-based lock
-    try {
-      final dir = await _getCheckpointsDirectory();
-      final lockFile = File(path.join(dir.path, '$transferId.lock'));
-      if (await lockFile.exists()) {
-        await lockFile.delete();
-      }
-    } catch (e) {
-      AppLogger.warn('⚠️ Lock release error: $e');
-    }
-  }
-
-  // Save checkpoint to disk
+  // Save checkpoint to disk.
+  //
+  // Checkpointing is best-effort telemetry for resuming an interrupted send; it
+  // is never load-bearing for the transfer itself. A failure here (no writable
+  // documents directory, a full disk, a revoked permission) must therefore not
+  // propagate: the caller has already streamed the file, and letting this throw
+  // would discard a completed send.
   Future<void> saveCheckpoint(TransferCheckpoint checkpoint) async {
-    final acquired = await _acquireLock(checkpoint.transferId);
-    if (!acquired) {
-      AppLogger.warn('⚠️ Could not acquire lock for checkpoint: ${checkpoint.transferId}');
-      return;
-    }
-
     try {
-      final dir = await _getCheckpointsDirectory();
-      final file = File(path.join(dir.path, '${checkpoint.transferId}.json'));
-
-      final json = jsonEncode(checkpoint.toJson());
-      await file.writeAsString(json);
+      await _exclusive(checkpoint.resumeKey ?? checkpoint.transferId, () async {
+        final dir = await _getCheckpointsDirectory();
+        final key = checkpoint.resumeKey ?? checkpoint.transferId;
+        final file = File(path.join(dir.path, '$key.json'));
+        final temp = File(
+            '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+        final json = jsonEncode(checkpoint.toJson());
+        await temp.writeAsString(json, flush: true);
+        try {
+          await temp.rename(file.path);
+        } on FileSystemException {
+          // Windows does not replace an existing destination on rename. Delete
+          // only the checkpoint (never user data), then complete the atomic move.
+          if (await file.exists()) await file.delete();
+          await temp.rename(file.path);
+        }
+      });
     } catch (e) {
-      // FIX: Use debugPrint instead of print
       AppLogger.error('Error saving checkpoint: $e');
-    } finally {
-      await _releaseLock(checkpoint.transferId);
     }
   }
 
   // Load checkpoint from disk
   Future<TransferCheckpoint?> loadCheckpoint(String transferId) async {
-    final acquired = await _acquireLock(transferId);
-    if (!acquired) {
-      AppLogger.warn('⚠️ Could not acquire lock for checkpoint: $transferId');
-      return null;
-    }
-
-    try {
+    return _exclusive(transferId, () async {
       final dir = await _getCheckpointsDirectory();
       final file = File(path.join(dir.path, '$transferId.json'));
 
@@ -116,44 +81,33 @@ class CheckpointManager {
 
       // Check if checkpoint is still valid
       if (!checkpoint.isValid) {
-        // Release lock before calling clearCheckpoint to avoid deadlock
-        await _releaseLock(transferId);
-        await clearCheckpoint(transferId);
+        await file.delete();
         return null;
       }
 
       return checkpoint;
-    } catch (e) {
-      // FIX: Use debugPrint instead of print
+    }).catchError((e) {
       AppLogger.error('Error loading checkpoint: $e');
       return null;
-    } finally {
-      await _releaseLock(transferId);
-    }
+    });
   }
 
-  // Clear checkpoint after transfer completion
+  // Clear checkpoint after transfer completion.
+  //
+  // Like [saveCheckpoint], a failure here is logged and swallowed: leaving a
+  // stale checkpoint behind is recoverable, failing a completed transfer is not.
   Future<void> clearCheckpoint(String transferId) async {
-    final acquired = await _acquireLock(transferId);
-    if (!acquired) {
-      AppLogger.warn('⚠️ Could not acquire lock for clearing checkpoint: $transferId');
-      // Try to delete anyway as this is cleanup
-    }
-
     try {
-      final dir = await _getCheckpointsDirectory();
-      final file = File(path.join(dir.path, '$transferId.json'));
+      await _exclusive(transferId, () async {
+        final dir = await _getCheckpointsDirectory();
+        final file = File(path.join(dir.path, '$transferId.json'));
 
-      if (await file.exists()) {
-        await file.delete();
-      }
+        if (await file.exists()) {
+          await file.delete();
+        }
+      });
     } catch (e) {
-      // FIX: Use debugPrint instead of print
       AppLogger.error('Error clearing checkpoint: $e');
-    } finally {
-      if (acquired) {
-        await _releaseLock(transferId);
-      }
     }
   }
 
@@ -175,14 +129,27 @@ class CheckpointManager {
           .where((f) => f.path.endsWith('.json')) // Skip .lock files
           .toList();
 
-      // Sort by modification time (newest first)
-      files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+      // Sort by modification time (newest first).
+      //
+      // Stat each file exactly once up front. Sorting with a comparator that
+      // calls statSync() performs two blocking stat() calls per comparison,
+      // which is O(n log n) synchronous filesystem I/O on the UI isolate.
+      final datedFiles = <MapEntry<File, DateTime>>[];
+      for (final file in files) {
+        try {
+          datedFiles.add(MapEntry(file, file.statSync().modified));
+        } on FileSystemException {
+          // A checkpoint file that vanished mid-listing is simply skipped.
+        }
+      }
+      datedFiles.sort((a, b) => b.value.compareTo(a.value));
+      final sortedFiles = datedFiles.map((e) => e.key).toList();
 
       // Apply pagination
       final startIndex = offset;
-      final endIndex = limit != null ? (offset + limit).clamp(0, files.length) : files.length;
-      final paginatedFiles = files.sublist(
-        startIndex.clamp(0, files.length),
+      final endIndex = limit != null ? (offset + limit).clamp(0, sortedFiles.length) : sortedFiles.length;
+      final paginatedFiles = sortedFiles.sublist(
+        startIndex.clamp(0, sortedFiles.length),
         endIndex,
       );
 

@@ -194,6 +194,8 @@ void main() {
       final complete = await rawPost(port, '/transfer/parallel/complete', {
         'Content-Type': 'application/json',
         'x-device-id': senderId,
+        'X-Sender-Id': senderId,
+        'X-Sender-Token': 'hash-token',
       }, jsonEncode({
         'transferId': transferId,
         'fileHash': '0000000000000000000000000000000000000000000000000000000000000000',
@@ -254,10 +256,26 @@ void main() {
       expect(statusOf(retry), 409,
           reason: 'duplicate initiate must not create a second session');
 
+      // An unauthenticated finalize must not be able to close the session.
+      // `/transfer/parallel/complete` is a credential-gated endpoint: knowing
+      // the transfer id is not enough, the sender must present the token that
+      // was accepted for this transfer.
+      final unauthComplete = await rawPost(port, '/transfer/parallel/complete', {
+        'Content-Type': 'application/json',
+        'x-device-id': senderId,
+      }, jsonEncode({
+        'transferId': transferId,
+        'fileHash': 'deadbeef',
+      }));
+      expect(statusOf(unauthComplete), 401,
+          reason: 'finalize without a token must be refused');
+
       // Simulate the sender's cancel notification.
       final cancel = await rawPost(port, '/transfer/parallel/cancel', {
         'Content-Type': 'application/json',
         'x-device-id': senderId,
+        'X-Sender-Id': senderId,
+        'X-Sender-Token': 'cancel-token',
       }, jsonEncode({'transferId': transferId}));
       expect(statusOf(cancel), 200);
 

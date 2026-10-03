@@ -15,6 +15,10 @@ class TransferCheckpoint extends Equatable {
   // FIX: Add file paths for validation
   final List<String>? filePaths;
 
+  /// Stable lookup key. The transfer/session id may be regenerated after an
+  /// interrupted send, so persistence must not depend on it.
+  final String? resumeKey;
+
   const TransferCheckpoint({
     required this.transferId,
     required this.fileId,
@@ -23,6 +27,7 @@ class TransferCheckpoint extends Equatable {
     required this.currentFileIndex,
     required this.totalFiles,
     this.filePaths,
+    this.resumeKey,
   });
 
   // FIX: Enhanced validity check - includes file existence verification
@@ -40,7 +45,7 @@ class TransferCheckpoint extends Equatable {
   bool get isTimeValid {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    return difference.inHours < 24;
+    return !difference.isNegative && difference < const Duration(hours: 24);
   }
 
   // FIX: Separate data validity check
@@ -124,6 +129,7 @@ class TransferCheckpoint extends Equatable {
       'currentFileIndex': currentFileIndex,
       'totalFiles': totalFiles,
       'filePaths': filePaths,
+      'resumeKey': resumeKey,
     };
   }
 
@@ -153,6 +159,7 @@ class TransferCheckpoint extends Equatable {
       currentFileIndex: math.max(0, currentFileIndex),
       totalFiles: math.max(0, totalFiles),
       filePaths: filePaths,
+      resumeKey: json['resumeKey'] as String?,
     );
   }
 
@@ -184,6 +191,7 @@ class TransferCheckpoint extends Equatable {
     int? currentFileIndex,
     int? totalFiles,
     List<String>? filePaths,
+    String? resumeKey,
   }) {
     return TransferCheckpoint(
       transferId: transferId ?? this.transferId,
@@ -193,6 +201,7 @@ class TransferCheckpoint extends Equatable {
       currentFileIndex: math.max(0, currentFileIndex ?? this.currentFileIndex),
       totalFiles: math.max(0, totalFiles ?? this.totalFiles),
       filePaths: filePaths ?? this.filePaths,
+      resumeKey: resumeKey ?? this.resumeKey,
     );
   }
 
@@ -205,5 +214,6 @@ class TransferCheckpoint extends Equatable {
         currentFileIndex,
         totalFiles,
         filePaths,
+        resumeKey,
       ];
 }

@@ -9,6 +9,8 @@ import 'servers/receive_server.dart';
 export 'models/received_file.dart';
 export 'models/pending_files_manager.dart';
 export 'servers/share_server.dart' show ConnectionEvent, ConnectionEventType, PendingConfirmation;
+export 'servers/receive_server.dart'
+    show UploadPendingConfirmation, UploadRequestId;
 
 /// Main facade for web sharing functionality
 ///
@@ -45,6 +47,25 @@ class WebShareService {
   /// Listen to this to show approval/deny dialogs when someone tries to download
   Stream<PendingConfirmation> get confirmationRequestStream =>
       _shareServer.confirmationRequestStream;
+
+  /// Upload approval requests raised by a browser.  The request ID is an
+  /// opaque, per-upload capability; callers must not key approval by IP.
+  Stream<UploadPendingConfirmation> get uploadConfirmationRequestStream =>
+      _receiveServer.uploadConfirmationRequestStream;
+
+  List<UploadPendingConfirmation> get pendingUploadConfirmations =>
+      _receiveServer.pendingUploadConfirmations;
+
+  bool approveUpload(UploadRequestId requestId) =>
+      _receiveServer.approveUpload(requestId);
+
+  bool rejectUpload(UploadRequestId requestId) =>
+      _receiveServer.rejectUpload(requestId);
+
+  /// String overloads retained for integrations that persisted the old IDs.
+  bool confirmUpload(String requestId) => _receiveServer.confirmUpload(requestId);
+
+  bool denyUpload(String requestId) => _receiveServer.denyUpload(requestId);
 
   /// Get list of pending confirmation requests
   List<PendingConfirmation> get pendingConfirmations =>

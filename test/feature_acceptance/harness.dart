@@ -13,6 +13,7 @@ import 'package:syndro/core/models/device.dart';
 import 'package:syndro/core/models/transfer.dart';
 import 'package:syndro/core/services/file_service.dart';
 import 'package:syndro/core/services/transfer_service/transfer_service_impl.dart';
+import 'package:syndro/core/utils/app_logger.dart';
 
 /// Runtime feature-acceptance harness.
 ///
@@ -42,9 +43,21 @@ const MethodChannel _secureStorageChannel =
     MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 
 bool _bootstrapInstalled = false;
+Directory? _isolatedDbDir;
 
-/// One-time VM bootstrap: SQLite over FFI, in-memory preferences, a secure
-/// storage stub. Safe to call from every test file's `setUpAll`.
+/// One-time VM bootstrap: SQLite over FFI in a per-process throwaway directory,
+/// in-memory preferences, a secure storage stub. Safe to call from every test
+/// file's `setUpAll`.
+///
+/// The per-process databases directory is the important part. `flutter test`
+/// runs test *files* in parallel processes, and without this every acceptance
+/// file opens the same `.dart_tool/sqflite_common_ffi/databases/syndro.db`.
+/// They then contend for one SQLite database — writes fail with
+/// `database is locked (code 5)`, which surfaces inside the app as
+/// `Error sending files: SqfliteFfiException(...)` and turns a healthy transfer
+/// path into a red test — and one file's `clearHistory()` erases another file's
+/// rows. Measured on this repo: 17 acceptance failures with a shared database,
+/// 6 with each file on its own.
 void installAcceptanceBootstrap() {
   TestWidgetsFlutterBinding.ensureInitialized();
   if (_bootstrapInstalled) return;
@@ -53,6 +66,8 @@ void installAcceptanceBootstrap() {
   HttpOverrides.global = _RealHttpOverrides();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+  _isolatedDbDir = Directory.systemTemp.createTempSync('syndro-acceptance-db-');
+  databaseFactory.setDatabasesPath(_isolatedDbDir!.path);
   SharedPreferences.setMockInitialValues({});
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_secureStorageChannel, (call) async {
@@ -68,6 +83,16 @@ void uninstallAcceptanceBootstrap() {
   HttpOverrides.global = null;
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_secureStorageChannel, null);
+  try {
+    final dir = _isolatedDbDir;
+    if (dir != null && dir.existsSync()) {
+      dir.deleteSync(recursive: true);
+    }
+  } catch (e) {
+    // A leftover temp directory is not worth failing a test over.
+    AppLogger.info('Could not remove isolated test database dir: $e');
+  }
+  _isolatedDbDir = null;
   _bootstrapInstalled = false;
 }
 

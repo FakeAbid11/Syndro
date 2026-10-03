@@ -226,6 +226,7 @@ class ParallelTransferService {
         transferId: transferId,
         fileHash: fileHash,
         senderId: sender.id,
+        senderToken: senderToken,
       );
 
       if (!notified) {
@@ -522,11 +523,17 @@ class ParallelTransferService {
   /// (verify hash + rename temp file). Returns true only when the receiver
   /// confirmed success; a hash mismatch or missing chunks returns false so the
   /// sender can mark the transfer as failed instead of completed.
+  ///
+  /// The finalize is authenticated with the same `X-Sender-Token` credential the
+  /// chunk uploads already present. The receiver's `_isTransferAuthorized`
+  /// requires a credential, so sending only `x-device-id` would make every
+  /// parallel finalize fail closed with 401.
   Future<bool> _notifyTransferComplete({
     required Device receiver,
     required String transferId,
     required String fileHash,
     required String senderId,
+    required String senderToken,
   }) async {
     final url = Uri.parse(
         'http://${receiver.ipAddress}:${receiver.port}/transfer/parallel/complete');
@@ -538,6 +545,8 @@ class ParallelTransferService {
             headers: {
               'Content-Type': 'application/json',
               'x-device-id': senderId,
+              'X-Sender-Id': senderId,
+              'X-Sender-Token': senderToken,
             },
             body: jsonEncode({
               'transferId': transferId,

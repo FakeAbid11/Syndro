@@ -85,8 +85,12 @@ class ShareIntentService {
       }
     });
 
-    // Check if app was launched with shared files
+    // Check all cold-start payloads after the handler is installed.  This is
+    // deliberately done once: callers subscribe before initialize(), so the
+    // broadcast events below are not lost and a cold share is not replayed a
+    // second time by the native callback.
     await checkForSharedFiles();
+    await checkForSharedText();
   }
 
   AndroidShareMode _parseShareMode(dynamic arguments) {
@@ -145,10 +149,22 @@ class ShareIntentService {
       return;
     }
 
-    final files = await checkForSharedFiles();
-    if (files != null && files.isNotEmpty) {
-      _sharedFilesController.add(files);
-    }
+    // checkForSharedFiles emits the event. Do not emit it again here: the
+    // previous implementation delivered warm file shares twice.
+    await checkForSharedFiles();
+  }
+
+  /// Accept a file list from desktop open-document events.  macOS does not
+  /// expose Android content URIs, so these are already usable paths.
+  void handleSharedFiles(Iterable<String> paths) {
+    final files = paths
+        .where((path) => path.trim().isNotEmpty)
+        .map((path) => SharedFile(uri: path, name: path.split('/').last))
+        .toList(growable: false);
+    if (files.isEmpty) return;
+    _lastShareMode = AndroidShareMode.appToApp;
+    _lastSharedFiles = files;
+    if (!_sharedFilesController.isClosed) _sharedFilesController.add(files);
   }
 
   /// Clear the shared files after processing

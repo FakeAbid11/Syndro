@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as path;
@@ -16,6 +17,11 @@ import '../templates/receive_page_template.dart';
 
 /// Pending upload confirmation request
 class UploadPendingConfirmation {
+  /// Stable opaque identifier used by the facade and UI to approve this
+  /// particular request. It is deliberately unrelated to the remote IP, and it
+  /// doubles as the authorization capability: only a caller holding the id can
+  /// have its upload confirmed, so no session token needs to be carried here.
+  final UploadRequestId requestId;
   final String ipAddress;
   final String fileName;
   final int fileSize;
@@ -24,6 +30,7 @@ class UploadPendingConfirmation {
   bool denied;
 
   UploadPendingConfirmation({
+    required this.requestId,
     required this.ipAddress,
     required this.fileName,
     required this.fileSize,
@@ -33,6 +40,22 @@ class UploadPendingConfirmation {
         denied = false;
 
   bool get isPending => !confirmed && !denied;
+}
+
+/// Stable identifier for a browser upload approval request.
+class UploadRequestId {
+  final String value;
+  const UploadRequestId(this.value);
+
+  @override
+  String toString() => value;
+
+  @override
+  bool operator ==(Object other) =>
+      other is UploadRequestId && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
 }
 
 /// HTTP server for receiving files (upload mode)
@@ -68,6 +91,16 @@ class ReceiveServer {
   static const int _maxRequestsPerMinute = 60;
   final Map<String, List<DateTime>> _requestTimestamps = {};
   static const Duration _rateLimitWindow = Duration(minutes: 1);
+  static const Duration _requestDeadline = Duration(minutes: 5);
+  static const int _maxFilesPerUpload = 100;
+  static const int _maxConcurrentUploads = 4;
+  static const Duration _sessionLifetime = Duration(hours: 1);
+  static const int _maxSessions = 128;
+  static const String _sessionCookie = 'syndro_receive_session';
+  final Map<String, _BrowserSession> _sessions = {};
+  int _activeUploads = 0;
+  bool _disposed = false;
+  final Random _random = Random.secure();
 
   /// Stream of received files
   Stream<ReceivedFile> get receivedFilesStream => _receivedFilesController.stream;
@@ -112,6 +145,9 @@ class ReceiveServer {
     return false;
   }
 
+  /// Typed approval API. The string method above remains for API compatibility.
+  bool approveUpload(UploadRequestId requestId) => confirmUpload(requestId.value);
+
   /// Deny an upload by its ID
   bool denyUpload(String uploadId) {
     final confirmation = _pendingConfirmations[uploadId];
@@ -123,14 +159,17 @@ class ReceiveServer {
     return false;
   }
 
+  /// Typed denial API. The string method above remains for API compatibility.
+  bool rejectUpload(UploadRequestId requestId) => denyUpload(requestId.value);
+
   /// Check if an upload is allowed
   bool isUploadAllowed(String uploadId) {
     if (!_requireConfirmation) return true;
-    
+
     final confirmation = _pendingConfirmations[uploadId];
     if (confirmation == null) {
-      // No confirmation request - treat as allowed for backward compatibility
-      return true;
+      // Never turn an unknown/expired identifier into an authorization grant.
+      return false;
     }
     return confirmation.confirmed;
   }
@@ -156,6 +195,9 @@ class ReceiveServer {
 
   /// Start receiving files via HTTP server
   Future<String?> startReceiving(String downloadDirectory) async {
+    if (_disposed) {
+      throw StateError('ReceiveServer has been disposed');
+    }
     await stop();
 
     _finalDirectory = downloadDirectory;
@@ -302,10 +344,14 @@ class ReceiveServer {
     }
 
     _shareUrl = null;
+    _sessions.clear();
+    _pendingConfirmations.clear();
   }
 
   /// Dispose resources
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     await stop();
     
     // FIX: Add try-catch for pending files manager disposal
@@ -372,6 +418,8 @@ class ReceiveServer {
     final requestPath = uri.path;
     final clientIp = request.connectionInfo?.remoteAddress.address ?? 'unknown';
 
+    _pruneSessions();
+
     // Rate limiting check
     if (!_checkRateLimit(clientIp)) {
       request.response.statusCode = HttpStatus.tooManyRequests;
@@ -381,11 +429,24 @@ class ReceiveServer {
       return;
     }
 
-    // CORS headers
-    request.response.headers.add('Access-Control-Allow-Origin', '*');
+    // Browser pages are served by this same origin. Never use wildcard CORS:
+    // it turns a local web server into an ambient cross-origin upload target.
+    final origin = request.headers.value('origin');
+    final host = request.headers.value('host');
+    final expectedOrigin = host == null ? null : 'http://$host';
+    if (origin != null && expectedOrigin != null && origin != expectedOrigin) {
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+    if (origin != null && host != null) {
+      request.response.headers
+        ..set('Access-Control-Allow-Origin', 'http://$host')
+        ..set('Vary', 'Origin');
+    }
     request.response.headers
-        .add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    request.response.headers.add('Access-Control-Allow-Headers', '*');
+      ..set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      ..set('Access-Control-Allow-Headers', 'Content-Type');
 
     if (request.method == 'OPTIONS') {
       request.response.statusCode = HttpStatus.ok;
@@ -408,9 +469,20 @@ class ReceiveServer {
 
   /// Serve the index HTML page
   Future<void> _serveIndexPage(HttpRequest request) async {
+    final session = _getOrCreateSession(request);
+    if (session == null) {
+      request.response.statusCode = HttpStatus.tooManyRequests;
+      await request.response.close();
+      return;
+    }
     final html = ReceivePageTemplate.generate();
 
     request.response.headers.contentType = ContentType.html;
+    request.response.headers.add(
+      HttpHeaders.setCookieHeader,
+      '$_sessionCookie=${session.token}; Path=/; HttpOnly; SameSite=Strict; '
+      'Max-Age=${_sessionLifetime.inSeconds}',
+    );
     request.response.write(html);
     await request.response.close();
   }
@@ -446,6 +518,25 @@ class ReceiveServer {
     AppLogger.info('📥 Receiving files to temp: $_tempDirectory');
 
     try {
+      if (_activeUploads >= _maxConcurrentUploads) {
+        request.response.statusCode = HttpStatus.serviceUnavailable;
+        request.response.write('Too many uploads in progress');
+        await request.response.close();
+        return;
+      }
+      _activeUploads++;
+
+      final session = _sessionForRequest(request);
+      // A browser that opened the page has a rotating, expiring capability.
+      // Keep a narrowly-scoped compatibility path for raw clients: it still
+      // requires this individual request to be explicitly approved, and is
+      // never accepted when confirmation is disabled.
+      if (session == null && !_requireConfirmation) {
+        request.response.statusCode = HttpStatus.forbidden;
+        request.response.write('Open the receive page before uploading');
+        await request.response.close();
+        return;
+      }
       // Track uploaded files for response payload
       final uploadedFiles = <Map<String, dynamic>>[];
       final contentType = request.headers.contentType;
@@ -466,13 +557,15 @@ class ReceiveServer {
         return;
       }
 
-      // Generate a stable upload ID from the request metadata for approval checks
-      final uploadId = '${clientIp}_${DateTime.now().millisecondsSinceEpoch}';
+      // Generate an opaque ID; IP/timestamp values are predictable and are not
+      // suitable authorization capabilities.
+      final uploadId = _newId('upload');
 
       // Create a pending confirmation entry if confirmation is required
-      if (_requireConfirmation && !_pendingConfirmations.containsKey(uploadId)) {
+      if (_requireConfirmation) {
         // We don't know the filename yet, use a placeholder
         final pending = UploadPendingConfirmation(
+          requestId: UploadRequestId(uploadId),
           ipAddress: clientIp,
           fileName: 'Upload from $clientIp',
           fileSize: 0, // Will be updated once we know the size
@@ -484,7 +577,7 @@ class ReceiveServer {
         // Poll for approval (max 2 minutes)
         final approvalDeadline = DateTime.now().add(const Duration(minutes: 2));
         while (pending.isPending && DateTime.now().isBefore(approvalDeadline)) {
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 250));
         }
         if (pending.denied || pending.isPending) {
           request.response.statusCode = HttpStatus.forbidden;
@@ -500,7 +593,7 @@ class ReceiveServer {
       final contentLength = request.headers.value('content-length');
       if (contentLength != null) {
         final parsedLength = int.tryParse(contentLength);
-        if (parsedLength != null && parsedLength > _maxFileSizeBytes) {
+        if (parsedLength != null && parsedLength > _maxUploadSizeBytes) {
           request.response.statusCode = HttpStatus.requestEntityTooLarge;
           request.response.write('File exceeds maximum size limit (${_maxFileSizeBytes ~/ (1024 * 1024)}MB)');
           await request.response.close();
@@ -509,13 +602,13 @@ class ReceiveServer {
       }
 
       // FIX (Bug #5): Stream request body to a temp file to avoid OOM on large uploads
-      final tempBodyPath = path.join(_tempDirectory!, '_upload_body_${DateTime.now().millisecondsSinceEpoch}');
+      final tempBodyPath = path.join(_tempDirectory!, '_upload_body_${_newId('body')}');
       final tempBodyFile = File(tempBodyPath);
       final tempSink = tempBodyFile.openWrite();
       int totalSize = 0;
 
       try {
-        await for (final chunk in request) {
+        await for (final chunk in request.timeout(_requestDeadline)) {
           tempSink.add(chunk);
           totalSize += chunk.length;
           
@@ -551,6 +644,9 @@ class ReceiveServer {
           boundary: boundary,
           maxPartBytes: _maxFileSizeBytes,
           onPartStart: (filename) {
+            if (partCounter >= _maxFilesPerUpload) {
+              throw const _UploadRejected('Too many files in one upload');
+            }
             if (filename.isEmpty) return null;
             // Clean filename (remove path traversal attempts)
             final cleanFilename = path.basename(filename);
@@ -656,10 +752,52 @@ class ReceiveServer {
       await request.response.close();
     } catch (e) {
       AppLogger.error('❌ Error handling upload: $e');
-      request.response.statusCode = HttpStatus.internalServerError;
-      request.response.write('Upload failed: $e');
+      request.response.statusCode = e is _UploadRejected
+          ? HttpStatus.requestEntityTooLarge
+          : HttpStatus.internalServerError;
+      request.response.write(e is _UploadRejected ? e.message : 'Upload failed');
       await request.response.close();
+    } finally {
+      if (_activeUploads > 0) _activeUploads--;
     }
+  }
+
+  _BrowserSession? _getOrCreateSession(HttpRequest request) {
+    final existing = _sessionForRequest(request);
+    if (existing != null) return existing;
+    if (_sessions.length >= _maxSessions) return null;
+    final token = _newId('session');
+    final session = _BrowserSession(token, DateTime.now().add(_sessionLifetime));
+    _sessions[token] = session;
+    return session;
+  }
+
+  _BrowserSession? _sessionForRequest(HttpRequest request) {
+    final cookieHeader = request.headers.value(HttpHeaders.cookieHeader);
+    if (cookieHeader == null) return null;
+    for (final cookie in cookieHeader.split(';')) {
+      final pair = cookie.trim().split('=');
+      if (pair.length == 2 && pair.first == _sessionCookie) {
+        final session = _sessions[pair.last];
+        if (session != null && session.expiresAt.isAfter(DateTime.now())) {
+          return session;
+        }
+        _sessions.remove(pair.last);
+      }
+    }
+    return null;
+  }
+
+  void _pruneSessions() {
+    final now = DateTime.now();
+    _sessions.removeWhere((_, session) => session.expiresAt.isBefore(now));
+    _pendingConfirmations.removeWhere((_, confirmation) =>
+        confirmation.requestedAt.add(const Duration(minutes: 2)).isBefore(now));
+  }
+
+  String _newId(String prefix) {
+    final bytes = List<int>.generate(18, (_) => _random.nextInt(256));
+    return '$prefix-${base64UrlEncode(bytes).replaceAll('=', '')}';
   }
 }
 
@@ -675,4 +813,20 @@ class _IncomingPart {
     required this.tempFilePath,
     required this.raf,
   });
+}
+
+class _BrowserSession {
+  final String token;
+  final DateTime expiresAt;
+
+  const _BrowserSession(this.token, this.expiresAt);
+}
+
+class _UploadRejected implements Exception {
+  final String message;
+
+  const _UploadRejected(this.message);
+
+  @override
+  String toString() => message;
 }
