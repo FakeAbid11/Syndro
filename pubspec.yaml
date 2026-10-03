@@ -39,7 +39,8 @@ dependencies:
   # ============================================
   # QR CODE
   # ============================================
-  mobile_scanner: ^4.0.1
+  # Display only: the browser share/receive pages render a QR for the LAN URL.
+  # There is no scanner — device pairing is not a feature.
   qr_flutter: ^4.1.0
 
   # ============================================
@@ -67,7 +68,6 @@ dependencies:
   # ============================================
   flutter_image_compress: ^2.1.0
   video_thumbnail: ^0.5.3
-  photo_view: ^0.14.0           # Full-screen image viewer with zoom
 
   # ============================================
   # ANIMATIONS
@@ -96,14 +96,11 @@ dependencies:
   local_notifier: ^0.1.5        # Desktop notifications with images
 
   # ============================================
-  # 🔐 ENCRYPTION (NEW!)
+  # 🔐 ENCRYPTION
   # ============================================
   cryptography: ^2.7.0           # AES-256-GCM + X25519 key exchange
   crypto: ^3.0.3                 # SHA-256 for file integrity
   screen_retriever: ^0.1.9
-
-  # ============================================
-  # 🔊 SOUNDS
 
 dev_dependencies:
   flutter_test:

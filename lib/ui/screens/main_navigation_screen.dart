@@ -135,8 +135,20 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildDesktopRail(labelled),
-                // Main content
-                Expanded(child: _screens[_selectedIndex]),
+                // Main content.
+                //
+                // IndexedStack, not a bare `_screens[_selectedIndex]`: the
+                // screens hold live subscriptions in their State. HomeScreen
+                // listens for incoming transfer requests and received text, so
+                // tearing it down on every tab switch silently dropped any
+                // request that arrived while the user was on Settings or
+                // History, and re-ran the history query on every visit.
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _screens,
+                  ),
+                ),
               ],
             ),
           ),
@@ -204,8 +216,13 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Main content
-          _screens[_selectedIndex],
+          // Main content. IndexedStack keeps every tab's State alive so the
+          // Home tab's incoming-transfer listener stays subscribed while the
+          // user is elsewhere. See _buildDesktopLayout.
+          IndexedStack(
+            index: _selectedIndex,
+            children: _screens,
+          ),
 
           // Floating Navigation Bar
           Positioned(

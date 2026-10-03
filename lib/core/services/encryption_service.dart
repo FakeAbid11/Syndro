@@ -18,9 +18,33 @@ import '../utils/app_logger.dart';
 /// - AES-256-GCM encryption (industry standard, hardware accelerated)
 /// - X25519 key exchange (same as Signal, WhatsApp)
 /// - Streaming encryption/decryption for large files
-/// - Nonce tracking to prevent replay attacks
-/// - Automatic key rotation recommendations
+/// - Nonce tracking, to bound how many nonces one key may consume
+/// - Key-rotation *recommendation* once that bound is approached
 /// - Bounded nonce cache for memory efficiency
+///
+/// ## What this class does NOT provide
+///
+/// The instance API below is the tested crypto *primitive*. The live transfer
+/// path does **not** call it: `TransferService._encryptChunk`/`_decryptChunk`
+/// and `ParallelTransferService`/`ParallelReceiverHandler` call
+/// [EncryptionService.aesGcm] directly with a fresh random 96-bit nonce per
+/// frame, and reimplement the `[nonce][ciphertext][tag]` wire format in four
+/// places.
+///
+/// Two consequences follow, and they matter for anyone assessing the security
+/// of a transfer:
+///
+///  * **There is no replay protection.** `_nonceCount`, `_usedNonces` and
+///    [shouldRotateKey] only advance when [encryptChunk] is called, which the
+///    app never does. A captured frame can be re-injected; only the final
+///    SHA-256 over the whole file detects it. The parallel path is incidentally
+///    replay-safe because its writer skips already-received chunk indices.
+///  * **`_maxNoncesPerKey` is not enforced in production.** It is 2^32-1, so at
+///    1 MB frames it would take ~4 TB under one key before it mattered, but the
+///    check does not run at all on the real path.
+///
+/// Either route the transfer path through [encryptChunk], or delete the unused
+/// bookkeeping. Do not read the guarantees above as applying to a transfer.
 ///
 /// ## Performance:
 /// - Speed: ~3-5 GB/s on modern devices (hardware accelerated)
@@ -29,23 +53,23 @@ import '../utils/app_logger.dart';
 /// ## Usage:
 /// ```dart
 /// final encryptionService = EncryptionService();
-/// 
+///
 /// // Generate key pair for key exchange
 /// final keyPair = await encryptionService.generateKeyPair();
 /// final publicKey = await encryptionService.getPublicKey(keyPair);
-/// 
+///
 /// // Derive shared secret
 /// final sharedSecret = await encryptionService.deriveSharedSecret(
 ///   myKeyPair: keyPair,
 ///   theirPublicKey: theirPublicKey,
 /// );
-/// 
+///
 /// // Encrypt data
 /// final encrypted = await encryptionService.encryptChunk(
 ///   Uint8List.fromList(data),
 ///   sharedSecret,
 /// );
-/// 
+///
 /// // Decrypt data
 /// final decrypted = await encryptionService.decryptChunk(
 ///   encrypted,

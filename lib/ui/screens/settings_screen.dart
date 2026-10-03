@@ -582,46 +582,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildTrustedDeviceTile(
       TrustedDevice device, TransferService transferService) {
-    final hasPin = device.hasActivePin;
-    final lastTrusted = device.trustedAt;
-    final timeAgo = _formatTimeAgo(lastTrusted);
+    final timeAgo = _formatTimeAgo(device.trustedAt);
 
     return _buildSettingsTile(
-      icon: hasPin ? Icons.verified_user : Icons.person_outline,
-      iconColor: hasPin ? AppTheme.successColor : AppTheme.secondaryColor,
+      icon: Icons.person_outline,
+      iconColor: AppTheme.secondaryColor,
       title: device.senderName,
-      subtitle: hasPin
-          ? 'Key pinned • trusted $timeAgo'
-          : 'No key pinned • trusted $timeAgo',
+      subtitle: 'Trusted $timeAgo',
       trailing: PopupMenuButton<String>(
         tooltip: 'Trust options',
         icon: const Icon(Icons.more_vert_rounded, size: 20),
         onSelected: (value) async {
-          if (value == 'rotate') {
-            try {
-              await transferService.rotatePinnedKey(device.senderId);
-              if (mounted) {
-                ref.invalidate(trustedDevicesProvider);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        'Pin reset for ${device.senderName} \u2014 re-pair on next transfer'),
-                    backgroundColor: AppTheme.secondaryColor,
-                  ),
-                );
-              }
-            } catch (e) {
-              AppLogger.error('Error resetting pin for ${device.senderId}: $e');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to reset pin: $e'),
-                    backgroundColor: AppTheme.errorColor,
-                  ),
-                );
-              }
-            }
-          } else if (value == 'revoke') {
+          if (value == 'revoke') {
             try {
               await transferService.revokeTrust(device.senderId);
               if (mounted) {
@@ -647,16 +619,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           }
         },
         itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: 'rotate',
-            child: Row(
-              children: [
-                Icon(Icons.refresh, size: 18),
-                SizedBox(width: AppSpacing.sm),
-                Text('Reset trust'),
-              ],
-            ),
-          ),
           const PopupMenuItem(
             value: 'revoke',
             child: Row(

@@ -64,11 +64,6 @@ final selectedDeviceProvider = StateProvider<Device?>((ref) => null);
 /// Provider for selecting multiple devices for batch transfer
 final selectedDevicesProvider = StateProvider<Set<Device>>((ref) => {});
 
-/// Provider to check if multi-select mode is enabled
-final isMultiSelectModeProvider = Provider<bool>((ref) {
-  return ref.watch(selectedDevicesProvider).isNotEmpty;
-});
-
 // ============================================
 // SERVICE STATUS PROVIDERS
 // ============================================
@@ -78,22 +73,10 @@ final isDeviceServiceInitializedProvider = Provider<bool>((ref) {
   return service.isInitialized;
 });
 
-// FIX (Bug #14): Use StreamProvider for reactive scanning state
-final isScanningProvider = StreamProvider<bool>((ref) {
-  final service = ref.watch(deviceDiscoveryServiceProvider);
-  return service.scanningStream;
-});
-
 /// Provider for local IP addresses (for subnet filtering)
 final localIpsProvider = Provider<List<String>>((ref) {
   final service = ref.watch(deviceDiscoveryServiceProvider);
   return service.localIps;
-});
-
-/// Provider for current device's subnets
-final currentDeviceSubnetsProvider = Provider<List<String>>((ref) {
-  final service = ref.watch(deviceDiscoveryServiceProvider);
-  return service.subnets;
 });
 
 // ============================================

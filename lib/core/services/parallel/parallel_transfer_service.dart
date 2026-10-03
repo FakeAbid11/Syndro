@@ -646,40 +646,6 @@ class ParallelTransferService {
     return result;
   }
 
-  Future<Uint8List> decryptChunk(
-      Uint8List encryptedData, SecretKey secretKey) async {
-    if (encryptedData.length < 28) {
-      throw ArgumentError('Data too small to decrypt: ${encryptedData.length} bytes (minimum 28)');
-    }
-
-    final nonce = encryptedData.sublist(0, 12);
-    final mac = encryptedData.sublist(encryptedData.length - 16);
-    final ciphertext = encryptedData.sublist(12, encryptedData.length - 16);
-
-    final secretBox = SecretBox(
-      ciphertext,
-      nonce: nonce,
-      mac: Mac(mac),
-    );
-
-    try {
-      final plaintext = await _aesGcm.decrypt(
-        secretBox,
-        secretKey: secretKey,
-      );
-
-      return Uint8List.fromList(plaintext);
-    } on SecretBoxAuthenticationError catch (e) {
-      throw DecryptionException(
-        'Decryption failed: Authentication error - data may be corrupted or tampered',
-        originalError: e,
-      );
-    } on ArgumentError catch (e) {
-      throw DecryptionException('Invalid encrypted data: ${e.message}', originalError: e);
-    } catch (e) {
-      throw DecryptionException('Decryption failed: ${e.runtimeType}', originalError: e);
-    }
-  }
 
   void _emitProgress(ParallelTransferState state) {
     if (!_progressController.isClosed && !_isDisposed) {
