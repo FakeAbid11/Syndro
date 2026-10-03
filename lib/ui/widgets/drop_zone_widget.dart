@@ -98,12 +98,22 @@ class _EmptyDropZoneState extends State<EmptyDropZone> {
       alignment: Alignment.center,
       padding: const EdgeInsets.all(AppSpacing.xxxl),
       decoration: BoxDecoration(
+        // The framed target appears only while a drag is actually in progress.
+        //
+        // Idle, this used to paint a filled, bordered rectangle across the whole
+        // pane. On a two-pane desktop layout that made an empty state the
+        // largest object on screen — a big empty box competing with the device
+        // list for attention, which is the opposite of the design direction
+        // ("glow and gradient are accents, not a surface treatment"; "interaction
+        // speed matters more than visual spectacle"). The prompt now recedes to
+        // plain content on the scaffold's base colour, and lights up exactly
+        // when it becomes a real drop target.
         color: active
             ? AppTheme.primaryColor.withValues(alpha: 0.08)
-            : AppTheme.surfaceContainer,
+            : Colors.transparent,
         borderRadius: AppRadius.xxlAll,
         border: Border.all(
-          color: active ? AppTheme.primaryColor : AppTheme.outlineVariant,
+          color: active ? AppTheme.primaryColor : Colors.transparent,
           width: active ? 2 : 1,
           strokeAlign: BorderSide.strokeAlignInside,
         ),

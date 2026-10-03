@@ -71,9 +71,14 @@ class HomeMobileLayout extends StatelessWidget {
         ),
       ),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        // Flat base colour, not the three-stop background gradient.
+        //
+        // The design direction is that "body panes sit on the scaffold's flat
+        // base colour" and that "the three-stop background gradient is no longer
+        // painted under the largest surface in the app". Desktop already does
+        // this; Android still painted it, so the phone shell had a soft tinted
+        // wash that the desktop shell did not, for the same content.
+        color: AppTheme.backgroundColor,
         // PLATFORM: the floating nav pill is anchored to the real system inset
         // (see main_navigation_screen), so the FABs have to clear that same
         // inset plus the pill's height. Fixed offsets used to overlap it on a

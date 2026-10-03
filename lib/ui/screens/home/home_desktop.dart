@@ -264,18 +264,36 @@ class _HomeDesktopLayoutState extends State<HomeDesktopLayout> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    // Centre a bounded prompt in the pane.
+                    //
+                    // This used to stretch the drop zone over the pane's full
+                    // height, which painted the largest object on screen as an
+                    // empty box. `Center` hands its child loose constraints, so
+                    // the prompt now sizes to its own content and sits centred
+                    // in the pane, while the device list stays the subject.
+                    //
+                    // Only the width is capped, to keep the copy to a readable
+                    // measure. Capping the height here would clip the prompt in
+                    // a short window and the scroll view would have nothing
+                    // left to reveal.
                     return SingleChildScrollView(
                       child: ConstrainedBox(
                         constraints:
                             BoxConstraints(minHeight: constraints.maxHeight),
-                        child: EmptyDropZone(
-                          onFilesDropped: widget.onFilesDropped,
-                          onPickFiles: widget.onOpenPicker,
-                          onPickFolder: widget.onOpenPicker,
-                          // The page-level DropTarget already registers this
-                          // window; a second one would ask twice.
-                          handlesOwnDrop: false,
-                          dragOverWindow: _dragOverWindow,
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints:
+                                const BoxConstraints(maxWidth: 560),
+                            child: EmptyDropZone(
+                              onFilesDropped: widget.onFilesDropped,
+                              onPickFiles: widget.onOpenPicker,
+                              onPickFolder: widget.onOpenPicker,
+                              // The page-level DropTarget already registers
+                              // this window; a second one would ask twice.
+                              handlesOwnDrop: false,
+                              dragOverWindow: _dragOverWindow,
+                            ),
+                          ),
                         ),
                       ),
                     );
