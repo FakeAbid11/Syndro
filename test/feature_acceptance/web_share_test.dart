@@ -59,6 +59,17 @@ void main() {
   const evilName = "sales & cost' onmouseover=alert(1).txt";
   late File evilFile;
 
+  /// The double-quote payload, which is the one that actually worked.
+  ///
+  /// `"` is in the Windows reserved set (`< > : " / \ | ? *`), so a file with
+  /// one cannot be created on this platform and no end-to-end upload of it can
+  /// be asserted here. It is perfectly legal on Linux, Android and macOS, which
+  /// is where the bug was reachable. Rather than fake it, this file follows the
+  /// same convention it already uses for `<script>` in a name: the payload
+  /// itself is left uncovered on Windows, and what *is* assertable everywhere
+  /// is the escaping helper the page ships — see the escapeHtml test below,
+  /// which is the regression guard that matters.
+
   setUpAll(() async {
     workDir = await Directory.systemTemp.createTemp('syndro-web-share');
 
@@ -200,4 +211,36 @@ void main() {
         reason: 'awkward names must remain downloadable');
     expect(download.body, utf8.encode('content'));
   });
+
+  test('the share page escapes quotes, so a filename cannot inject an attribute',
+      () async {
+    // The page builds its listing client-side, so the escaping happens in JS and
+    // cannot be exercised from this VM. What is assertable — and what actually
+    // regressed — is the helper the page ships. The previous implementation used
+    // the obvious `div.textContent = v; return div.innerHTML`, which per the
+    // HTML fragment-serialization spec escapes &, U+00A0, < and > but NOT quotes.
+    // The result was interpolated into `alt="..."`, so `quoteName` closed the
+    // attribute and injected an event handler into the share origin.
+    //
+    // So assert the property that was missing: quotes are escaped. If someone
+    // simplifies the helper back to the spec-minimal version, this fails.
+    final page = await get('/');
+    expect(page.status, 200);
+    final html = utf8.decode(page.body, allowMalformed: true);
+
+    // Find the escapeHtml helper in the served script.
+    final match = RegExp(
+      r'function escapeHtml\(text\)\s*\{(.*?)\n\s*\}',
+      dotAll: true,
+    ).firstMatch(html);
+    expect(match, isNotNull,
+        reason: 'the share page must still define an escapeHtml helper');
+
+    final body = match!.group(1)!;
+    expect(body, contains('&quot;'),
+        reason: 'escapeHtml must escape double quotes for attribute contexts');
+    expect(body, contains('&#39;'),
+        reason: 'escapeHtml must escape single quotes for attribute contexts');
+  });
+
 }

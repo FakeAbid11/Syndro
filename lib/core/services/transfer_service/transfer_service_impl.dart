@@ -720,71 +720,6 @@ class TransferService {
     }
   }
 
-  Future<void> _handleChunkDownload(HttpRequest request) async {
-    try {
-      final pathParts = request.uri.path.split('/');
-
-      if (pathParts.length < 5) {
-        await _sendBadRequest(request, 'Invalid path');
-        return;
-      }
-
-      final transferId = pathParts[3];
-
-      final session = _parallelReceiver.getSession(transferId);
-      if (session == null) {
-        await _sendNotFound(request, 'Transfer not found');
-        return;
-      }
-
-      // SECURITY: Same transfer-scoped authorization as chunk uploads. This
-      // GET path previously trusted only the spoofable `x-device-id` header,
-      // so any LAN peer that learned an active transferId + sender ID could
-      // pull in-flight file data. Require the token accepted for the transfer
-      // (or a valid trusted-device token), exactly like the upload path.
-      final callerId = request.headers.value('x-device-id');
-      if (callerId == null || callerId.isEmpty) {
-        await _sendUnauthorized(request, 'Missing device ID');
-        return;
-      }
-      if (!await _isTransferAuthorized(
-        transferId: transferId,
-        senderId: callerId,
-        presentedToken: request.headers.value('X-Sender-Token'),
-      )) {
-        await _sendUnauthorized(request, 'Not authorized for this transfer');
-        return;
-      }
-
-      // Serve chunk data from the writer
-      final chunkIndexStr = pathParts.length > 4 ? pathParts[4] : null;
-      if (chunkIndexStr == null) {
-        await _sendBadRequest(request, 'Missing chunk index');
-        return;
-      }
-      final chunkIndex = int.tryParse(chunkIndexStr);
-      if (chunkIndex == null || chunkIndex < 0) {
-        await _sendBadRequest(request, 'Invalid chunk index');
-        return;
-      }
-
-      try {
-        final chunkData = await session.writer.readChunk(chunkIndex);
-        if (chunkData == null) {
-          await _sendNotFound(request, 'Chunk not found');
-          return;
-        }
-        request.response.headers.contentType = ContentType('application', 'octet-stream');
-        request.response.headers.contentLength = chunkData.length;
-        request.response.add(chunkData);
-        await request.response.close();
-      } catch (e) {
-        await _sendError(request, 'Error reading chunk: $e');
-      }
-    } catch (e) {
-      await _sendError(request, 'Error serving chunk: $e');
-    }
-  }
 
   Future<void> _handleParallelComplete(HttpRequest request) async {
     try {
@@ -1211,10 +1146,11 @@ class TransferService {
         return;
       }
 
-      if (method == 'GET' && path.startsWith('/transfer/chunk/')) {
-        await _handleChunkDownload(request);
-        return;
-      }
+      // There is deliberately no GET /transfer/chunk/{id}/{index}. It served
+      // *plaintext* bytes out of the receiver's writer for a transfer that was
+      // negotiated as encrypted, and nothing in the app ever called it — it was
+      // pure attack surface. A parallel send is one-directional; the receiver
+      // pulls nothing from the sender.
 
       if (method == 'POST' && path == '/transfer/parallel/complete') {
         await _handleParallelComplete(request);
@@ -1313,21 +1249,26 @@ class TransferService {
       } else if (trustedDevice != null &&
           !trustedDevice.hasActivePin &&
           theirPublicKeyBytes.isNotEmpty) {
-        // First key exchange after trust without a pin (legacy trust
-        // or after rotatePinnedKey). Automatically pin the key now
-        // so subsequent connections are protected.
-        try {
-          final pubKeyBase64 = base64Url.encode(theirPublicKeyBytes);
-          await _pinTrustedDeviceKey(trustedDevice, pubKeyBase64);
-          if (kDebugMode) {
-            AppLogger.info(
-                '📌 Auto-pinned public key for trusted device $theirDeviceId');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            AppLogger.error('⚠️ Auto-pin failed for $theirDeviceId: $e');
-          }
-        }
+        // Deliberately NOT pinned here.
+        //
+        // This branch used to auto-pin whatever key arrived, keyed by the
+        // attacker-supplied `deviceId` in the request body. That let any host on
+        // the LAN permanently pin an arbitrary key to a device the user had
+        // actually trusted: POST /key-exchange {"deviceId":"<trusted B>",
+        // "publicKey":[<attacker's>]} stored the attacker's key as B's pin. B's
+        // next real exchange then failed the check above with a 401 it could
+        // never recover from, and _verifyDeviceToken never accepts the raw
+        // static token for a pinned device, so B could not authenticate at all
+        // until the user manually reset trust.
+        //
+        // A pin may only be established where the key is bound to the peer by
+        // something the attacker cannot supply — an authenticated pairing flow.
+        // There is no such flow here, so an unpinned trusted device simply keeps
+        // using its static token, and revocation from Settings is the only way
+        // to add a pin.
+        AppLogger.info(
+            'ℹ️ Trusted device $theirDeviceId has no pinned key; '
+            'continuing without TOFU pinning');
       }
 
       final sharedSecret = await _performKeyExchange(theirPublicKeyBytes);
@@ -1529,17 +1470,21 @@ class TransferService {
   }
 
   // ─────────────────────────────────────────────
-  //  TOFU pin helpers
+  //  TOFU pin verification
   // ─────────────────────────────────────────────
-
-  /// Store a public key pin for a trusted device. Delegates to
-  /// [TrustedDevicesHandler.pinKey], which updates the in-memory record,
-  /// persists the trusted-devices JSON and writes the namespaced
-  /// `syndro.pin.<id>` secure-storage entry.
-  Future<void> _pinTrustedDeviceKey(
-      TrustedDevice device, String pubKeyBase64) async {
-    await _trustedDevicesHandler.pinKey(device.senderId, pubKeyBase64);
-  }
+  //
+  // Pins are now read-only in this build: nothing here creates one, because the
+  // only path that could — the auto-pin in _handleKeyExchange — was keyed by an
+  // attacker-supplied device id and has been removed.
+  //
+  // Verification is kept deliberately. A device that was trusted by an earlier
+  // build may already have a pin persisted in secure storage, and
+  // TrustedDevicesHandler still loads it. Dropping the check would silently
+  // downgrade those installs to token-only auth. If a pin is ever presented
+  // here, it is enforced.
+  //
+  // TrustedDevicesHandler.pinKey remains the sanctioned way to establish one,
+  // to be called from a flow that actually authenticates the peer.
 
   /// Verify the presented token against the trusted device's record.
   ///
@@ -1625,6 +1570,14 @@ class TransferService {
   /// the **bound token** = HMAC(senderToken, pinnedPubKey) to prove
   /// possession of the pinned key. Otherwise, fall back to the raw
   /// `_deviceToken` for backward compatibility with unpinned devices.
+  /// The credential to present when talking to [receiverId].
+  ///
+  /// A pinned device authenticates with `HMAC-SHA256(ourToken, itsPinnedKey)`
+  /// rather than the raw static token. If that derivation fails, this must NOT
+  /// quietly fall back to the raw token: `_verifyDeviceToken` on the receiver
+  /// refuses the raw token for a pinned device precisely because it is the value
+  /// an attacker would already hold, so sending it would guarantee a 401 while
+  /// making the failure look like a network problem. Fail closed instead.
   Future<String> _getSenderTokenForDevice(String receiverId) async {
     final trustedDevice =
         _trustedDevicesHandler.getTrustedDevice(receiverId);
@@ -1635,8 +1588,11 @@ class TransferService {
           senderToken: _deviceToken,
           pinnedPubKeyBase64Url: trustedDevice.pinnedPubKey!,
         );
-      } catch (_) {
-        // Fall through to raw token on derivation failure
+      } catch (e) {
+        AppLogger.error(
+            '❌ Bound-token derivation failed for $receiverId; refusing to '
+            'downgrade to the raw static token: $e');
+        rethrow;
       }
     }
 
@@ -2706,6 +2662,42 @@ class TransferService {
             'Security: Filename was sanitized. Original: $fileName, Sanitized: $sanitizedFileName');
       }
 
+      // Bind the delivered file to what the user actually approved.
+      //
+      // Approval covered a specific list of names and sizes, carried in
+      // /transfer/initiate. The upload then arrived with its own `x-file-name`
+      // and `x-file-size` headers, and nothing compared the two — so a sender
+      // could show `photo.jpg` in the prompt, get a tap of approval, and then
+      // deliver `payload.exe` at any size up to the 100 GB cap. Sanitisation
+      // stops a *dangerous* name, not a *substituted* one.
+      //
+      // Compare against the approved list rather than trusting the header: the
+      // approved names are sanitised the same way, so both sides of the
+      // comparison are in the same form.
+      final approved = transfer.items
+          .map((item) => _fileService.sanitizeFilename(item.name))
+          .toSet();
+      if (!approved.contains(sanitizedFileName)) {
+        AppLogger.info(
+            'Security: $transferId delivered "$fileName", which is not in the '
+            'approved list (${transfer.items.length} item(s))');
+        await _sendBadRequest(request,
+            'File is not part of the approved transfer');
+        return;
+      }
+      final approvedItem = transfer.items.firstWhere(
+        (item) => _fileService.sanitizeFilename(item.name) == sanitizedFileName,
+        orElse: () => transfer.items.first,
+      );
+      if (approvedItem.size > 0 && fileSize != approvedItem.size) {
+        AppLogger.info(
+            'Security: $transferId declared size $fileSize for '
+            '"$fileName", approved size was ${approvedItem.size}');
+        await _sendBadRequest(request,
+            'File size does not match the approved transfer');
+        return;
+      }
+
       _activeTransfers[transferId] = transfer.copyWith(
         status: TransferStatus.transferring,
       );
@@ -2791,6 +2783,37 @@ class TransferService {
       );
       final finalFile = File(finalFilePath);
       tempFilePath = null;
+
+      // Verify the hash the sender declared, on the plaintext path too.
+      //
+      // Only the encrypted handler did this, and only when the header was
+      // present — so a plaintext upload that arrived corrupt, or that was simply
+      // not the file the sender claimed, was accepted and recorded as completed.
+      // Both send paths compute and set this header, so there is no legitimate
+      // case where it is missing: treat absence as a failure rather than
+      // skipping the check.
+      final declaredHash = request.headers.value('x-file-hash');
+      if (declaredHash == null || declaredHash.isEmpty) {
+        AppLogger.info(
+            'Security: plaintext upload for $transferId declared no hash');
+        await finalFile.delete();
+        throw TransferException(
+          'File integrity check failed: sender declared no hash',
+          code: 'HASH_MISSING',
+        );
+      }
+      final calculatedHash = await _calculateHashFromFile(finalFile);
+      if (calculatedHash != declaredHash) {
+        AppLogger.error(
+            'Hash mismatch for plaintext upload: declared $declaredHash, '
+            'calculated $calculatedHash');
+        await finalFile.delete();
+        throw TransferException(
+          'File integrity check failed: hash mismatch',
+          code: 'HASH_MISMATCH',
+        );
+      }
+      AppLogger.info('File hash verified for plaintext upload');
 
       // Apply file metadata (modification time)
       if (fileModified != null) {
@@ -4054,9 +4077,32 @@ class TransferService {
     }
   }
 
+  /// Establish (or replace) the TOFU public-key pin for a trusted device.
+  ///
+  /// This is the only supported way to create a pin. It must be called from a
+  /// flow that has actually authenticated the peer and is binding that
+  /// authentication to the presented key — never from a handler that merely
+  /// accepts a device id off the wire.
+  ///
+  /// `/key-exchange` used to do exactly that, which let any host on the LAN pin
+  /// an arbitrary key to a device the user had genuinely trusted, permanently
+  /// bricking that peer's authentication. That auto-pin is gone; this method
+  /// exists so a real pairing flow has somewhere to go.
+  Future<void> pinTrustedDeviceKey(
+      String deviceId, String pubKeyBase64Url) async {
+    final device = _trustedDevicesHandler.getTrustedDevice(deviceId);
+    if (device == null) {
+      AppLogger.warn(
+          'Refusing to pin a key for an untrusted device: $deviceId');
+      return;
+    }
+    await _trustedDevicesHandler.pinKey(deviceId, pubKeyBase64Url);
+    AppLogger.info('📌 Pinned public key for trusted device: $deviceId');
+  }
+
   /// Reset the TOFU pin for a trusted device, forcing re-verification
   /// on the next key exchange. Clears the pinned public key and sets
-  /// the pendingRepin flag so the next connection auto-pins a fresh key.
+  /// the pendingRepin flag so the next connection re-verifies.
   Future<void> rotatePinnedKey(String deviceId) async {
     final device = _trustedDevicesHandler.getTrustedDevice(deviceId);
     if (device == null) return;

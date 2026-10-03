@@ -227,7 +227,11 @@ class ReceiveServer {
           _server = await HttpServer.bind(
             InternetAddress.anyIPv4,
             port,
-            shared: true,
+            // Exclusive bind; see the note in ShareServer. `shared: true` let a
+            // second Syndro process take port 8767 as well, splitting session
+            // cookies, upload approvals and the pending-file list across two
+            // processes that neither of them can see.
+            shared: false,
           );
           break;
         } catch (e) {

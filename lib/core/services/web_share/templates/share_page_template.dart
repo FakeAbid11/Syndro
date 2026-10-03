@@ -819,26 +819,26 @@ class SharePageTemplate {
                 container.innerHTML = data.files.map(file => {
                     if (file.isImage) {
                         return '<div class="file-item">' +
-                            '<div class="file-thumbnail" onclick="openLightbox(' + file.id + ')" title="Click to preview">' +
-                                '<img src="' + file.thumbnailUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy">' +
+                            '<div class="file-thumbnail" onclick="openLightbox(' + escapeHtml(file.id) + ')" title="Click to preview">' +
+                                '<img src="' + escapeHtml(file.thumbnailUrl) + '" alt="' + escapeHtml(file.name) + '" loading="lazy">' +
                                 '<div class="click-hint">' + icons.zoom + '</div>' +
                             '</div>' +
                             '<div class="file-info">' +
                                 '<div class="file-name">' + escapeHtml(file.name) + '</div>' +
-                                '<div class="file-size">' + file.sizeFormatted + '</div>' +
+                                '<div class="file-size">' + escapeHtml(file.sizeFormatted) + '</div>' +
                             '</div>' +
-                            '<a href="' + file.downloadUrl + '" class="download-btn" download>' +
+                            '<a href="' + escapeHtml(file.downloadUrl) + '" class="download-btn" download>' +
                                 icons.download + '<span>Download</span>' +
                             '</a>' +
                         '</div>';
                     } else {
                         return '<div class="file-item">' +
-                            '<div class="file-icon ' + file.type + '">' + (icons[file.type] || icons.file) + '</div>' +
+                            '<div class="file-icon ' + escapeHtml(file.type) + '">' + (icons[file.type] || icons.file) + '</div>' +
                             '<div class="file-info">' +
                                 '<div class="file-name">' + escapeHtml(file.name) + '</div>' +
-                                '<div class="file-size">' + file.sizeFormatted + '</div>' +
+                                '<div class="file-size">' + escapeHtml(file.sizeFormatted) + '</div>' +
                             '</div>' +
-                            '<a href="' + file.downloadUrl + '" class="download-btn" download>' +
+                            '<a href="' + escapeHtml(file.downloadUrl) + '" class="download-btn" download>' +
                                 icons.download + '<span>Download</span>' +
                             '</a>' +
                         '</div>';
@@ -850,10 +850,22 @@ class SharePageTemplate {
             }
         }
 
+        // Escape for BOTH text content and quoted-attribute contexts.
+        //
+        // The obvious implementation — build a div, set textContent, read
+        // innerHTML — is not enough. Per the HTML fragment-serialization spec
+        // that only escapes &, U+00A0, < and >. Double and single quotes pass
+        // through verbatim, so using the result inside alt="..." let a filename
+        // like x" onerror="... break out of the attribute and run script in the
+        // share page's own origin — which can then read /api/files and
+        // /download/* for the whole shared set, past the per-IP approval gate.
+        // Escaping the quotes as well makes the result safe in either context.
         function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         loadFiles();

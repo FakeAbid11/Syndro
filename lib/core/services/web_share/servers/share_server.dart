@@ -242,7 +242,17 @@ class ShareServer {
           _server = await HttpServer.bind(
             InternetAddress.anyIPv4,
             port,
-            shared: true,
+            // Exclusive. This used to be `shared: true`, which is not
+            // collision handling — it asks the OS to *share* the port. On
+            // Windows a second Syndro process then binds 8766 successfully and
+            // the OS load-balances connections across two sockets, so a
+            // browser's session cookie, approval state and pending-file list
+            // all live in whichever process wins the accept. An upload can land
+            // in a process that never shows it in its UI.
+            //
+            // The port++ loop below is what actually handles a busy port: it
+            // walks forward until an exclusive bind succeeds.
+            shared: false,
           );
           break;
         } catch (e) {
@@ -517,11 +527,38 @@ class ShareServer {
       return;
     }
 
-    // CORS headers
-    request.response.headers.add('Access-Control-Allow-Origin', '*');
-    request.response.headers
-        .add('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    request.response.headers.add('Access-Control-Allow-Headers', '*');
+    // Same-origin only, the way ReceiveServer already does it.
+    //
+    // This used to send `Access-Control-Allow-Origin: *`, which let any page the
+    // user happened to visit in any browser on the machine script-read
+    // /api/files and /download/* from the share origin. The per-IP approval gate
+    // does not help: once the user approves one browser tab, every origin in
+    // that browser — and every site they visit afterwards — can read the shared
+    // set for as long as the share lives.
+    //
+    // Reflecting the request's own Host (plus Vary: Origin) means a page served
+    // from this origin can talk to it, and nothing else can.
+    final origin = request.headers.value('origin');
+    final host = request.headers.value('host');
+    if (origin != null && host != null) {
+      final expected = 'http://$host';
+      if (origin != expected) {
+        AppLogger.info(
+            '🚫 Cross-origin request to the share server refused for $clientIp');
+        request.response.statusCode = HttpStatus.forbidden;
+        await request.response.close();
+        return;
+      }
+      request.response.headers
+        ..set('Access-Control-Allow-Origin', expected)
+        ..set('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        ..set('Vary', 'Origin');
+    } else if (origin != null) {
+      // An Origin with no Host cannot be validated against this server.
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
 
     if (request.method == 'OPTIONS') {
       request.response.statusCode = HttpStatus.ok;

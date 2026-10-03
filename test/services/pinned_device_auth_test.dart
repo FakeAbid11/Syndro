@@ -126,21 +126,32 @@ void main() {
           reason: 'precondition: trusted by key exchange has not run');
     }
 
-    /// Perform a real key exchange, which auto-pins the presented public key.
+    /// Establish a pin for the sender.
+    ///
+    /// This used to be done by POSTing /key-exchange and relying on the server
+    /// to auto-pin whatever key arrived. That path is gone: it keyed the pin by
+    /// an attacker-supplied device id, so any host on the LAN could pin its own
+    /// key to a device the user had actually trusted. Pinning now goes through
+    /// the explicit API a real pairing flow would call, which is what this
+    /// helper does — with the peer already trusted and the key it is pinning
+    /// known to the caller.
     Future<void> pinSender() async {
-      final response = await rawPostFull(
-          '/key-exchange',
-          {'Content-Type': 'application/json'},
-          jsonEncode({
-            'deviceId': senderId,
-            'publicKey': senderPubKeyBytes,
-          }));
-      expect(response, contains('HTTP/1.1 200'));
+      await service.pinTrustedDeviceKey(senderId, senderPubKeyB64);
       expect(service.trustedDevices.first.pinnedPubKey, senderPubKeyB64,
           reason: 'precondition: the pin must actually be active for these '
               'tests to mean anything');
       expect(service.trustedDevices.first.hasActivePin, isTrue);
     }
+
+    /// The key exchange must NOT establish a pin on its own.
+    Future<String> exchangeKey() => rawPostFull(
+          '/key-exchange',
+          {'Content-Type': 'application/json'},
+          jsonEncode({
+            'deviceId': senderId,
+            'publicKey': senderPubKeyBytes,
+          }),
+        );
 
     Future<String> boundTokenFor(String pin) =>
         EncryptionService.deriveBoundToken(
@@ -150,7 +161,24 @@ void main() {
 
     // ── Unpinned device ───────────────────────────────────────────────────
 
-    test('unpinned device presenting the raw static token is accepted',
+    test('a key exchange does NOT pin a key for a trusted device', () async {
+      // Regression: /key-exchange used to auto-pin the presented key, keyed by
+      // the deviceId in the request body. Any host on the LAN could therefore
+      // POST {"deviceId":"<trusted B>","publicKey":[<attacker's>]} and store
+      // its own key as B's permanent pin — after which B's real exchanges fail
+      // with a 401 it cannot recover from. A pin may only come from a flow that
+      // authenticated the peer.
+      await trustWithoutPin();
+
+      final response = await exchangeKey();
+      expect(response, contains('HTTP/1.1 200'),
+          reason: 'the exchange itself should still succeed');
+      expect(service.trustedDevices.first.hasActivePin, isFalse,
+          reason: 'an unauthenticated key exchange must not establish a pin');
+      expect(service.trustedDevices.first.pinnedPubKey, isNull);
+    });
+
+    test('an unpinned device presenting the raw static token is accepted',
         () async {
       await trustWithoutPin();
 

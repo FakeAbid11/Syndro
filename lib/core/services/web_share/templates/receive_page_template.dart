@@ -980,10 +980,15 @@ class ReceivePageTemplate {
             return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
         }
 
+        // Quote-safe as well as tag-safe. textContent -> innerHTML escapes
+        // &, U+00A0, < and > but leaves quotes alone, which is not sufficient
+        // for the attribute contexts below.
         function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function renderFileList() {
@@ -1066,12 +1071,19 @@ class ReceivePageTemplate {
                         progressText = item.error || 'Failed';
                     }
 
+                    // progressText can carry a message straight off the wire:
+                    // item.error is set from the XHR failure text and from
+                    // result.message in the parsed JSON body. It lands in
+                    // innerHTML below, so it has to be escaped even though the
+                    // server only sends fixed literals today — that stops being
+                    // true the moment a message ever reflects request input, and
+                    // the whole transport is cleartext HTTP.
                     progressHtml = `
                         <div class="file-progress active">
                             <div class="file-progress-bar">
-                                <div class="file-progress-fill ${progressClass}" style="width: ${item.progress}%"></div>
+                                <div class="file-progress-fill ${progressClass}" style="width: ${Number(item.progress) || 0}%"></div>
                             </div>
-                            <div class="file-progress-text">${progressText}</div>
+                            <div class="file-progress-text">${escapeHtml(progressText)}</div>
                         </div>`;
                 }
 
