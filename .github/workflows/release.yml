@@ -71,6 +71,25 @@ jobs:
                 echo "::error::Version '$IN' must look like 1.2.3"
                 exit 1
               fi
+
+              # Refuse to release a version at or below the one already on main.
+              #
+              # The workflow takes the version from a manual input, rewrites
+              # pubspec.yaml with sed, then commits and tags. With nothing
+              # checking the direction, a mistyped or stale input silently
+              # downgraded main twice: 1.2.2 -> 1.0.1, then 1.2.2 -> 1.0.2. Each
+              # downgrade also consumed a build number (+20 -> +22 -> +23), so
+              # the released artifact was older than the one before it while
+              # looking newer in the build-number field.
+              CURRENT="$(grep -E '^version:' pubspec.yaml | head -1 | sed -E 's/^version:[[:space:]]*//; s/\+.*$//')"
+              if [ -n "$CURRENT" ]; then
+                HIGHEST="$(printf '%s\n%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)"
+                if [ "$HIGHEST" != "$VERSION" ] || [ "$VERSION" = "$CURRENT" ]; then
+                  echo "::error::Refusing to release $VERSION: pubspec.yaml is already at $CURRENT. A release must be strictly newer. (Current history: 1.2.2)"
+                  exit 1
+                fi
+              fi
+
               TAG="v$VERSION"
               {
                 echo "do_release=true"
