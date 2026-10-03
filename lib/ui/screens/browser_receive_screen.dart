@@ -9,18 +9,23 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
+import '../../core/services/file_service.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
 import '../../core/utils/app_logger.dart';
 class BrowserReceiveScreen extends StatefulWidget {
-  const BrowserReceiveScreen({super.key});
+  const BrowserReceiveScreen({super.key, this.service});
+
+  /// Injectable for tests. Production leaves this null and gets its own
+  /// instance, which owns both web-share servers for the life of the screen.
+  final WebShareService? service;
 
   @override
   State<BrowserReceiveScreen> createState() => _BrowserReceiveScreenState();
 }
 
 class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
-  final WebShareService _webShareService = WebShareService();
+  late final WebShareService _webShareService = widget.service ?? WebShareService();
   String? _receiveUrl;
   bool _isLoading = true;
   String? _error;
@@ -28,6 +33,7 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
   List<ReceivedFile> _pendingFiles = [];
   StreamSubscription<List<ReceivedFile>>? _filesSubscription;
   StreamSubscription<ReceivedFile>? _fileEventSubscription;
+  StreamSubscription<UploadPendingConfirmation>? _uploadApprovalSubscription;
   bool _isSaving = false;
   bool _isSavingAll = false;
 
@@ -50,20 +56,30 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     } catch (e) {
       AppLogger.info('Error cancelling files subscription: $e');
     }
-    
+
     try {
       _fileEventSubscription?.cancel();
       _fileEventSubscription = null;
     } catch (e) {
       AppLogger.info('Error cancelling file event subscription: $e');
     }
-    
+
     try {
-      _webShareService.stopSharing();
+      _uploadApprovalSubscription?.cancel();
+      _uploadApprovalSubscription = null;
+    } catch (e) {
+      AppLogger.info('Error cancelling upload approval subscription: $e');
+    }
+
+    try {
+      // dispose(), not stopSharing(): the receive server owns a timestamped
+      // temp directory that only dispose() removes, so stopSharing() alone
+      // leaked one directory per session.
+      unawaited(_webShareService.dispose());
     } catch (e) {
       AppLogger.info('Error disposing web share service: $e');
     }
-    
+
     super.dispose();
   }
 
@@ -116,6 +132,8 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     _filesSubscription = null;
     _fileEventSubscription?.cancel();
     _fileEventSubscription = null;
+    _uploadApprovalSubscription?.cancel();
+    _uploadApprovalSubscription = null;
 
     setState(() {
       _isLoading = true;
@@ -164,6 +182,17 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
           }
         });
 
+        // The receive server requires per-request approval and parks the
+        // uploader in a poll loop until it is answered, then refuses the upload
+        // with 403 once the two-minute deadline passes.
+        //
+        // Nothing in the UI subscribed to this stream, so every browser upload
+        // timed out and was rejected: the feature was unreachable from the app.
+        _uploadApprovalSubscription =
+            _webShareService.uploadConfirmationRequestStream.listen((request) {
+          if (mounted) unawaited(_promptForUploadApproval(request));
+        });
+
         setState(() {
           _receiveUrl = url;
           _isLoading = false;
@@ -184,45 +213,148 @@ class _BrowserReceiveScreenState extends State<BrowserReceiveScreen> {
     }
   }
 
-  Future<String> _getDownloadDirectory() async {
-    if (Platform.isAndroid) {
-      const publicDownload = '/storage/emulated/0/Download';
-      final downloadDir = Directory(publicDownload);
-
-      if (await downloadDir.exists()) {
-        const syndroFolder = '$publicDownload/Syndro';
-        final syndroDir = Directory(syndroFolder);
-
-        try {
-          if (!await syndroDir.exists()) {
-            await syndroDir.create(recursive: true);
-          }
-          return syndroFolder;
-        } catch (e) {
-          AppLogger.info('Error creating Syndro folder: $e');
-          return publicDownload;
-        }
-      }
-      return publicDownload;
-    } else if (Platform.isWindows) {
-      final userProfile = Platform.environment['USERPROFILE'];
-      if (userProfile != null) {
-        return '$userProfile\\Downloads';
-      }
-      return 'C:\\Users\\Public\\Downloads';
-    } else if (Platform.isLinux) {
-      final home = Platform.environment['HOME'];
-      if (home != null) {
-        return '$home/Downloads';
-      }
-      return '/tmp';
-    }
-
-    return '/storage/emulated/0/Download';
+  /// Where browser uploads are saved.
+  ///
+  /// Delegates to [FileService.getDownloadDirectory] rather than resolving a
+  /// path here. This screen used to carry its own copy of this logic, and it
+  /// was wrong in three ways: it had no macOS or iOS branch (so both fell
+  /// through to Android's `/storage/emulated/0/Download` and macOS tried to
+  /// create a directory at the filesystem root), and on Windows and Linux it
+  /// returned the bare Downloads folder instead of the `Syndro` subfolder that
+  /// every other write path uses. That meant Settings' "Download location" and
+  /// where browser uploads actually landed could disagree.
+  Future<String> _getDownloadDirectory() {
+    return FileService().getDownloadDirectory();
   }
 
-  void _copyLink() {
-    if (_receiveUrl != null) {
+  /// PLATFORM: Android/iOS keep bottom sheets; desktop uses a dialog, matching
+  /// HomeScreen's convention for the same kind of prompt.
+  bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+
+  /// Ask the user whether to accept one browser upload, then answer the server.
+  ///
+  /// The server holds the upload in a poll loop until this returns, so the
+  /// answer must be sent even if the user dismisses the prompt.
+  Future<void> _promptForUploadApproval(UploadPendingConfirmation request) async {
+    final approved = await _askUserToApproveUpload(request);
+    if (!mounted) return;
+
+    // Answer unconditionally. A prompt dismissed by a back gesture or a tap
+    // outside is a decline: leaving the request pending would burn the uploader's
+    // full two-minute timeout before it is refused.
+    final accepted = approved == true;
+    try {
+      if (accepted) {
+        _webShareService.approveUpload(request.requestId);
+      } else {
+        _webShareService.rejectUpload(request.requestId);
+      }
+    } catch (e) {
+      AppLogger.error('Error answering upload approval: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(accepted
+                ? 'Could not accept the upload'
+                : 'Could not reject the upload'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Returns true to accept, false to decline, null if the prompt was dismissed.
+  Future<bool?> _askUserToApproveUpload(UploadPendingConfirmation request) {
+    final body = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.cloud_upload_outlined,
+                color: AppTheme.primaryColor, size: 22),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'A browser wants to send you files',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _ApprovalRow(label: 'From', value: request.ipAddress),
+        // The approval has to happen before the body is read, so the name and
+        // size genuinely are not known yet. Say that rather than showing a
+        // placeholder that looks like real data.
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Files are scanned after you accept. Anything you do not want can be '
+          'discarded from the list below before saving.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+
+    if (_isMobilePlatform) {
+      return showModalBottomSheet<bool>(
+        context: context,
+        isDismissible: false,
+        enableDrag: false,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                body,
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext, false),
+                        child: const Text('Decline'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        child: const Text('Accept'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Accept these files?'),
+        content: body,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Decline'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyLink() {    if (_receiveUrl != null) {
       Clipboard.setData(ClipboardData(text: _receiveUrl!));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1257,6 +1389,40 @@ const SizedBox(width: AppSpacing.md),
           color: color,
         ),
       ),
+    );
+  }
+}
+
+// ============================================================
+// UPLOAD APPROVAL PROMPT
+// ============================================================
+
+/// One label/value line inside the upload approval prompt.
+class _ApprovalRow extends StatelessWidget {
+  const _ApprovalRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 }

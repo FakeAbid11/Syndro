@@ -5,3 +5,19 @@
 # test/feature_acceptance/, which boots real TransferService nodes on loopback.
 tags:
   acceptance:
+
+# One test file at a time.
+#
+# The suite is socket-heavy and timing-sensitive by nature: it binds real
+# loopback HTTP servers, moves real bytes, and waits on real approval polls with
+# deadlines as tight as 10 s (the parallel-completion ack). `package:test`
+# defaults to running files concurrently, and under that load those deadlines
+# are missed intermittently — the encrypted 12 MB parallel transfer, for
+# instance, passes in isolation and fails when several socket-bound files run
+# beside it. A flaky gate is worse than a slow one, because it trains everyone
+# to re-run red builds instead of reading them.
+#
+# If this becomes too slow to live with, the durable fix is to give the timing
+# sensitive assertions an event or condition to wait on rather than a fixed
+# deadline, and then raise this number.
+concurrency: 1

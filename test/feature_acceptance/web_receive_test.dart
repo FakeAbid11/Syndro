@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:syndro/core/services/web_share/servers/receive_server.dart';
+import 'package:syndro/core/services/web_share/web_share_service.dart';
 
 import 'harness.dart';
 
@@ -134,6 +135,52 @@ void main() {
         );
       }
     });
+
+    test('the WebShareService facade drives approval the way the UI does',
+        () async {
+      // Regression guard for the browser-receive flow being unusable from the
+      // app: ReceiveServer defaults `_requireConfirmation` to true, parks the
+      // uploader in a poll loop, and refuses it with 403 after two minutes. The
+      // app had no subscriber to uploadConfirmationRequestStream, so nothing
+      // ever answered and every browser upload failed.
+      //
+      // This drives the exact calls BrowserReceiveScreen makes — subscribe to
+      // the stream, then approveUpload/rejectUpload by UploadRequestId — rather
+      // than mutating the confirmation instance directly as the group above
+      // does. WebShareService had no test coverage at all.
+      final service = WebShareService();
+      addTearDown(service.dispose);
+
+      final approved = <String>[];
+      service.uploadConfirmationRequestStream.listen((request) {
+        approved.add(request.ipAddress);
+        service.approveUpload(request.requestId);
+      });
+
+      final url = await service.startReceiving(receiveDir.path);
+      expect(url, isNotNull, reason: 'the facade must report a receive URL');
+
+      const fileName = 'facade-upload.bin';
+      final body = List<int>.generate(2048, (i) => (i * 7) % 256);
+      final status = await _postMultipart(
+        Uri.parse(url!),
+        boundary: '----syndrofa${DateTime.now().microsecondsSinceEpoch}',
+        fileName: fileName,
+        field: 'files[]',
+        bytes: body,
+      );
+
+      expect(status, 200,
+          reason: 'an approved upload must be accepted (got $status)');
+      expect(approved, isNotEmpty,
+          reason: 'the facade must surface an approval request to the UI');
+      await waitUntil(
+        () => File(p.join(receiveDir.path, fileName)).existsSync() ||
+            service.pendingFiles.isNotEmpty,
+        timeout: const Duration(seconds: 15),
+        reason: 'the approved upload should reach the pending list or disk',
+      );
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
     test(
         'an upload that is never confirmed must not reach the disk '

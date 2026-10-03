@@ -917,6 +917,26 @@ class FileService {
         }
 
         return syndroDir.path;
+      } else if (Platform.isMacOS) {
+        // macOS has no ~/Downloads by convention; the user-writable location is
+        // ~/Documents, and getApplicationDocumentsDirectory() resolves to it.
+        // Prefer an existing ~/Downloads/Syndro when the user has one, so files
+        // land where they expect.
+        final home = Platform.environment['HOME'];
+        if (home != null && home.isNotEmpty) {
+          final downloads = Directory(path.join(home, 'Downloads'));
+          if (await downloads.exists()) {
+            final syndroDir = Directory(path.join(downloads.path, 'Syndro'));
+            try {
+              if (!await syndroDir.exists()) {
+                await syndroDir.create(recursive: true);
+              }
+              return syndroDir.path;
+            } catch (e) {
+              AppLogger.warn('⚠️ Cannot use ~/Downloads/Syndro: $e');
+            }
+          }
+        }
       }
     } catch (e) {
       AppLogger.error('Error getting download directory: $e');
