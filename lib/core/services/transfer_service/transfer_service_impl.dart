@@ -154,7 +154,18 @@ class TransferService {
   ///
   /// This bounds the "approved but silent" window only. Once bytes are flowing
   /// it is re-armed per chunk, so it does not limit throughput.
-  static const Duration _receiveSilenceTimeout = Duration(seconds: 20);
+  ///
+  /// It has to be comfortably longer than a plausible user pause. The receiver
+  /// cannot tell "sender went away" from "sender is paused", because pausing is
+  /// a purely local sender-side gate with no signal to the peer — so a pause
+  /// longer than this window would have the receiver wrongly fail a transfer the
+  /// user is deliberately holding. A protocol-level pause notification is the
+  /// proper fix; until then, err long.
+  ///
+  /// Overridable per instance only so tests can exercise the watchdog without
+  /// waiting 90 seconds. Production leaves it null.
+  static const Duration _defaultReceiveSilenceTimeout = Duration(seconds: 90);
+  final Duration _receiveSilenceTimeout;
     // Receiver devices of in-flight parallel sends, so a user cancel can tell
   // the receiver to abort its session instead of leaking it.
   final Map<String, Device> _parallelTransferReceivers = {};
@@ -216,7 +227,9 @@ class TransferService {
   bool _isInitialized = false;
   Future<void>? _initFuture;
 
-  TransferService(this._fileService) {
+  TransferService(this._fileService, {Duration? receiveSilenceTimeout})
+      : _receiveSilenceTimeout =
+            receiveSilenceTimeout ?? _defaultReceiveSilenceTimeout {
     _trustedDevicesHandler.startPendingRequestsCleanup();
     _listenToNotificationEvents();
     _initializeParallelTransfer();

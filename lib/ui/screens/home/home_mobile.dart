@@ -47,6 +47,13 @@ class HomeMobileLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMulti = selectedDevices.isNotEmpty;
 
+    // PLATFORM: the floating nav pill is anchored to the real system inset
+    // (see main_navigation_screen), so the FABs must clear that same inset
+    // plus the pill's height. Fixed offsets overlapped it on a 3-button nav
+    // bar, and the overlap grew with the accessibility text scale because
+    // the pill's height is intrinsic.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
       appBar: AppBar(
         title: const Row(
@@ -67,6 +74,11 @@ class HomeMobileLayout extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: AppTheme.backgroundGradient,
         ),
+        // PLATFORM: the floating nav pill is anchored to the real system inset
+        // (see main_navigation_screen), so the FABs have to clear that same
+        // inset plus the pill's height. Fixed offsets used to overlap it on a
+        // 3-button nav bar, and the overlap grew with the accessibility text
+        // scale because the pill's height is intrinsic.
         child: Stack(
           children: [
             HomeDeviceColumn(
@@ -76,13 +88,13 @@ class HomeMobileLayout extends StatelessWidget {
               isInitialized: isInitialized,
               isRefreshing: isRefreshing,
               onRefresh: onRefresh,
-              bottomPadding: 120,
+              bottomPadding: bottomInset + 190,
             ),
 
             // Browser Share FAB
             Positioned(
               right: AppSpacing.xl,
-              bottom: 110,
+              bottom: bottomInset + 96,
               child: FloatingActionButton(
                 heroTag: null,
                 onPressed: onOpenShareDialog,
@@ -97,7 +109,7 @@ class HomeMobileLayout extends StatelessWidget {
             if (selectedDevice != null)
               Positioned(
                 right: AppSpacing.xl + 88,
-                bottom: 190,
+                bottom: bottomInset + 176,
                 child: FloatingActionButton(
                   heroTag: 'sendText',
                   onPressed: () => onTextCompose(selectedDevice!),
@@ -113,7 +125,7 @@ class HomeMobileLayout extends StatelessWidget {
             if (selectedDevice != null)
               Positioned(
                 right: AppSpacing.xl,
-                bottom: 190,
+                bottom: bottomInset + 176,
                 child: FloatingActionButton.extended(
                   heroTag: null,
                   onPressed: () => onSendFiles(selectedDevice!),

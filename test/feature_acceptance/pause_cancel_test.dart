@@ -86,7 +86,7 @@ void main() {
         expect(await sha256OfFile(landed.path), entry.value,
             reason: '${entry.key} corrupted across pause/resume');
       }
-    });
+    }, timeout: const Timeout(Duration(seconds: 90)));
 
     test('pausing a completed or unknown transfer is a no-op, not a crash',
         () async {
@@ -105,6 +105,10 @@ void main() {
       h = await TwoNodeHarness.start(
         senderEncryption: false,
         receiverEncryption: false,
+        // Short window so the abandoned-receive watchdog is exercised promptly.
+        // Production uses 90s, chosen to outlast any plausible user pause;
+        // that is far too slow to wait on here.
+        receiverSilenceTimeout: const Duration(seconds: 3),
       );
     });
 
@@ -170,7 +174,7 @@ void main() {
               status == TransferStatus.cancelled ||
               status == null;
         },
-        timeout: const Duration(seconds: 75),
+        timeout: const Duration(seconds: 45),
         reason: 'receiver reaches a terminal state after the sender cancels',
       );
       print('FA-08 receiver terminal status after cancel: '
@@ -181,6 +185,6 @@ void main() {
           .toList();
       expect(residue, isEmpty,
           reason: 'a cancelled transfer must not leave finished files');
-    }, timeout: const Timeout(Duration(seconds: 120)));
+    }, timeout: const Timeout(Duration(seconds: 90)));
   });
 }

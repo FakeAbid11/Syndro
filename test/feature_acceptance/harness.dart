@@ -168,6 +168,7 @@ class SyndroNode {
     required String displayName,
     DevicePlatform platform = DevicePlatform.windows,
     bool encryptionEnabled = true,
+    Duration? receiveSilenceTimeout,
   }) async {
     final downloadDir =
         await Directory.systemTemp.createTemp('syndro-fa-$deviceId-dl');
@@ -177,7 +178,12 @@ class SyndroNode {
     TransferService? service;
     int? port;
     try {
-      service = TransferService(TempDirFileService(downloadDir));
+      service = TransferService(
+        TempDirFileService(downloadDir),
+        // Let a test exercise the abandoned-receive watchdog without waiting out
+        // the production 90s window.
+        receiveSilenceTimeout: receiveSilenceTimeout,
+      );
       service.encryptionEnabled = encryptionEnabled;
       await service.initialize();
 
@@ -216,6 +222,7 @@ class TwoNodeHarness {
     bool receiverEncryption = true,
     String senderId = 'fa-sender',
     String receiverId = 'fa-receiver',
+    Duration? receiverSilenceTimeout,
   }) async {
     final sender = await SyndroNode.start(
       deviceId: senderId,
@@ -227,6 +234,7 @@ class TwoNodeHarness {
         deviceId: receiverId,
         displayName: 'FA Receiver',
         encryptionEnabled: receiverEncryption,
+        receiveSilenceTimeout: receiverSilenceTimeout,
       );
       return TwoNodeHarness._(sender, receiver);
     } catch (_) {

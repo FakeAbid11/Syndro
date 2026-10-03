@@ -4,6 +4,14 @@ import 'package:shimmer/shimmer.dart';
 import '../theme/app_dimens.dart';
 import '../theme/app_theme.dart';
 
+/// Fill for a skeleton placeholder block.
+///
+/// These were `Colors.white`, which is invisible against a light surface — a
+/// skeleton in light mode rendered as blank space with no shape at all, so the
+/// loading state looked like an empty list rather than a pending one. Derive
+/// from the active color scheme so it reads on both surfaces.
+Color _skeletonFill(BuildContext context) =>
+    Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.10);
 
 /// Shimmer loading effect for skeleton screens
 class ShimmerLoading extends StatelessWidget {
@@ -46,8 +54,8 @@ class DeviceCardSkeleton extends StatelessWidget {
               Container(
                 width: 56,
                 height: 56,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: _skeletonFill(context),
                   borderRadius: AppRadius.mdAll,
                 ),
               ),
@@ -61,7 +69,7 @@ class DeviceCardSkeleton extends StatelessWidget {
                       width: double.infinity,
                       height: 20,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _skeletonFill(context),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -70,7 +78,7 @@ class DeviceCardSkeleton extends StatelessWidget {
                       width: 100,
                       height: 14,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _skeletonFill(context),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -79,7 +87,7 @@ class DeviceCardSkeleton extends StatelessWidget {
                       width: 120,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _skeletonFill(context),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -90,8 +98,8 @@ class DeviceCardSkeleton extends StatelessWidget {
               Container(
                 width: 12,
                 height: 12,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: _skeletonFill(context),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -118,8 +126,8 @@ class HistoryItemSkeleton extends StatelessWidget {
               Container(
                 width: 48,
                 height: 48,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: _skeletonFill(context),
                   borderRadius: AppRadius.smAll,
                 ),
               ),
@@ -132,7 +140,7 @@ class HistoryItemSkeleton extends StatelessWidget {
                       width: double.infinity,
                       height: 16,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _skeletonFill(context),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -141,7 +149,7 @@ class HistoryItemSkeleton extends StatelessWidget {
                       width: 80,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _skeletonFill(context),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),

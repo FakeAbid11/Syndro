@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -111,7 +111,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         },
       );
     } catch (e) {
-      AppLogger.warn('âš ï¸ Error creating pending requests subscription: $e');
+      AppLogger.warn('Error creating pending requests subscription: $e');
     }
   }
 
@@ -123,7 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         _showReceivedTextSheet(msg);
       });
     } catch (e) {
-      AppLogger.warn('âš ï¸ Error creating received text subscription: $e');
+      AppLogger.warn('Error creating received text subscription: $e');
     }
   }
 
@@ -346,7 +346,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         },
       ).whenComplete(_scheduleNextPendingRequestCheck);
     } catch (e) {
-      AppLogger.warn('âš ï¸ Error showing transfer request sheet: $e');
+      AppLogger.warn('Error showing transfer request sheet: $e');
       // FIXED (Bug #4): Reset flag if sheet fails to show
       if (mounted) {
         setState(() => _isShowingRequestSheet = false);
@@ -1312,7 +1312,7 @@ class _TransferRequestSheetContentState
             )
           else
             Text(
-              '${request.fileCount} file(s) â€¢ ${_formatSize(request.totalSize)}',
+              '${request.fileCount} file(s) \u2022 ${_formatSize(request.totalSize)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textTertiary,
                   ),
@@ -1424,7 +1424,7 @@ class _TrustedDeviceBadge extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.xs),
         Text(
-          'Trusted device â€” transfers auto-accept',
+          'Trusted device \u2014 transfers auto-accept',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppTheme.successColor,
                 fontWeight: FontWeight.w500,

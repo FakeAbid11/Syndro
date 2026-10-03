@@ -535,6 +535,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
 
       if (!mounted) return;
       setState(() {
+      _invalidateTotalSizeCache();
         _files.addAll(newFiles);
       });
 
@@ -590,6 +591,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
 
       if (!mounted) return;
       setState(() {
+      _invalidateTotalSizeCache();
         _files.removeAt(index);
       });
 
@@ -764,6 +766,12 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
 
   int? _cachedTotalSize;
 
+  /// Total bytes across the shared files, stat'd once per file-list change.
+  ///
+  /// The cache field existed and was read here, but the computed total was never
+  /// stored back into it, so every rebuild re-stat'd every file — and this is
+  /// read from a `FutureBuilder`, so it ran on each frame the screen was
+  /// visible. Call [_invalidateTotalSizeCache] whenever `_files` changes.
   Future<int> _getTotalSize() async {
     if (_cachedTotalSize != null) return _cachedTotalSize!;
     int total = 0;
@@ -772,7 +780,7 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
       try {
         final stat = await file.stat();
         total += stat.size;
-      } catch (e) { 
+      } catch (e) {
         errorCount++;
         AppLogger.info("Error getting file size: $e");
       }
@@ -780,7 +788,12 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
     if (errorCount > 0 && errorCount == _files.length) {
       AppLogger.info('Warning: Could not get size for any files');
     }
+    _cachedTotalSize = total;
     return total;
+  }
+
+  void _invalidateTotalSizeCache() {
+    _cachedTotalSize = null;
   }
 
   String get _addMoreButtonText {
