@@ -2937,12 +2937,24 @@ class TransferService {
 
     _cleanupCompletedTransfers();
 
+    // Resume is keyed on the *content* of the send — both peers and the item
+    // list — not on the transfer id, which is regenerated on every attempt. The
+    // checkpoint must therefore be written and cleared under `checkpointKey`;
+    // saving it under `transferId` meant loadCheckpoint could never find it, so
+    // startIndex was always 0, the resume branch below was unreachable, and every
+    // retry re-sent every file from the start while leaking an orphan
+    // `<uuid>.json`.
     final checkpointKey = _generateCheckpointKey(sender.id, receiver.id, items);
     final checkpoint = await _checkpointManager.loadCheckpoint(checkpointKey);
     final startIndex = checkpoint?.currentFileIndex ?? 0;
     final resumedBytes = checkpoint?.bytesTransferred ?? 0;
 
-    final transferId = checkpoint != null ? checkpointKey : _uuid.v4();
+    // Always a fresh id. Reusing `checkpointKey` as the transfer id looked like
+    // it tied the two together, but the receiver treats a repeated id as the
+    // same transfer (its initiate handler short-circuits on an id it has
+    // already approved), so a resumed send would be pushed on top of an
+    // already-completed transfer and land as a duplicate "name (1).ext".
+    final transferId = _uuid.v4();
     final totalSize = items.fold<int>(0, (sum, item) => sum + item.size);
 
     final useParallel = _parallelConfig?.shouldUseParallel(totalSize) ?? false;
@@ -3132,8 +3144,13 @@ class TransferService {
 
     if (checkpoint != null) {
       if (kDebugMode) {
+        // Resuming skips whole files, not bytes. The checkpoint records which
+        // file index got through; a file that failed part-way is re-sent from
+        // its beginning, because there is no byte-range protocol and the
+        // receiver rejects a partial body outright.
         AppLogger.info(
-            '📂 Resuming transfer from checkpoint: file $startIndex, $resumedBytes bytes');
+            '📂 Resuming from checkpoint: skipping $startIndex of ${items.length} file(s)'
+            '${startIndex > 0 ? ', $resumedBytes bytes already sent' : ''}');
       }
     }
 
@@ -3324,6 +3341,8 @@ class TransferService {
           await _checkpointManager.saveCheckpoint(
             TransferCheckpoint(
               transferId: transferId,
+              // Persist under the content key so the next attempt can find it.
+              resumeKey: checkpointKey,
               fileId: item.path,
               bytesTransferred: totalBytesTransferred,
               timestamp: DateTime.now(),
@@ -3363,7 +3382,11 @@ class TransferService {
       await DatabaseHelper.instance
           .insertTransfer(completedTransfer, sender, receiver);
 
-      await _checkpointManager.clearCheckpoint(transferId);
+      // Clear under the content key — the same one it was saved under. Clearing
+      // by transferId removed a file that was never written, leaving the real
+      // checkpoint behind to be picked up by the next unrelated send of the same
+      // files.
+      await _checkpointManager.clearCheckpoint(checkpointKey);
 
       if (kDebugMode) {
         AppLogger.info(

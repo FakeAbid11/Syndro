@@ -20,6 +20,14 @@ import '../utils/app_logger.dart';
 class CheckpointManager {
   static const String _checkpointsDir = 'checkpoints';
 
+  /// Overrides where checkpoints live. Production leaves this null and uses the
+  /// application documents directory; tests point it at a temp directory so they
+  /// neither read nor write the developer's real state.
+  final String? _directoryOverride;
+
+  CheckpointManager({String? checkpointsDirectoryOverride})
+      : _directoryOverride = checkpointsDirectoryOverride;
+
   // A future queue gives every operation a real exclusive critical section.
   // The old exists()->write sequence was a TOCTOU race even within one isolate.
   final Map<String, Future<void>> _queues = {};
@@ -213,8 +221,9 @@ class CheckpointManager {
   }
 
   Future<Directory> _getCheckpointsDirectory() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final checkpointsDir = Directory(path.join(appDir.path, _checkpointsDir));
+    final basePath = _directoryOverride ??
+        (await getApplicationDocumentsDirectory()).path;
+    final checkpointsDir = Directory(path.join(basePath, _checkpointsDir));
 
     if (!await checkpointsDir.exists()) {
       await checkpointsDir.create(recursive: true);
