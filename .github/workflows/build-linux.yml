@@ -35,15 +35,11 @@ jobs:
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
 
-      - name: Clean existing Linux platform files
-        run: rm -rf linux
-
-      - name: Regenerate Linux platform files
-        run: |
-          flutter create --platforms=linux --project-name=syndro .
-          # `flutter create` regenerates the default counter-app test/widget_test.dart
-          # (referencing a `MyApp` class this project doesn't have), which breaks analyze.
-          rm -f test/widget_test.dart
+      # The Linux target is committed now (linux/CMakeLists.txt and
+      # linux/runner/*), so there is nothing to regenerate. The previous
+      # `rm -rf linux && flutter create` step meant the committed files were
+      # never the ones being built, which is how the target could sit broken in
+      # the repository and still pass here.
 
       - name: Copy app icon to Linux folder
         run: |

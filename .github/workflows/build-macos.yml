@@ -30,6 +30,18 @@ jobs:
       - name: Run tests
         run: flutter test --reporter compact
 
+      # The committed macos/ project cannot be built: project.pbxproj is stripped of
+      # PRODUCT_BUNDLE_IDENTIFIER / INFOPLIST_FILE / CODE_SIGN_ENTITLEMENTS /
+      # DEVELOPMENT_TEAM, and macos/Runner/Base.lproj/MainMenu.xib is missing.
+      # So the target is still regenerated here and the committed files are
+      # discarded.
+      #
+      # That is also why the Info.plist keys added for LAN access
+      # (NSAppTransportSecurity / NSAllowsLocalNetworking and
+      # NSLocalNetworkUsageDescription) have never been exercised by a build:
+      # regenerating replaces the file wholesale. Once a working macOS project is
+      # committed, delete this step so the committed config is what gets built —
+      # otherwise the two files silently diverge again.
       - name: Setup macOS platform
         run: |
           rm -rf macos
