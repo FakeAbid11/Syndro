@@ -157,9 +157,20 @@ class ParallelReceiverHandler {
         dataToWrite = chunkData;
       }
 
+      // A short or long chunk means the stream is corrupt or hostile. Writing it
+      // anyway leaves a hole (or an overlap) at that offset in the output file;
+      // the SHA-256 at finalize would eventually notice, but only after the whole
+      // file had been written to disk. Refuse the chunk instead.
       if (originalSize > 0 && dataToWrite.length != originalSize) {
         AppLogger.warn(
-            '⚠️ Chunk size mismatch: expected $originalSize, got ${dataToWrite.length}');
+            '⚠️ Rejecting chunk $chunkIndex for $transferId: expected '
+            '$originalSize bytes, got ${dataToWrite.length}');
+        return {
+          'success': false,
+          'error': 'Chunk $chunkIndex size mismatch: expected $originalSize, '
+              'got ${dataToWrite.length}',
+          'chunkIndex': chunkIndex,
+        };
       }
 
       await session!.writer.writeChunk(chunkIndex, dataToWrite);
@@ -232,10 +243,17 @@ class ParallelReceiverHandler {
         };
       }
 
-      AppLogger.info('✅ File verified and saved: ${session!.filePath}');
+      // Report the path that actually exists.
+      //
+      // `finalize()` renames the temp file to a collision-free destination, so
+      // when the receiver already had `photo.jpg` the real file is
+      // `photo (1).jpg`. Using session.filePath here reported the *requested*
+      // path, so the completion notification, the history row and the sender's
+      // own record all described a file that was never created.
+      AppLogger.info('✅ File verified and saved: ${file.path}');
 
-      final filePath = session!.filePath;
-      final fileSize = session!.fileSize;
+      final filePath = file.path;
+      final fileSize = await file.length();
 
       await _cleanupSession(transferId);
 
@@ -278,7 +296,10 @@ class ParallelReceiverHandler {
       }
 
       try {
-        final tempFile = File('${session!.filePath}.tmp');
+        // Ask the writer, which knows its own transfer-scoped scratch path.
+        // Hardcoding '${filePath}.tmp' here pointed at the *shared* name and so
+        // could delete a concurrent transfer's in-progress temp file.
+        final tempFile = File(session!.writer.tempFilePath);
         if (await tempFile.exists()) {
           await tempFile.delete();
           AppLogger.info('🧹 Deleted temp file: ${tempFile.path}');

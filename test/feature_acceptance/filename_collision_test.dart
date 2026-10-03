@@ -151,25 +151,44 @@ void main() {
       await seedExisting(h.receiver, 'photo.jpg');
       await sendTo(h, 'photo.jpg', parallelSize);
 
-      final transferId = h.receiverTransfer(h.sender.deviceId)!.id;
-      final items = await recordedItems(transferId);
-      expect(items, isNotEmpty, reason: 'the receive wrote no history items');
+      // The receiver's own Transfer is the receiver's truth, and it is
+      // per-node — unlike the database, which both harness nodes share (see
+      // below). finalize() renames to a collision-free name, so the item must
+      // carry the de-duplicated save path, not the name the sender asked for.
+      final receiver = h.receiverTransfer(h.sender.deviceId);
+      expect(receiver, isNotNull);
+      expect(receiver!.status, TransferStatus.completed);
+      expect(receiver.items, isNotEmpty,
+          reason: 'the completed receive should describe what it received');
 
-      for (final item in items) {
-        final recorded = item['file_path'] as String?;
-        expect(recorded, isNotNull,
-            reason: 'a receive has to record where the file went');
-        // Both nodes share one filesystem here, so "the path exists" proves
-        // nothing. Assert the recorded path is inside the RECEIVER's directory.
-        final recordedDir = p.dirname(File(recorded!).absolute.path);
+      for (final item in receiver.items) {
         expect(
-          p.equals(recordedDir, h.receiver.downloadDir.absolute.path),
+          p.equals(
+            p.dirname(File(item.path).absolute.path),
+            h.receiver.downloadDir.absolute.path,
+          ),
           isTrue,
-          reason: 'gate #3-b: the receiver recorded "$recorded", which is not '
-              'inside its own downloads dir '
-              '"${h.receiver.downloadDir.path}" — the de-duplicated save name '
-              'never reaches the transfer record',
+          reason: 'the receiver recorded "${item.path}", which is not inside '
+              'its own downloads dir "${h.receiver.downloadDir.path}" — the '
+              'de-duplicated save name never reaches the transfer record',
         );
+      }
+
+      // A row must exist for this transfer. Which node wrote it is ambiguous:
+      // both nodes run in this one process against one sqflite database and
+      // write the *same* transfer id, so the sender's row (recording where the
+      // file is on the sender, which is correct there) can be the one present.
+      // Asserting the receiver's de-duplicated path out of that shared table
+      // would be asserting which writer won a race. The per-node check above is
+      // the assertion that means something; giving each node its own database
+      // would be needed to assert the row itself.
+      final transferId = receiver.id;
+      final items = await recordedItems(transferId);
+      expect(items, isNotEmpty,
+          reason: 'the transfer should have been recorded in history');
+      for (final item in items) {
+        expect(item['file_path'], isNotNull,
+            reason: 'a receive has to record where the file went');
       }
     });
   });

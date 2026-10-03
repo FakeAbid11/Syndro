@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:syndro/core/models/device.dart';
 import 'package:syndro/core/models/transfer.dart';
 import 'package:syndro/core/services/file_service.dart';
+import 'package:syndro/core/services/transfer_service/models.dart';
 import 'package:syndro/core/services/transfer_service/transfer_service_impl.dart';
 
 /// Restores real HTTP clients: TestWidgetsFlutterBinding installs a mock
@@ -181,7 +182,17 @@ void main() {
 
       // The send loop must wake from the pause gate and abort without
       // overwriting the cancelled state.
-      await sendFuture;
+      //
+      // It must also *report* the abort: `sendFiles` used to swallow the
+      // cancellation and return normally, so a cancelled send was
+      // indistinguishable from a successful one for anything awaiting it. It now
+      // throws TransferException(code: CANCELLED), which is what the progress
+      // screen and the multi-recipient fan-out rely on.
+      await expectLater(
+        sendFuture,
+        throwsA(isA<TransferException>()
+            .having((e) => e.code, 'code', 'CANCELLED')),
+      );
       expect(transferOf('pause-receiver')!.status, TransferStatus.cancelled);
     });
 

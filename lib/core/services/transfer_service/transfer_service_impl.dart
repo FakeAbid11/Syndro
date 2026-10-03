@@ -134,6 +134,27 @@ class TransferService {
   /// Per-transfer gate: when present the transfer is paused and its chunk
   /// loop awaits the completer before sending more data.
   final Map<String, Completer<void>> _pauseGates = {};
+
+  /// Inactivity watchdogs for approved-but-not-yet-flowing receives, keyed by
+  /// transfer id.
+  ///
+  /// A sender streams a file with `http.StreamedRequest` and only calls
+  /// `send()` once the body sink is closed, so between the receiver accepting an
+  /// approval and the sender's first byte there is no request on the wire at
+  /// all. If the sender goes away in that window — user cancels, app crashes,
+  /// the peer drops off the network — nothing ever arrives and nothing ever
+  /// fails: the receive sat in "transferring" forever, until the app restarted.
+  ///
+  /// The watchdog is re-armed on every chunk, so it measures genuine inactivity
+  /// rather than total transfer time, and a slow-but-progressing large transfer
+  /// is never affected.
+  final Map<String, Timer> _receiveWatchdogs = {};
+
+  /// How long an approved receive may receive nothing before it is failed.
+  ///
+  /// This bounds the "approved but silent" window only. Once bytes are flowing
+  /// it is re-armed per chunk, so it does not limit throughput.
+  static const Duration _receiveSilenceTimeout = Duration(seconds: 20);
     // Receiver devices of in-flight parallel sends, so a user cancel can tell
   // the receiver to abort its session instead of leaking it.
   final Map<String, Device> _parallelTransferReceivers = {};
@@ -499,25 +520,42 @@ class TransferService {
 
     _parallelReceiver.onComplete = (transferId, filePath) {
       final transfer = _activeTransfers[transferId];
-      if (transfer != null) {
-        final updatedTransfer = transfer.copyWith(
-          status: TransferStatus.completed,
-          progress: TransferProgress(
-            bytesTransferred: transfer.progress.totalBytes,
-            totalBytes: transfer.progress.totalBytes,
-          ),
-        );
-        _activeTransfers[transferId] = updatedTransfer;
-        _transferController.add(updatedTransfer);
-        _cleanupProgressController(transferId);
+      if (transfer == null) return;
 
-        // Record the received file in history (was previously invisible).
-        DatabaseHelper.instance
-            .insertTransfer(updatedTransfer, null, null)
-            .catchError((e) {
-          AppLogger.error('Failed to insert parallel receive into history: $e');
-        });
-      }
+      final updatedTransfer = transfer.copyWith(
+        status: TransferStatus.completed,
+        progress: TransferProgress(
+          bytesTransferred: transfer.progress.totalBytes,
+          totalBytes: transfer.progress.totalBytes,
+        ),
+        // Record where the file actually landed. finalize() renames to a
+        // collision-free name, so when the receiver already had `photo.jpg` the
+        // file is `photo (1).jpg`. Leaving the items untouched recorded the
+        // sender's original path, which is a path on the *sender's* machine and
+        // frequently does not exist here at all.
+        items: transfer.items
+            .map((item) => TransferItem(
+                  name: item.name,
+                  path: filePath,
+                  size: item.size,
+                  isDirectory: item.isDirectory,
+                  parentPath: item.parentPath,
+                  itemCount: item.itemCount,
+                  createdAt: item.createdAt,
+                  modifiedAt: item.modifiedAt,
+                ))
+            .toList(growable: false),
+      );
+      _activeTransfers[transferId] = updatedTransfer;
+      _transferController.add(updatedTransfer);
+      _cleanupProgressController(transferId);
+
+      // Record the received file in history (was previously invisible).
+      DatabaseHelper.instance
+          .insertTransfer(updatedTransfer, null, null)
+          .catchError((e) {
+        AppLogger.error('Failed to insert parallel receive into history: $e');
+      });
     };
 
     AppLogger.info('⚡ Parallel transfer handlers initialized');
@@ -2155,6 +2193,12 @@ class TransferService {
     _transferTokens[requestId] = senderToken;
     _transferController.add(transfer);
 
+    // The sender has been told "accepted" but has not necessarily started
+    // streaming yet — a StreamedRequest is only sent once its body is closed.
+    // Start the silence watchdog so a sender that vanishes in this window
+    // cannot leave the receive stuck in "transferring" forever.
+    _armReceiveWatchdog(requestId);
+
     // Start Live Activity for Android lock screen progress
     if (items.isNotEmpty) {
       final totalBytes = items.fold<int>(0, (sum, item) => sum + item.size);
@@ -2183,6 +2227,8 @@ class TransferService {
           status == TransferStatus.failed ||
           status == TransferStatus.cancelled) {
         completedIds.add(entry.key);
+        // Nothing more can arrive for a terminal transfer, so stop watching.
+        _disarmReceiveWatchdog(entry.key);
       }
     }
 
@@ -2344,8 +2390,9 @@ class TransferService {
       final hashOutput = AccumulatorSink<crypto_hash.Digest>();
       final hashInput = crypto_hash.sha256.startChunkedConversion(hashOutput);
 
-      await for (final chunk in request) {
-        buffer.addAll(chunk);
+    await for (final chunk in request) {
+      _armReceiveWatchdog(transferId);
+      buffer.addAll(chunk);
 
         // Check buffer size to prevent memory exhaustion
         if (buffer.length > maxBufferSize) {
@@ -2729,6 +2776,7 @@ class TransferService {
       int lastProgressPercent = 0;
 
       await for (final chunk in request) {
+        _armReceiveWatchdog(transferId);
         fileSink.add(chunk);
         bytesReceived += chunk.length;
 
@@ -3431,7 +3479,15 @@ class TransferService {
           AppLogger.info('Transfer cancelled by user: $transferId');
         }
         _cleanupCompletedTransfers();
-        return;
+
+        // Still rethrow. This used to `return`, which made a cancelled send
+        // resolve exactly like a successful one: the caller's future completed
+        // normally, so anything awaiting it — the progress screen, the
+        // multi-recipient fan-out in file_picker_screen, a script using the
+        // service — could not tell that nothing was delivered. Preserving the
+        // cancelled *state* is correct; swallowing the *error* is not.
+        if (e is TransferException) rethrow;
+        throw TransferException('Transfer cancelled', code: 'CANCELLED');
       }
 
       final failedTransfer = transfer.copyWith(
@@ -3940,6 +3996,7 @@ class TransferService {
       _transferController.add(_activeTransfers[transferId]!);
       BackgroundTransferService.stopBackgroundTransfer();
       _cleanupProgressController(transferId);
+      _disarmReceiveWatchdog(transferId);
 
       // Parallel sends: stop the chunk queues locally and ask the receiver to
       // abort its session so no temp file/session is leaked on the other side.
@@ -4013,6 +4070,40 @@ class TransferService {
     } catch (e) {
       AppLogger.error('Failed to notify receiver of cancel: $e');
     }
+  }
+
+  /// Arm (or re-arm) the silence watchdog for [transferId].
+  ///
+  /// Call on every chunk received. If nothing arrives within
+  /// [_receiveSilenceTimeout] the receive is failed so the UI cannot sit in
+  /// "transferring" indefinitely waiting for a sender that has gone away.
+  void _armReceiveWatchdog(String? transferId) {
+    if (transferId == null) return;
+    _receiveWatchdogs.remove(transferId)?.cancel();
+    _receiveWatchdogs[transferId] = Timer(_receiveSilenceTimeout, () {
+      _receiveWatchdogs.remove(transferId);
+      final active = _activeTransfers[transferId];
+      // Check for *any* non-terminal status, not specifically `transferring`.
+      // A receive that has been approved but whose first upload request has not
+      // arrived is still `pending` — that is precisely the state that used to
+      // hang forever, and it is the one no byte ever re-arms.
+      if (active == null || active.status.isTerminal) return;
+      AppLogger.info(
+          'Security: receive $transferId saw no data for '
+          '${_receiveSilenceTimeout.inSeconds}s; failing it');
+      final failed = active.copyWith(
+        status: TransferStatus.failed,
+        errorMessage: 'Sender stopped sending',
+      );
+      _activeTransfers[transferId] = failed;
+      _transferController.add(failed);
+      _cleanupProgressController(transferId);
+    });
+  }
+
+  void _disarmReceiveWatchdog(String? transferId) {
+    if (transferId == null) return;
+    _receiveWatchdogs.remove(transferId)?.cancel();
   }
 
   /// Pauses an in-flight sequential transfer. Parallel transfers and
@@ -4131,6 +4222,12 @@ class TransferService {
   // FIX (Bug #32): Proper disposal with try-catch for all resources
   Future<void> dispose() async {
     _isDisposed = true;
+
+    // Every armed silence watchdog, so none outlives the service.
+    for (final timer in _receiveWatchdogs.values) {
+      timer.cancel();
+    }
+    _receiveWatchdogs.clear();
 
     // TrustedDevicesHandler owns the pending-requests cleanup timer and
     // stream controller — dispose it as one unit.

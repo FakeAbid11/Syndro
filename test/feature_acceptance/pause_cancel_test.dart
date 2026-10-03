@@ -159,9 +159,10 @@ void main() {
           TransferStatus.cancelled,
           reason: 'the user cancel must survive the abort path');
 
-      // The receiver sees an abandoned upload. Record which terminal state it
-      // actually reaches — the product marks it failed, not cancelled, because
-      // it cannot distinguish a peer cancel from a network drop here.
+      // The receiver sees an abandoned upload: no bytes ever arrive, so its
+      // silence watchdog fails the transfer. 20s is the product timeout; allow
+      // generous headroom for a loaded machine, and give the test itself a real
+      // budget rather than the 30s default which this wait can exceed.
       await waitUntil(
         () {
           final status = h.receiverTransfer(h.sender.deviceId)?.status;
@@ -169,7 +170,7 @@ void main() {
               status == TransferStatus.cancelled ||
               status == null;
         },
-        timeout: const Duration(seconds: 30),
+        timeout: const Duration(seconds: 75),
         reason: 'receiver reaches a terminal state after the sender cancels',
       );
       print('FA-08 receiver terminal status after cancel: '
@@ -179,8 +180,7 @@ void main() {
           .where((n) => n.endsWith('.bin'))
           .toList();
       expect(residue, isEmpty,
-          reason: 'a cancelled transfer must not leave finished files; dir '
-              'holds ${await h.receiver.downloadedNames()}');
-    });
+          reason: 'a cancelled transfer must not leave finished files');
+    }, timeout: const Timeout(Duration(seconds: 120)));
   });
 }

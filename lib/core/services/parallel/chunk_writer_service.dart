@@ -11,6 +11,7 @@ import '../../utils/synchronized.dart';
 /// Writes chunks directly to disk at specific offsets
 /// Memory usage: ~1-2MB regardless of file size
 class ChunkWriterService {
+  final String fileId;
   final String filePath;
   final int totalSize;
   final int totalChunks;
@@ -31,11 +32,22 @@ class ChunkWriterService {
   int _bytesReceived = 0;
 
   ChunkWriterService({
+    required this.fileId,
     required this.filePath,
     required this.totalSize,
     required this.totalChunks,
     required this.config,
   });
+
+  /// Scratch path for this transfer.
+  ///
+  /// Scoped by [fileId] (the transfer id). It used to be plain
+  /// `'$filePath.tmp'`, keyed on the filename alone, so two concurrent parallel
+  /// transfers of the same name shared one scratch file: the second
+  /// `open(FileMode.write)` truncated the first transfer's in-progress data, and
+  /// aborting either one deleted the other's temp file. The sequential path
+  /// already scoped its own temp file to the transfer id for this reason.
+  String get tempFilePath => '$filePath.$fileId.tmp';
 
   /// Stream of completion percentage (0.0 - 1.0)
   Stream<double> get completionStream => _completionController.stream;
@@ -65,7 +77,7 @@ class ChunkWriterService {
       }
       
       // Create temp file
-      final tempPath = '$filePath.tmp';
+      final tempPath = tempFilePath;
       final tempFile = File(tempPath);
       
       // Pre-allocate file with zeros (sparse file on supported systems)
@@ -170,7 +182,7 @@ class ChunkWriterService {
       _file = null;
       
       // Rename temp to final
-      final tempPath = '$filePath.tmp';
+      final tempPath = tempFilePath;
       final tempFile = File(tempPath);
 
       // Do NOT clobber an existing file with the same name — pick a unique
@@ -224,7 +236,7 @@ class ChunkWriterService {
       _file = null;
       
       // Delete temp file
-      final tempPath = '$filePath.tmp';
+      final tempPath = tempFilePath;
       final tempFile = File(tempPath);
       if (await tempFile.exists()) {
         await tempFile.delete();
@@ -276,6 +288,7 @@ class ChunkWriterManager {
     final totalChunks = config.calculateChunkCount(totalSize);
     
     final writer = ChunkWriterService(
+      fileId: fileId,
       filePath: filePath,
       totalSize: totalSize,
       totalChunks: totalChunks,

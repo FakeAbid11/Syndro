@@ -141,14 +141,23 @@ class SyndroNode {
   File downloaded(String name) => File(p.join(downloadDir.path, name));
 
   /// Immediate filenames present in this node's downloads dir.
+  ///
+  /// Returns an empty list when the directory is absent or unreadable. A
+  /// transfer cancelled before its first byte lands never creates the directory
+  /// at all, and `exists()` can be true while `list()` still fails if the
+  /// directory is removed in between — both are legitimately "no files".
   Future<List<String>> downloadedNames() async {
-    if (!await downloadDir.exists()) return const [];
-    final names = await downloadDir
-        .list()
-        .where((e) => e is File)
-        .map((e) => p.basename(e.path))
-        .toList();
-    return names..sort();
+    try {
+      if (!await downloadDir.exists()) return const [];
+      final names = await downloadDir
+          .list()
+          .where((e) => e is File)
+          .map((e) => p.basename(e.path))
+          .toList();
+      return names..sort();
+    } on FileSystemException {
+      return const [];
+    }
   }
 
   Future<void> dispose() => service.dispose();
