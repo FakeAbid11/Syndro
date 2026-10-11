@@ -12,6 +12,8 @@ import 'file_picker_screen.dart';
 import '../../core/utils/byte_formatter.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
+
 /// Screen for quick sending files received from right-click context menu
 class QuickSendScreen extends ConsumerStatefulWidget {
   final List<TransferItem> files;
@@ -41,7 +43,12 @@ class _QuickSendScreenState extends ConsumerState<QuickSendScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Error starting device discovery: $e'),
+                content: Text(
+                  userMessageFor(
+                    e,
+                    fallback: 'Could not start looking for devices',
+                  ),
+                ),
                 backgroundColor: AppTheme.errorColor,
                 behavior: SnackBarBehavior.floating,
                 action: SnackBarAction(

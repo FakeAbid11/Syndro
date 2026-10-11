@@ -13,6 +13,7 @@ import '../../core/providers/transfer_provider.dart';
 import '../../core/providers/theme_provider.dart';
 import '../../core/services/update_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
 import '../../core/widgets/update_dialog.dart';
 import '../../core/services/transfer_service/models.dart';
 import '../../core/services/transfer_service/transfer_service_impl.dart';
@@ -56,7 +57,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       result = await UpdateService.checkForUpdate();
     } catch (e) {
       // checkForUpdate never throws; stay defensive anyway.
-      result = UpdateCheckFailed('Unexpected error: $e');
+      result = UpdateCheckFailed(
+        userMessageFor(e, fallback: 'something went wrong'),
+      );
     }
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
@@ -543,10 +546,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
+      AppLogger.info('Error opening repository: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not open the repository: $e'),
+          content: Text(
+            userMessageFor(e, fallback: 'Could not open the repository'),
+          ),
           backgroundColor: AppTheme.errorColor,
         ),
       );
@@ -616,7 +622,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Failed to revoke trust: $e'),
+                    content: Text(
+                      userMessageFor(
+                        e,
+                        fallback: 'Could not revoke trust for that device',
+                      ),
+                    ),
                     backgroundColor: AppTheme.errorColor,
                   ),
                 );
@@ -642,7 +653,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Failed to reset key: $e'),
+                    content: Text(
+                      userMessageFor(
+                        e,
+                        fallback: 'Could not reset the key for that device',
+                      ),
+                    ),
                     backgroundColor: AppTheme.errorColor,
                   ),
                 );

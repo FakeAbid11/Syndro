@@ -18,6 +18,7 @@ import 'transfer_progress_screen.dart';
 import 'multi_transfer_progress_screen.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
 class FilePickerScreen extends ConsumerStatefulWidget {
   final Device? recipientDevice;
   final List<Device>? recipientDevices; // NEW: For multi-device transfer
@@ -165,13 +166,15 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         });
       }
     } catch (e) {
+      AppLogger.info('Error adding dropped files: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error adding dropped files: $e'),
+            content: Text(userMessageFor(e,
+                fallback: "Couldn't add those files")),
             backgroundColor: AppTheme.errorColor,
           ),
         );
@@ -198,13 +201,15 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         _animationController.forward(from: 0);
       }
     } catch (e) {
+      AppLogger.info('Error picking files: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error picking files: $e'),
+            content: Text(userMessageFor(e,
+                fallback: "Couldn't open the file picker")),
             backgroundColor: AppTheme.errorColor,
           ),
         );
@@ -234,13 +239,15 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         }
       }
     } catch (e) {
+      AppLogger.info('Error picking media: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error picking media: $e'),
+            content: Text(userMessageFor(e,
+                fallback: "Couldn't open your photos and videos")),
             backgroundColor: AppTheme.errorColor,
           ),
         );
@@ -296,13 +303,15 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         }
       }
     } catch (e) {
+      AppLogger.info('Error picking folder: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error picking folder: $e'),
+            content: Text(userMessageFor(e,
+                fallback: "Couldn't open that folder")),
             backgroundColor: AppTheme.errorColor,
           ),
         );
@@ -510,7 +519,8 @@ class _FilePickerScreenState extends ConsumerState<FilePickerScreen>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting transfer: $e'),
+            content: Text(userMessageFor(e,
+                fallback: "Couldn't start the transfer")),
             backgroundColor: AppTheme.errorColor,
           ),
         );

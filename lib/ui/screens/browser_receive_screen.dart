@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_dimens.dart';
 import '../widgets/common/app_widgets.dart';
+import '../widgets/file_preview_widgets.dart';
 import '../../core/services/file_service.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
@@ -1174,7 +1175,6 @@ const SizedBox(width: AppSpacing.md),
   Widget _buildFileThumbnail(ReceivedFile file) {
     final isImage = file.isImage;
     final isVideo = file.isVideo;
-    final fileType = file.fileType;
     final isPending = file.status == FileReceiveStatus.pending;
     final isSaved = file.status == FileReceiveStatus.saved;
 
@@ -1196,7 +1196,7 @@ const SizedBox(width: AppSpacing.md),
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF472B6).withValues(alpha: 0.15),
+                  color: FileTypeHelper.getBackgroundColor(FileType.image),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Center(
@@ -1218,7 +1218,7 @@ const SizedBox(width: AppSpacing.md),
                     height: 48,
                     fit: BoxFit.cover,
                     cacheWidth: 96,
-                    errorBuilder: (_, __, ___) => _buildFileIcon(fileType),
+                    errorBuilder: (_, __, ___) => _buildFileIcon(file.name),
                   ),
                   if (canPreview)
                     Positioned(
@@ -1241,24 +1241,25 @@ const SizedBox(width: AppSpacing.md),
               );
             }
 
-            return _buildFileIcon(fileType);
+            return _buildFileIcon(file.name);
           },
         ),
       );
     } else if (isVideo) {
+      final videoColor = FileTypeHelper.getIconColor(FileType.video);
       thumbnail = Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: const Color(0xFFFB923C).withValues(alpha: 0.15),
+          color: FileTypeHelper.getBackgroundColor(FileType.video),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Stack(
+        child: Stack(
           alignment: Alignment.center,
           children: [
             Icon(
-              Icons.video_file,
-              color: Color(0xFFFB923C),
+              FileTypeHelper.getIcon(FileType.video),
+              color: videoColor,
               size: 24,
             ),
             Positioned(
@@ -1267,14 +1268,14 @@ const SizedBox(width: AppSpacing.md),
               child: Icon(
                 Icons.play_circle_filled,
                 size: 14,
-                color: Color(0xFFFB923C),
+                color: videoColor,
               ),
             ),
           ],
         ),
       );
     } else {
-      thumbnail = _buildFileIcon(fileType);
+      thumbnail = _buildFileIcon(file.name);
     }
 
     if (canPreview) {
@@ -1287,64 +1288,24 @@ const SizedBox(width: AppSpacing.md),
     return thumbnail;
   }
 
-  Widget _buildFileIcon(String fileType) {
-    IconData icon;
-    Color color;
-
-    switch (fileType) {
-      case 'image':
-        icon = Icons.image;
-        color = const Color(0xFFF472B6);
-        break;
-      case 'video':
-        icon = Icons.video_file;
-        color = const Color(0xFFFB923C);
-        break;
-      case 'audio':
-        icon = Icons.audio_file;
-        color = const Color(0xFFA78BFA);
-        break;
-      case 'document':
-        icon = Icons.description;
-        color = const Color(0xFF60A5FA);
-        break;
-      case 'spreadsheet':
-        icon = Icons.table_chart;
-        color = const Color(0xFF34D399);
-        break;
-      case 'presentation':
-        icon = Icons.slideshow;
-        color = const Color(0xFFFBBF24);
-        break;
-      case 'archive':
-        icon = Icons.folder_zip;
-        color = const Color(0xFFF87171);
-        break;
-      case 'code':
-        icon = Icons.code;
-        color = const Color(0xFF2DD4BF);
-        break;
-      case 'apk':
-        icon = Icons.android;
-        color = const Color(0xFFA3E635);
-        break;
-      case 'executable':
-        icon = Icons.terminal;
-        color = const Color(0xFF818CF8);
-        break;
-      default:
-        icon = Icons.insert_drive_file;
-        color = const Color(0xFF94A3B8);
-    }
+  /// The file-type chip.
+  ///
+  /// Delegates to [FileTypeHelper] so a file type has one colour and one icon
+  /// across the whole app. This screen used to carry its own copy of the
+  /// mapping, which had already drifted: an image was pink here and green in
+  /// the file picker, and the icon family differed too.
+  Widget _buildFileIcon(String fileName) {
+    final type = FileTypeHelper.getFileType(fileName);
+    final color = FileTypeHelper.getIconColor(type);
 
     return Container(
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: FileTypeHelper.getBackgroundColor(type),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(icon, color: color, size: 24),
+      child: Icon(FileTypeHelper.getIcon(type), color: color, size: 24),
     );
   }
 

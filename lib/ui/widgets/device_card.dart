@@ -17,6 +17,11 @@ import 'device_nickname_dialog.dart';
 /// trust) and reveals a trailing send affordance on hover. On touch the
 /// long-press keeps its meaning — the parent decides whether that is
 /// multi-select or the rename dialog — and nothing hovers.
+///
+/// Because nothing hovers on touch and the parent usually claims long-press
+/// for multi-select, those four actions had no way in on Android. Touch
+/// platforms therefore get an explicit overflow button holding the same
+/// entries; right-click stays a desktop shortcut rather than the only route.
 class DeviceCard extends ConsumerStatefulWidget {
   final Device device;
   final VoidCallback? onTap;
@@ -116,18 +121,15 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
     );
   }
 
-  /// Right-click menu. Every entry maps to a capability the app already has;
-  /// there is deliberately no "trust this device", because trust is granted
-  /// during a transfer approval (with a key pin), not from a browse result.
-  Future<void> _showContextMenu(Offset globalPosition) async {
-    final send = widget.onSendFiles;
-    final trusted = _isTrusted;
-    final selected = await showMenu<String>(
-      context: context,
-      position: _menuPosition(globalPosition),
-      color: AppTheme.surfaceContainerHigh,
-      items: [
-        if (send != null)
+  /// The single source of truth for this card's actions.
+  ///
+  /// Both the right-click menu and the touch overflow button render from this
+  /// list, so the two can never drift apart. Every entry maps to a capability
+  /// the app already has; there is deliberately no "trust this device",
+  /// because trust is granted during a transfer approval (with a key pin),
+  /// not from a browse result.
+  List<PopupMenuEntry<String>> get _deviceActions => [
+        if (widget.onSendFiles != null)
           const PopupMenuItem(
             value: 'send',
             child: _MenuRow(icon: Icons.upload_rounded, label: 'Send files'),
@@ -138,9 +140,12 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
         ),
         const PopupMenuItem(
           value: 'details',
-          child: _MenuRow(icon: Icons.info_outline_rounded, label: 'View details'),
+          child: _MenuRow(
+            icon: Icons.info_outline_rounded,
+            label: 'View details',
+          ),
         ),
-        if (trusted)
+        if (_isTrusted)
           const PopupMenuItem(
             value: 'untrust',
             child: _MenuRow(
@@ -149,15 +154,17 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
               foreground: AppTheme.errorColor,
             ),
           ),
-      ],
-    );
-    if (!mounted || selected == null) return;
-    switch (selected) {
+      ];
+
+  /// Runs one entry from [_deviceActions].
+  Future<void> _handleDeviceAction(String action) async {
+    switch (action) {
       case 'send':
-        send?.call();
+        widget.onSendFiles?.call();
       case 'rename':
         await _rename();
       case 'details':
+        if (!mounted) return;
         await showDialog<void>(
           context: context,
           builder: (_) => DeviceDetailsDialog(device: widget.device),
@@ -165,6 +172,18 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
       case 'untrust':
         await _revokeTrust();
     }
+  }
+
+  /// Right-click menu (desktop only). Anchors at the cursor.
+  Future<void> _showContextMenu(Offset globalPosition) async {
+    final selected = await showMenu<String>(
+      context: context,
+      position: _menuPosition(globalPosition),
+      color: AppTheme.surfaceContainerHigh,
+      items: _deviceActions,
+    );
+    if (!mounted || selected == null) return;
+    await _handleDeviceAction(selected);
   }
 
   /// Anchors the menu at the cursor and keeps it inside the window.
@@ -326,23 +345,38 @@ class _DeviceCardState extends ConsumerState<DeviceCard> {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    // The trailing slot keeps a stable width: status normally,
-                    // send on hover, so nothing reflows under the cursor.
-                    AnimatedSwitcher(
-                      duration: AppMotion.fast,
-                      child: _isHovered && widget.onSendFiles != null
-                          ? IconButton(
-                              key: const ValueKey('send'),
-                              icon: const Icon(Icons.arrow_forward_rounded),
-                              color: AppTheme.primaryColor,
-                              tooltip: 'Send files',
-                              onPressed: widget.onSendFiles,
-                            )
-                          : _ConnectionLabel(
-                              key: const ValueKey('status'),
-                              online: online,
-                            ),
-                    ),
+                    if (_showsPointerActions)
+                      // Desktop keeps the stable-width swap: status normally,
+                      // send on hover, so nothing reflows under the cursor.
+                      AnimatedSwitcher(
+                        duration: AppMotion.fast,
+                        child: _isHovered && widget.onSendFiles != null
+                            ? IconButton(
+                                key: const ValueKey('send'),
+                                icon: const Icon(Icons.arrow_forward_rounded),
+                                color: AppTheme.primaryColor,
+                                tooltip: 'Send files',
+                                onPressed: widget.onSendFiles,
+                              )
+                            : _ConnectionLabel(
+                                key: const ValueKey('status'),
+                                online: online,
+                              ),
+                      )
+                    else ...[
+                      // Touch: the status stays put (it is the only place the
+                      // connection state is shown) and the actions get their
+                      // own button. The 48dp tap target is kept rather than
+                      // tightened — this is the only route to these actions.
+                      _ConnectionLabel(online: online),
+                      PopupMenuButton<String>(
+                        tooltip: 'Device actions',
+                        icon: const Icon(Icons.more_vert_rounded, size: 20),
+                        color: AppTheme.surfaceContainerHigh,
+                        onSelected: _handleDeviceAction,
+                        itemBuilder: (_) => _deviceActions,
+                      ),
+                    ],
                   ],
                 ),
               ),

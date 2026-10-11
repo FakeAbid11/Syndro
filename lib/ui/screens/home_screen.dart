@@ -27,6 +27,8 @@ import 'home_screen_strings.dart';
 import '../../core/utils/byte_formatter.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -438,12 +440,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         if (!mounted) return;
         scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text(HomeScreenStrings.failedToAccept(e.toString())),
+            content: Text(
+              userMessageFor(e, fallback: HomeScreenStrings.failedToAccept),
+            ),
             backgroundColor: AppTheme.errorColor,
           ),
         );
       } else {
         AppLogger.info('Error rejecting transfer: $e');
+        // Previously silent: a failed reject left the request on screen with
+        // no explanation, so the user could not tell whether it had worked.
+        if (!mounted) return;
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(HomeScreenStrings.failedToReject),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
       }
     }
   }
@@ -810,7 +823,9 @@ const SizedBox(height: AppSpacing.sm),
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error processing files: $e'),
+              content: Text(
+                userMessageFor(e, fallback: "Couldn't add those files"),
+              ),
               backgroundColor: AppTheme.errorColor,
               behavior: SnackBarBehavior.floating,
               action: SnackBarAction(
@@ -868,7 +883,9 @@ const SizedBox(height: AppSpacing.sm),
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error processing files: $e'),
+              content: Text(
+                userMessageFor(e, fallback: "Couldn't add those files"),
+              ),
               backgroundColor: AppTheme.errorColor,
               behavior: SnackBarBehavior.floating,
               action: SnackBarAction(
@@ -1101,7 +1118,7 @@ Future<void> _showTextComposeDialog(Device device) async {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Message failed: $e'),
+          content: Text(userMessageFor(e, fallback: 'Message failed')),
           backgroundColor: AppTheme.errorColor,
         ),
       );

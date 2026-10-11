@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../ui/theme/app_theme.dart';
 import '../../ui/theme/app_dimens.dart';
+import '../../ui/utils/error_messages.dart';
 import '../services/update_service.dart';
 
 /// Shared "update available" dialog used by both the manual Settings check and
@@ -123,7 +124,11 @@ class _UpdateDialogBodyState extends State<_UpdateDialogBody> {
       if (!mounted) return;
       setState(() {
         _phase = _UpdatePhase.error;
-        _errorMessage = 'Unexpected error: $e';
+        // `_errorMessage` is shown in the dialog body — never the raw error.
+        _errorMessage = userMessageFor(
+          e,
+          fallback: 'The update could not be downloaded',
+        );
       });
       return;
     }

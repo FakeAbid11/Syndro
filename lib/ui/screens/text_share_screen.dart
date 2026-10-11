@@ -12,6 +12,8 @@ import '../widgets/device_card.dart';
 import 'transfer_progress_screen.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
+
 /// Device-picker for text shared into Syndro from another app
 /// (Android text/plain share intents). Lets the user choose a target device
 /// and sends the message through the same approval pipeline as file sends.
@@ -94,7 +96,7 @@ class _TextShareScreenState extends ConsumerState<TextShareScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Message failed: $e'),
+          content: Text(userMessageFor(e, fallback: 'Message failed')),
           backgroundColor: AppTheme.errorColor,
         ),
       );

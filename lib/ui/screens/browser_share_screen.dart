@@ -13,6 +13,8 @@ import '../widgets/common/app_widgets.dart';
 import '../../core/services/web_share/web_share_service.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../utils/error_messages.dart';
+
 /// Enum to define the share mode
 enum ShareMode {
   files, // General files - "Add More Files"
@@ -554,10 +556,13 @@ class _BrowserShareScreenState extends State<BrowserShareScreen> {
         );
       }
     } catch (e) {
+      AppLogger.info('Error adding files: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error adding files: $e'),
+            content: Text(
+              userMessageFor(e, fallback: "Couldn't add those files"),
+            ),
             backgroundColor: AppTheme.errorColor,
             behavior: SnackBarBehavior.floating,
           ),

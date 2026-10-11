@@ -25,8 +25,12 @@ class HomeScreenStrings {
   // Snackbar messages
   static const String transferAccepted = 'Transfer accepted';
   static const String transferRejected = 'Transfer rejected';
-  static String failedToAccept(String error) => 'Failed to accept: $error';
-  static String failedToReject(String error) => 'Failed to reject: $error';
+
+  /// Fixed copy only. The exception detail belongs in the log — an earlier
+  /// version interpolated `error` straight into the snackbar, which put
+  /// platform codes and stack traces in front of the user.
+  static const String failedToAccept = 'Could not accept the transfer';
+  static const String failedToReject = 'Could not reject the transfer';
   
   // Transfer request sheet
   static const String incomingTransfer = 'Incoming Transfer';

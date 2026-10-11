@@ -34,6 +34,7 @@ import 'ui/screens/text_share_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 import 'core/utils/app_logger.dart';
+import 'ui/utils/error_messages.dart';
 /// Held for the process lifetime so the single-instance listener stays bound.
 SingleInstanceGuard? _instanceGuard;
 
@@ -485,7 +486,12 @@ class _SyndroAppState extends ConsumerState<SyndroApp>
       }
     } catch (e) {
       AppLogger.error('❌ Failed to initialize transfer service: $e');
-      _initError = 'Transfer service error: $e';
+      // `_initError` is rendered on the startup error screen; keep it to plain
+      // language and leave the exception detail in the log above.
+      _initError = userMessageFor(
+        e,
+        fallback: 'Could not start the transfer service',
+      );
     }
 
     if (mounted) {

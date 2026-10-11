@@ -18,6 +18,13 @@ enum FileType {
   code,
   pdf,
   unknown,
+  // Appended, not inserted: these used to exist only as string tags on the
+  // browser-receive side, so keeping them at the end leaves the existing
+  // ordinal values untouched.
+  spreadsheet,
+  presentation,
+  apk,
+  executable,
 }
 
 /// File preview widget that shows thumbnails for images/videos
@@ -505,14 +512,22 @@ class FileTypeHelper {
     'docx',
     'txt',
     'rtf',
-    'xls',
-    'xlsx',
-    'ppt',
-    'pptx',
-    'odt',
-    'ods'
+    'odt'
   ];
   static const _pdfExtensions = ['pdf'];
+  static const _spreadsheetExtensions = [
+    'xls',
+    'xlsx',
+    'ods',
+    'csv'
+  ];
+  static const _presentationExtensions = [
+    'ppt',
+    'pptx',
+    'odp'
+  ];
+  static const _apkExtensions = ['apk', 'apks', 'apkm', 'xapk'];
+  static const _executableExtensions = ['exe', 'msi'];
   static const _archiveExtensions = [
     'zip',
     'rar',
@@ -562,9 +577,13 @@ class FileTypeHelper {
     if (_videoExtensions.contains(ext)) return FileType.video;
     if (_audioExtensions.contains(ext)) return FileType.audio;
     if (_pdfExtensions.contains(ext)) return FileType.pdf;
+    if (_spreadsheetExtensions.contains(ext)) return FileType.spreadsheet;
+    if (_presentationExtensions.contains(ext)) return FileType.presentation;
     if (_documentExtensions.contains(ext)) return FileType.document;
     if (_archiveExtensions.contains(ext)) return FileType.archive;
     if (_codeExtensions.contains(ext)) return FileType.code;
+    if (_apkExtensions.contains(ext)) return FileType.apk;
+    if (_executableExtensions.contains(ext)) return FileType.executable;
 
     return FileType.unknown;
   }
@@ -581,10 +600,18 @@ class FileTypeHelper {
         return Icons.description_rounded;
       case FileType.pdf:
         return Icons.picture_as_pdf_rounded;
+      case FileType.spreadsheet:
+        return Icons.table_chart_rounded;
+      case FileType.presentation:
+        return Icons.slideshow_rounded;
       case FileType.archive:
         return Icons.folder_zip_rounded;
       case FileType.code:
         return Icons.code_rounded;
+      case FileType.apk:
+        return Icons.android_rounded;
+      case FileType.executable:
+        return Icons.terminal_rounded;
       case FileType.unknown:
         return Icons.insert_drive_file_rounded;
     }
@@ -594,22 +621,36 @@ class FileTypeHelper {
     return getIcon(getFileType(fileName));
   }
 
+  /// The colour for a file type — the app's only such map.
+  ///
+  /// These used to live in two places with different values, so an image was
+  /// green in the file picker and pink in the browser-receive list. The palette
+  /// is the Tailwind 400 family, the same family `AppTheme` draws its brand
+  /// colours from.
   static Color getIconColor(FileType type) {
     switch (type) {
       case FileType.image:
-        return const Color(0xFF4CAF50); // Green
+        return const Color(0xFFF472B6); // Pink
       case FileType.video:
-        return const Color(0xFFE91E63); // Pink
+        return const Color(0xFFFB923C); // Orange
       case FileType.audio:
-        return const Color(0xFF9C27B0); // Purple
+        return const Color(0xFFA78BFA); // Violet
       case FileType.document:
-        return const Color(0xFF2196F3); // Blue
+        return const Color(0xFF60A5FA); // Blue
       case FileType.pdf:
-        return const Color(0xFFFF5722); // Deep Orange
+        return const Color(0xFFF87171); // Red
+      case FileType.spreadsheet:
+        return const Color(0xFF34D399); // Emerald
+      case FileType.presentation:
+        return const Color(0xFFFBBF24); // Amber
       case FileType.archive:
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFA3E635); // Lime
       case FileType.code:
-        return const Color(0xFF00BCD4); // Cyan
+        return const Color(0xFF2DD4BF); // Teal
+      case FileType.apk:
+        return const Color(0xFF22D3EE); // Cyan
+      case FileType.executable:
+        return const Color(0xFF818CF8); // Indigo
       case FileType.unknown:
         return AppTheme.textTertiary;
     }

@@ -261,7 +261,9 @@ class UpdateService {
       return const UpdateCheckFailed('The update check timed out.');
     } catch (e) {
       AppLogger.warn('Update check failed: $e');
-      return UpdateCheckFailed('Unexpected error: $e');
+      return const UpdateCheckFailed(
+        'Something went wrong while checking for updates.',
+      );
     } finally {
       if (ownsClient) httpClient.close();
     }
