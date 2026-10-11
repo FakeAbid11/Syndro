@@ -452,7 +452,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         // no explanation, so the user could not tell whether it had worked.
         if (!mounted) return;
         scaffoldMessenger.showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(HomeScreenStrings.failedToReject),
             backgroundColor: AppTheme.errorColor,
           ),
