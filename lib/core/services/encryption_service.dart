@@ -519,8 +519,20 @@ class EncryptionService {
       return;
     }
 
-    final presentedBase64 = base64Url.encode(presentedPubKeyBytes);
-    if (!secureBytesEqual(pinnedPubKeyBase64Url, presentedBase64)) {
+    // Compare the decoded key BYTES, never the base64 text. The same key can be
+    // written with or without `=` padding — and different peers (or an older
+    // build of this app) will not agree on which — so a text comparison raises
+    // a false MITM alarm for an identical key.
+    final pinnedBytes = decodeBase64Url(pinnedPubKeyBase64Url);
+    if (pinnedBytes == null) {
+      throw SecurityException(
+        'Stored public-key pin for device $deviceId is not valid base64url',
+        deviceId: deviceId,
+        code: 'KEY_PIN_MALFORMED',
+      );
+    }
+
+    if (!constantTimeBytesEqual(pinnedBytes, presentedPubKeyBytes)) {
       throw SecurityException(
         'Public key mismatch for device $deviceId — possible MITM',
         deviceId: deviceId,
@@ -545,7 +557,14 @@ class EncryptionService {
     final hmac = Hmac.sha256();
     final keyBytes = utf8.encode(senderToken);
     final secretKey = SecretKey(keyBytes);
-    final messageBytes = utf8.encode(pinnedPubKeyBase64Url);
+
+    // Canonicalize the pin to its key BYTES so both peers derive the same MAC
+    // regardless of whether they stored the key padded or unpadded. Falls back
+    // to the raw string only when the input is not valid base64url, which keeps
+    // this function total (and keeps pre-existing callers that pass opaque
+    // strings working).
+    final messageBytes = decodeBase64Url(pinnedPubKeyBase64Url) ??
+        utf8.encode(pinnedPubKeyBase64Url);
 
     final mac = await hmac.calculateMac(
       messageBytes,
@@ -553,6 +572,33 @@ class EncryptionService {
     );
 
     return base64Url.encode(mac.bytes);
+  }
+
+  /// Decode a base64url string that may or may not carry `=` padding.
+  ///
+  /// Returns `null` when [value] is not valid base64url.
+  static Uint8List? decodeBase64Url(String value) {
+    if (value.isEmpty) return null;
+    final remainder = value.length % 4;
+    final normalized = remainder == 0 ? value : '$value${'=' * (4 - remainder)}';
+    try {
+      return Uint8List.fromList(base64Url.decode(normalized));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Constant-time comparison of two byte sequences.
+  ///
+  /// The length check short-circuits (and therefore leaks the length, which is
+  /// not secret here); the byte loop itself does not branch.
+  static bool constantTimeBytesEqual(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    int result = 0;
+    for (int i = 0; i < a.length; i++) {
+      result |= a[i] ^ b[i];
+    }
+    return result == 0;
   }
 
   /// Constant-time comparison of two strings (no length leak beyond a

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../utils/app_logger.dart';
@@ -14,6 +15,14 @@ class TrustedDevicesHandler {
 
   /// Namespace prefix for per-device TOFU public-key pins in secure storage.
   static const String _pinKeyPrefix = 'syndro.pin.';
+
+  /// Secure-storage key for a device's TOFU pin.
+  ///
+  /// The device id arrives over the wire, so it is hashed rather than
+  /// interpolated raw. An id containing `/`, `..`, or an unbounded length could
+  /// otherwise collide with — or overwrite — another device's pin namespace.
+  static String _pinStorageKey(String deviceId) =>
+      '$_pinKeyPrefix${crypto_hash.sha256.convert(utf8.encode(deviceId))}';
 
   final Map<String, TrustedDevice> _trustedDevices = {};
   final Map<String, PendingTransferRequest> _pendingRequests = {};
@@ -91,7 +100,7 @@ class TrustedDevicesHandler {
     _trustedDevices.remove(senderId);
     // Also remove the persisted TOFU pin for this device
     try {
-      await _secureStorage.delete(key: '$_pinKeyPrefix$senderId');
+      await _secureStorage.delete(key: _pinStorageKey(senderId));
     } catch (e) {
       AppLogger.error('Error removing pinned key: $e');
     }
@@ -103,7 +112,7 @@ class TrustedDevicesHandler {
     final keys = _trustedDevices.keys.toList();
     for (final id in keys) {
       try {
-        await _secureStorage.delete(key: '$_pinKeyPrefix$id');
+        await _secureStorage.delete(key: _pinStorageKey(id));
       } catch (e) {
         AppLogger.error('Error removing pinned key for $id: $e');
       }
@@ -118,14 +127,14 @@ class TrustedDevicesHandler {
 
   /// Persist the base64url-encoded X25519 public key for [deviceId].
   ///
-  /// The pin is stored in `syndro.pin.{deviceId}` in
+  /// The pin is stored under a hashed, namespaced key in
   /// `flutter_secure_storage`, separate from the JSON list in
   /// `syndro_trusted_devices`. This avoids bloating the JSON blob and
   /// keeps the pin on its own lifecycle.
   Future<void> pinKey(String deviceId, String pubKeyBase64Url) async {
     try {
       await _secureStorage.write(
-        key: '$_pinKeyPrefix$deviceId',
+        key: _pinStorageKey(deviceId),
         value: pubKeyBase64Url,
       );
     } catch (e) {
@@ -150,7 +159,7 @@ class TrustedDevicesHandler {
   ///
   /// Returns `false` when a pin IS stored but the keys differ (MITM).
   Future<bool> verifyPin(String deviceId, String presentedPubKeyBase64Url) async {
-    final stored = await _secureStorage.read(key: '$_pinKeyPrefix$deviceId');
+    final stored = await _secureStorage.read(key: _pinStorageKey(deviceId));
     if (stored == null || stored.isEmpty) {
       return true; // first use — OK to pin
     }
@@ -164,7 +173,7 @@ class TrustedDevicesHandler {
   /// UI action.
   Future<void> rotatePinnedKey(String deviceId) async {
     try {
-      await _secureStorage.delete(key: '$_pinKeyPrefix$deviceId');
+      await _secureStorage.delete(key: _pinStorageKey(deviceId));
     } catch (e) {
       AppLogger.error('Error removing pinned key during rotation: $e');
     }
@@ -191,7 +200,7 @@ class TrustedDevicesHandler {
   /// Return the stored TOFU public key for [deviceId], or `null` if
   /// no pin exists yet.
   Future<String?> getPinnedKey(String deviceId) async {
-    return await _secureStorage.read(key: '$_pinKeyPrefix$deviceId');
+    return await _secureStorage.read(key: _pinStorageKey(deviceId));
   }
 
   // ─────────────────────────────────────────────

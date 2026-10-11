@@ -1305,7 +1305,16 @@ class TransferService {
       } else if (trustedDevice != null &&
           !trustedDevice.hasActivePin &&
           theirPublicKeyBytes.isNotEmpty) {
-        // Deliberately NOT pinned here.
+        // A trusted device with no active pin.
+        //
+        // The one case where this connection may establish a pin is an
+        // intentional re-pair: the user pressed "Reset key / re-pair" in
+        // Settings, which cleared the old pin and set `pendingRepin`. That flag
+        // is consumed here (one-shot) and the freshly presented key becomes the
+        // new pin — this is how a legitimately rotated key (reinstall, OS
+        // keystore reset) recovers instead of leaving the device stuck.
+        //
+        // Deliberately NOT pinned otherwise.
         //
         // This branch used to auto-pin whatever key arrived, keyed by the
         // attacker-supplied `deviceId` in the request body. That let any host on
@@ -1317,14 +1326,23 @@ class TransferService {
         // static token for a pinned device, so B could not authenticate at all
         // until the user manually reset trust.
         //
-        // A pin may only be established where the key is bound to the peer by
-        // something the attacker cannot supply — an authenticated pairing flow.
-        // There is no such flow here, so an unpinned trusted device simply keeps
-        // using its static token, and revocation from Settings is the only way
-        // to add a pin.
-        AppLogger.info(
-            'ℹ️ Trusted device $theirDeviceId has no pinned key; '
-            'continuing without TOFU pinning');
+        // `consumePendingRepin` only returns true when the *local user* asked
+        // for a re-pair, so this exception cannot be driven by a remote peer.
+        final repinning =
+            await _trustedDevicesHandler.consumePendingRepin(theirDeviceId);
+
+        if (repinning) {
+          await _trustedDevicesHandler.pinKey(
+            theirDeviceId,
+            base64Url.encode(theirPublicKeyBytes),
+          );
+          AppLogger.info(
+              '📌 Re-pinned key for $theirDeviceId after a trust reset');
+        } else {
+          AppLogger.info(
+              'ℹ️ Trusted device $theirDeviceId has no pinned key; '
+              'continuing without TOFU pinning');
+        }
       }
 
       final sharedSecret = await _performKeyExchange(theirPublicKeyBytes);
@@ -1640,9 +1658,23 @@ class TransferService {
 
     if (trustedDevice != null && trustedDevice.hasActivePin) {
       try {
+        // Bind our static token to OUR OWN public key — the key the receiver
+        // pinned for us — not to the receiver's key.
+        //
+        // `_verifyDeviceToken` on the receiving side derives
+        // `HMAC(ourToken, <the key it pinned for us>)`, i.e. our key. Deriving
+        // from the receiver's key here produced a value the receiver could
+        // never match, so a mutually-pinned pair could not authenticate at all.
+        // The pin's *presence* selects this path; its *value* must be the key
+        // the peer holds.
+        final myPublicKey = await getPublicKey();
+        if (myPublicKey == null) {
+          // No key pair (encryption disabled) — a peer cannot have pinned us.
+          return _deviceToken;
+        }
         return await EncryptionService.deriveBoundToken(
           senderToken: _deviceToken,
-          pinnedPubKeyBase64Url: trustedDevice.pinnedPubKey!,
+          pinnedPubKeyBase64Url: base64Url.encode(myPublicKey),
         );
       } catch (e) {
         AppLogger.error(
@@ -2096,6 +2128,27 @@ class TransferService {
         token: pending.senderToken,
         trustedAt: DateTime.now(),
       ));
+
+      // TOFU: pin the sender's public key at the moment trust is granted.
+      //
+      // The pin is what activates the change-detection machinery in
+      // `_handleKeyExchange` — without it `hasActivePin` is always false and a
+      // later key substitution is never noticed.
+      //
+      // CAVEAT: this pin is *opportunistic*, not authenticated. The key comes
+      // from the sender's own request body and has not been confirmed
+      // out-of-band, so it only proves "the same key as last time", not "the
+      // right key". It becomes an authenticated pin once a pairing step lets
+      // the user verify the key; until then, read it as TOFU-on-first-trust.
+      //
+      // Order matters: trust is persisted above so `pinTrustedDeviceKey` (which
+      // refuses to pin an unknown device) finds the record.
+      if (pending.senderPublicKey != null && encryptionEnabled) {
+        await pinTrustedDeviceKey(
+          pending.senderId,
+          base64Url.encode(pending.senderPublicKey!),
+        );
+      }
     }
 
     if (pending.senderPublicKey != null && encryptionEnabled) {

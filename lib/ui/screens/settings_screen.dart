@@ -584,11 +584,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       TrustedDevice device, TransferService transferService) {
     final timeAgo = _formatTimeAgo(device.trustedAt);
 
+    // Surface the pin state so the feature is legible: without this the user
+    // cannot tell whether TOFU pinning is actually active for a device.
+    final pinState = device.hasActivePin
+        ? 'Key verified'
+        : (device.pendingRepin ? 'Waiting to re-verify' : 'Key not verified');
+
     return _buildSettingsTile(
       icon: Icons.person_outline,
       iconColor: AppTheme.secondaryColor,
       title: device.senderName,
-      subtitle: 'Trusted $timeAgo',
+      subtitle: 'Trusted $timeAgo · $pinState',
       trailing: PopupMenuButton<String>(
         tooltip: 'Trust options',
         icon: const Icon(Icons.more_vert_rounded, size: 20),
@@ -616,9 +622,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
               }
             }
+          } else if (value == 'repin') {
+            try {
+              // Clears the stored key and flags the device for re-verification.
+              // The pin is re-established the next time this device connects.
+              await transferService.rotatePinnedKey(device.senderId);
+              if (mounted) {
+                ref.invalidate(trustedDevicesProvider);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        'Key reset for ${device.senderName}. It will be '
+                        're-verified the next time this device connects.'),
+                  ),
+                );
+              }
+            } catch (e) {
+              AppLogger.error('Error resetting key for ${device.senderId}: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to reset key: $e'),
+                    backgroundColor: AppTheme.errorColor,
+                  ),
+                );
+              }
+            }
           }
         },
         itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'repin',
+            child: Row(
+              children: [
+                Icon(Icons.refresh_rounded, size: 18),
+                SizedBox(width: AppSpacing.sm),
+                Text('Reset key / re-pair'),
+              ],
+            ),
+          ),
           const PopupMenuItem(
             value: 'revoke',
             child: Row(
