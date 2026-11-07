@@ -237,7 +237,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         res.writeHead(200, {
           "content-type": type,
           "content-length": String(data.length),
-          "cache-control": "public, max-age=60",
+          "cache-control": "no-cache",
         });
         res.end(data);
       } catch {

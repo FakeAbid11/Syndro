@@ -304,6 +304,7 @@ async function refreshInfo() {
     el.qr.src = api("/api/qr.svg");
     renderLinks(Array.isArray(info.urls) ? info.urls : []);
     renderReceived(Array.isArray(info.files) ? info.files : []);
+    tickExpiry();
     setOnline(true);
   } catch (error) {
     console.error("info failed", error);
@@ -389,3 +390,7 @@ connectEvents();
 tickExpiry();
 setInterval(tickExpiry, 15_000);
 setInterval(() => void refreshInfo(), 30_000);
+setInterval(() => {
+  const last = throughputWindow[throughputWindow.length - 1];
+  if (!last || Date.now() - last.at > 2000) el.throughput.textContent = "";
+}, 1000);
