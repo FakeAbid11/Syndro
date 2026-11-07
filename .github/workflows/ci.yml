@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    env:
+      # The CI job type-checks and tests the Node/Electron code. It does not
+      # ship an app, so downloading the ~120 MB Electron binary is wasted time
+      # on every run.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v5
+        with:
+          name: syndro-desktop-${{ matrix.os }}
+          path: |
+            desktop/dist
+            desktop/web
+          if-no-files-found: error
+          retention-days: 7
+
+  web:
+    name: Web UI syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Check the browser bundle parses
+        run: node --check desktop/web/assets/app.js
+
+      - name: Check every served asset exists
+        run: |
+          test -f desktop/web/index.html
+          test -f desktop/web/assets/app.js
+          test -f desktop/web/assets/style.css

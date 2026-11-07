@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Syndro</title>
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="wordmark">SYNDRO</span>
+      </div>
+      <div class="peer" id="peer-name">connecting…</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel" aria-labelledby="pair-title">
+        <div class="panel-head">
+          <h2 id="pair-title">Pair</h2>
+          <span class="status" id="status"><i class="dot"></i><span>live</span></span>
+        </div>
+
+        <div class="qr-frame">
+          <img id="qr" alt="QR code containing this share link" />
+        </div>
+
+        <div class="links" id="links"></div>
+        <p class="hint" id="links-hint">
+          Open one of these addresses in any browser on the same network.
+        </p>
+
+        <div class="expiry">
+          <span>Link expires</span>
+          <strong id="expiry">—</strong>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="send-title">
+        <div class="panel-head">
+          <h2 id="send-title">Transfer</h2>
+          <span class="throughput" id="throughput"></span>
+        </div>
+
+        <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose files to send">
+          <input id="file" type="file" multiple hidden />
+          <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 16V4m0 0L7 9m5-5 5 5" />
+            <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <span class="drop-title">Drop files to send</span>
+          <span class="drop-sub">or tap to choose</span>
+        </div>
+
+        <h3 class="subhead">Outgoing</h3>
+        <ul class="list" id="outgoing" aria-live="polite"></ul>
+
+        <h3 class="subhead">Received</h3>
+        <ul class="list" id="received" aria-live="polite"></ul>
+      </section>
+    </main>
+
+    <script src="/assets/app.js" type="module"></script>
+  </body>
+</html>
