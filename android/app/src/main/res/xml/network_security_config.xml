@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Browser mode talks plain HTTP on the LAN. Native Syndro peers will add
+         transport encryption later; a self-signed certificate would only teach
+         people to click through a browser warning. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -319,7 +319,7 @@ function setOnline(online) {
 
 function tickExpiry() {
   if (!expiresAt) {
-    el.expiry.textContent = "—";
+    el.expiry.textContent = "while sharing";
     return;
   }
   const remaining = expiresAt - Date.now();

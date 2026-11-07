@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Syndro" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/syndro_background</item>
+        <item name="android:statusBarColor">@color/syndro_background</item>
+        <item name="android:navigationBarColor">@color/syndro_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">@color/syndro_accent</item>
+    </style>
+</resources>
