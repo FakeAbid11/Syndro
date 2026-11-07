@@ -4,19 +4,21 @@ Local-network file sharing for **Android, Linux and Windows**. No cloud, no acco
 server, no internet connection required — both devices just have to reach each other on the same
 Wi-Fi or hotspot.
 
-**Status: browser mode, phase 1.** A desktop app runs a transfer server and serves a small web UI.
-Any phone, tablet, PC or laptop on the same network can open it in a browser and send or receive
-files without installing anything.
+**Status: desktop + Android, browser mode.** A desktop app or an Android phone runs a transfer
+server and serves a small web UI. Any phone, tablet, PC or laptop on the same network can open it in
+a browser and send or receive files without installing anything. The Android app can also send
+files to another Syndro share link.
 
 ## What works today
 
 - QR pairing plus copyable share URLs, scoped by a random 24-character capability token
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
-- Live transfer list over Server-Sent Events
+- Live transfer list, refreshed without a page reload
 - Filenames are display-only: every file is stored under a generated ID, so a malicious
   `../../etc/passwd` cannot escape the receive directory
-- Share links expire after 24 hours; repeated bad tokens are rate-limited per client
+- Desktop shares expire after 24 hours with per-client rate limiting on bad tokens; Android shares
+  for as long as the foreground service runs
 - IPv6-first address selection with an honest IPv4 fallback
 
 ## Networking policy: IPv6-first, not IPv6-only
@@ -55,6 +57,29 @@ Then open the displayed URL from another device on the same network, or scan the
 Syndro through Windows Firewall on **private** networks when prompted — on public-profile networks
 Windows blocks inbound connections before Syndro ever sees them.
 
+## Android app
+
+The APK is built in CI, so no local Android toolchain is needed.
+
+1. Open the **Actions** tab, pick the latest green `CI` run, and download the
+   `syndro-android-debug` artifact (it contains `app-debug.apk`).
+2. Sideload it. Android will ask you to allow installs from your browser or file manager.
+3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
+   same Wi-Fi or hotspot can reach it.
+4. To send from the phone, paste the other device's share link (`http://…:47821/s/<token>`), then
+   **Choose files**. The phone copies the document to cache, uploads it in resumable 4 MiB chunks,
+   and deletes the copy.
+
+Received files live in the app's private storage. Use **Save** to write a copy to
+`Downloads/Syndro`, or **Share** to hand it to another app through `FileProvider`.
+
+The share server runs in a `dataSync` foreground service, so a large transfer survives the screen
+turning off. Android's foreground-service limit still applies to very long sessions — the
+notification is the source of truth for whether the server is alive.
+
+The debug APK is signed with the CI debug key. Release signing, like `linkphone`, needs a keystore
+in repository secrets before an in-place update path makes sense.
+
 ## Tests
 
 ```bash
@@ -67,12 +92,10 @@ upload, resume conflicts, `Range` downloads, path traversal, and link expiry.
 
 ## Roadmap
 
-1. **Phase 2 — native Android app.** Gradle + Kotlin, mirroring the `linkphone` layout, with a
-   foreground service so a large transfer survives screen-off.
-2. **Phase 3 — mDNS discovery.** `_syndro._tcp.local` plus QR fallback, so no URL has to be typed.
-3. **Phase 4 — packaging.** NSIS installer for Windows, AppImage/deb for Linux, signed APK, and
+1. **Phase 3 — mDNS discovery.** `_syndro._tcp.local` plus QR fallback, so no URL has to be typed.
+2. **Phase 4 — packaging.** NSIS installer for Windows, AppImage/deb for Linux, signed APK, and
    release artifacts from CI.
-4. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
+3. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
    transfer history, and folder sends.
 
 ## Design notes
