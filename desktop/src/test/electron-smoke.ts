@@ -296,11 +296,14 @@ async function run(): Promise<void> {
       backgroundColor: "#0b0b0c",
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     observe(browser);
+    // A fresh hidden window has no initialized page/view to acknowledge a
+    // viewport override. Load and show it before requesting mobile metrics.
+    await within(browser.webContents.loadURL(ownerUrl), "Mobile browser page load");
+    browser.show();
     browser.webContents.debugger.attach("1.3");
     await within(browser.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
       width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
     }), "Mobile viewport setup");
-    await within(browser.webContents.loadURL(ownerUrl), "Mobile browser page load");
     await within(waitFor(browser, `document.querySelector('#peer-name').textContent === 'Smoke desktop' &&
       document.querySelectorAll('#received .download').length === 2`), "Mobile file list");
     assert.deepEqual(await browser.webContents.executeJavaScript(`({
