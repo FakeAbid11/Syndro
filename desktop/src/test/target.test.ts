@@ -30,5 +30,5 @@ test("rejects credentials, unrelated paths, invalid codes, and invalid endpoints
     "http://host:0/s/ABCD2345", "http://host:65536/s/ABCD2345", "http://[nope]/s/ABCD2345",
     "http://[fe80::1%25]/s/ABCD2345", "http://[fe80::1%25eth%250]/s/ABCD2345",
     "http://[fe80::1%25eth%200]/s/ABCD2345",
-  ]) assert.throws(() => parseShareTarget(input), undefined, input);
+  ]) assert.throws(() => parseShareTarget(input), Error, input);
 });
