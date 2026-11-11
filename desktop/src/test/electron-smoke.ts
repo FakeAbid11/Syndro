@@ -6,6 +6,17 @@ import * as path from "node:path";
 import type { RunningServer } from "../main/server";
 import type { PublicFile } from "../main/store";
 
+async function within<T>(promise: Promise<T>, label: string, milliseconds = 20_000): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error(`${label} timed out.`)), milliseconds);
+    })]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function loaded(window: BrowserWindow): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("The packaged UI did not load.")), 20_000);
@@ -120,7 +131,8 @@ async function checkPresentation(window: BrowserWindow, columns: number, minimum
 }
 
 async function captureFullPage(window: BrowserWindow, file: string): Promise<void> {
-  window.showInactive();
+  window.show();
+  window.focus();
   await window.webContents.executeJavaScript(`new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
   const debuggerClient = window.webContents.debugger;
@@ -189,6 +201,9 @@ async function run(): Promise<void> {
     unregister = registerSenderBridge(new NativeSender({ port: local.port, serverId: "desktop-smoke-id" }), () => owner, ownerUrl);
     owner = createWindow(local.port, local.token, false);
     observe(owner);
+    // CI's inactive/covered windows still need to paint for visual assertions.
+    // This changes only the test scheduler, not the shipped window settings.
+    owner.webContents.setBackgroundThrottling(false);
     await loaded(owner);
     await waitFor(owner, `document.querySelector('#peer-name').textContent === 'Smoke desktop'`);
     assert.deepEqual(await owner.webContents.executeJavaScript(`({
@@ -199,7 +214,7 @@ async function run(): Promise<void> {
     assert.equal(renderer?.sandboxed, true);
     // Check the editable receiver field and Connect button before selecting a
     // receiver; the final Share-mode check covers the drop area and Save links.
-    await checkPresentation(owner, 2, 40);
+    await within(checkPresentation(owner, 2, 40), "Desktop presentation before pairing");
 
     await owner.webContents.executeJavaScript(`document.querySelector('#receiver-link').value = ${JSON.stringify(ownerUrl)};
       document.querySelector('#receiver-connect').click();`);
@@ -273,36 +288,42 @@ async function run(): Promise<void> {
       .then(() => 'allowed', (error) => error.message)`);
     assert.match(wrongUrl, /only in Syndro's own window/);
     await owner.webContents.executeJavaScript(`history.replaceState({}, '', ${JSON.stringify(ownerUrl)})`);
-    await checkPresentation(owner, 2, 40);
+    await within(checkPresentation(owner, 2, 40), "Desktop presentation after transfers");
 
     // This window has no preload: it is genuinely browser mode, not a second
     // desktop window whose sender bridge merely rejects IPC calls.
     browser = new BrowserWindow({ width: 430, height: 760, show: false,
       backgroundColor: "#0b0b0c",
-      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     observe(browser);
     browser.webContents.debugger.attach("1.3");
-    await browser.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
+    await within(browser.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
       width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
-    });
-    await browser.webContents.loadURL(ownerUrl);
-    await waitFor(browser, `document.querySelector('#peer-name').textContent === 'Smoke desktop' &&
-      document.querySelectorAll('#received .download').length === 2`);
+    }), "Mobile viewport setup");
+    await within(browser.webContents.loadURL(ownerUrl), "Mobile browser page load");
+    await within(waitFor(browser, `document.querySelector('#peer-name').textContent === 'Smoke desktop' &&
+      document.querySelectorAll('#received .download').length === 2`), "Mobile file list");
     assert.deepEqual(await browser.webContents.executeJavaScript(`({
       bridge: typeof window.syndro, controlsHidden: document.querySelector('#desktop-controls').hidden,
       title: document.querySelector('#files-title').textContent, code: document.querySelector('#pair-code').textContent
     })`), { bridge: "undefined", controlsHidden: true, title: "Available to download", code: "ABCD 2345" });
-    await checkPresentation(browser, 1, 44);
+    await within(checkPresentation(browser, 1, 44), "Mobile presentation");
     assert.deepEqual(errors, []);
     passed = true;
     console.log("Packaged Electron smoke passed: sandbox preload, guarded IPC, real File chunks, honest lists, desktop/mobile layout, keyboard focus, and reduced motion.");
+  } catch (error) {
+    // Report assertions now: an unavailable compositor must not conceal the
+    // original failure behind the screenshot deadline or runner timeout.
+    console.error("Packaged Electron checks failed before capture:", error);
+    throw error;
   } finally {
     let captureError: unknown;
     for (const [window, file] of [[owner, screenshot],
       [browser, path.join(path.dirname(screenshot), "electron-smoke-mobile.png")]] as const) {
       if (window && !window.isDestroyed()) {
         try {
-          await captureFullPage(window, file);
+          console.log(`Capturing ${path.basename(file)}`);
+          await within(captureFullPage(window, file), `Capture ${path.basename(file)}`);
         } catch (error) {
           captureError ??= error;
           console.error("UI capture failed", error);
