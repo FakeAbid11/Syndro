@@ -103,8 +103,8 @@ list, including after a refresh.
 
 CI builds a real installer, so the target machine needs neither Node nor a build toolchain.
 
-1. Download [`Syndro-Setup-0.1.1.exe`](https://github.com/FakeAbid11/Syndro/releases/download/v0.1.1/Syndro-Setup-0.1.1.exe)
-   from the [v0.1.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.1.1).
+1. Download [`Syndro-Setup-0.2.0.exe`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-Setup-0.2.0.exe)
+   from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
 2. Run the installer. It is a per-user install (no admin prompt) and lets you choose the folder.
 3. SmartScreen warns because the build is not code-signed yet: **More info → Run anyway**.
 
@@ -117,8 +117,8 @@ The installer adds Start Menu and desktop shortcuts and registers an uninstaller
 
 The APK is built in CI, so no local Android toolchain is needed.
 
-1. Download [`Syndro-0.1.1-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.1.1/Syndro-0.1.1-android-debug.apk)
-   from the [v0.1.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.1.1).
+1. Download [`Syndro-0.2.0-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-0.2.0-android-debug.apk)
+   from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
 3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
    same Wi-Fi or hotspot can reach it.
@@ -138,15 +138,16 @@ notification is the source of truth for whether the server is alive.
 The debug APK is signed with the CI debug key. Release signing, like `linkphone`, needs a keystore
 in repository secrets before an in-place update path makes sense.
 
-### Upgrading from v0.1
+### Upgrading from earlier versions
 
-- The Windows installer is still unsigned. Installing v0.1.1 over v0.1 preserves the app's local
-  data and stable device identity.
-- v0.1 did not record whether an existing desktop file was locally shared or received. v0.1.1
+- The Windows installer is still unsigned. Installing v0.2 over v0.1 or v0.1.1 preserves the app's
+  local data and stable device identity.
+- v0.1 did not record whether an existing desktop file was locally shared or received. v0.2
   preserves those files without guessing and shows them under **Earlier files**.
 - The Android APK remains debug-signed. If Android reports that the package conflicts with the
   installed app because CI signing keys differ, first use **Save**/**Share** to export any received
-  files, then uninstall v0.1 and install v0.1.1.
+  files, then uninstall the older version and install v0.2. Uninstalling without exporting deletes
+  files in the app's private storage.
 
 ## Tests
 

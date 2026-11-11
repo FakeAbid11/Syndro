@@ -133,6 +133,16 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: Verify APK metadata and signature
+        shell: bash
+        working-directory: android
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          tools_dir="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$tools_dir/aapt" dump badging "$apk" | grep -E '^(package:|sdkVersion:|targetSdkVersion:)'
+          "$tools_dir/apksigner" verify --verbose --print-certs "$apk"
+          sha256sum "$apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
