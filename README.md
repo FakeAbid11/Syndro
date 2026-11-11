@@ -11,7 +11,8 @@ files to another Syndro share link.
 
 ## What works today
 
-- QR pairing plus copyable share URLs, scoped by a random 24-character capability token
+- QR pairing plus copyable share URLs, scoped by a random 24-character capability token — the
+  Android app both shows a QR code and scans one with CameraX + ZXing (no Play Services)
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
 - Live transfer list, refreshed without a page reload
@@ -66,9 +67,9 @@ The APK is built in CI, so no local Android toolchain is needed.
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
 3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
    same Wi-Fi or hotspot can reach it.
-4. To send from the phone, paste the other device's share link (`http://…:47821/s/<token>`), then
-   **Choose files**. The phone copies the document to cache, uploads it in resumable 4 MiB chunks,
-   and deletes the copy.
+4. To send from the phone, paste the other device's share link (`http://…:47821/s/<token>`) or tap
+   **Scan QR** and point the camera at the QR code on the other device, then **Choose files**. The
+   phone copies the document to cache, uploads it in resumable 4 MiB chunks, and deletes the copy.
 
 Received files live in the app's private storage. Use **Save** to write a copy to
 `Downloads/Syndro`, or **Share** to hand it to another app through `FileProvider`.

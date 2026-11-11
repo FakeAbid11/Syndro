@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -98,6 +99,8 @@ fun HomeScreen() {
     val error by ShareState.error.collectAsState()
 
     var target by rememberSaveable { mutableStateOf("") }
+    var scanning by remember { mutableStateOf(false) }
+    var scanNote by remember { mutableStateOf<String?>(null) }
     val outbox = remember { mutableStateListOf<SendItem>() }
     val targetValid = remember(target) { parseTarget(target) != null }
 
@@ -193,7 +196,7 @@ fun HomeScreen() {
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = target,
-                onValueChange = { target = it },
+                onValueChange = { target = it; scanNote = null },
                 singleLine = true,
                 placeholder = {
                     Text("http://192.168.1.20:47821/s/…", color = SyndroFaint, fontSize = 13.sp)
@@ -227,11 +230,25 @@ fun HomeScreen() {
                     Text("Choose files", fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(10.dp))
+                OutlinedButton(
+                    onClick = { scanning = true },
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Text("Scan QR", fontWeight = FontWeight.SemiBold)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (target.isEmpty()) "Waiting for a link" else if (targetValid) "Link looks valid" else "Not a Syndro link",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = if (targetValid) SyndroGreen else SyndroFaint,
+                ),
+            )
+            scanNote?.let { note ->
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    if (target.isEmpty()) "Waiting for a link" else if (targetValid) "Link looks valid" else "Not a Syndro link",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = if (targetValid) SyndroGreen else SyndroFaint,
-                    ),
+                    note,
+                    style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed),
                 )
             }
 
@@ -275,6 +292,22 @@ fun HomeScreen() {
         }
 
         Spacer(Modifier.height(10.dp))
+    }
+
+    if (scanning) {
+        QrScannerScreen(
+            onResult = { raw ->
+                scanning = false
+                val scanned = raw.trim()
+                if (parseTarget(scanned) != null) {
+                    target = scanned
+                    scanNote = null
+                } else {
+                    scanNote = "That QR is not a Syndro share link."
+                }
+            },
+            onClose = { scanning = false },
+        )
     }
 }
 
