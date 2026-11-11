@@ -96,6 +96,14 @@ test("desktop sending is disabled until a receiver is verified", async (t) => {
   const sender = new NativeSender({ port: host.server.port, serverId: "test-desktop-id" });
   const ui = await uiFixture(t, host, { bridge: nativeBridge(sender) });
   assert.equal(ui.document.getElementById("desktop-controls")?.hidden, false);
+  assert.equal(ui.text("#mode-send"), "App to app");
+  assert.equal(ui.text("#mode-share"), "Share a link");
+  assert.equal(ui.text("#pair-title"), "Receive on this device");
+  ui.hooks.renderLinks([{ url: host.shareUrl, kind: "ipv4-private", browserReachable: true }]);
+  assert.match(ui.text("#links-hint") || "", /another Syndro app/);
+  assert.match(ui.text("#receiver-help") || "", /receiving device/);
+  assert.equal(ui.link.getAttribute("aria-describedby"), "receiver-help receiver-state");
+  assert.equal(ui.text("#receiver-state"), "Not paired yet");
   assert.equal(ui.document.getElementById("mode-send")?.getAttribute("aria-pressed"), "true");
   assert.equal(ui.document.getElementById("drop")?.getAttribute("aria-disabled"), "true");
   await ui.hooks.enqueue([new NodeFile(["x"], "not-sent.txt")]);
@@ -115,6 +123,9 @@ test("direct sending never creates a local received file or a redundant Save act
   ui.link.value = remote.shareUrl;
   await ui.hooks.connectReceiver();
   assert.equal(ui.document.getElementById("drop")?.getAttribute("aria-disabled"), "false");
+  assert.match(ui.text("#receiver-state") || "", /Paired with Test phone/);
+  assert.match(ui.text("#transfer-hint") || "", /receiving app confirmed/);
+  assert.equal(ui.link.disabled, true);
   await ui.hooks.enqueue([new NodeFile(["to phone"], "sent.txt", { type: "text/plain" })]);
   assert.equal(ui.text("#outgoing .row-state"), "Sent");
   assert.equal(ui.text("#outgoing .row-destination"), "To Test phone");
@@ -122,6 +133,41 @@ test("direct sending never creates a local received file or a redundant Save act
   assert.equal(ui.requests.filter((request) => request.method !== "GET").length, 0);
   assert.deepEqual(await listFiles(host), []);
   assert.equal((await listFiles(remote))[0]?.name, "sent.txt");
+});
+
+test("app-to-app pairing stays separate from browser-link publishing", async (t) => {
+  const host = await fixture(t);
+  const remote = await fixture(t, { deviceName: "Paired phone", serverId: "phone-id" });
+  const sender = new NativeSender({ port: host.server.port, serverId: "test-desktop-id" });
+  const ui = await uiFixture(t, host, { bridge: nativeBridge(sender) });
+  ui.link.value = remote.shareUrl;
+  await ui.hooks.connectReceiver();
+  (ui.document.getElementById("mode-share") as HTMLButtonElement).click();
+  assert.equal(ui.document.getElementById("receiver-panel")?.hidden, true);
+  assert.equal(ui.document.getElementById("mode-share")?.getAttribute("aria-pressed"), "true");
+  assert.match(ui.text("#transfer-hint") || "", /Sharing is not delivery/);
+  (ui.document.getElementById("mode-send") as HTMLButtonElement).click();
+  assert.equal(ui.document.getElementById("receiver-panel")?.hidden, false);
+  assert.equal(ui.document.getElementById("mode-send")?.getAttribute("aria-pressed"), "true");
+  assert.match(ui.text("#receiver-state") || "", /Paired with Paired phone/);
+  assert.match(ui.text("#drop-title") || "", /send to Paired phone/);
+  assert.deepEqual(await listFiles(host), []);
+  assert.deepEqual(await listFiles(remote), []);
+});
+
+test("ordinary browsers do not expose native app-to-app pairing", async (t) => {
+  const host = await fixture(t, { deviceName: "Hosting phone" });
+  const ui = await uiFixture(t, host);
+  assert.equal(ui.document.getElementById("desktop-controls")?.hidden, true);
+  assert.equal(ui.document.getElementById("receiver-panel")?.hidden, true);
+  assert.equal(ui.text("#pair-title"), "This share");
+  assert.match(ui.text("#transfer-hint") || "", /Hosting phone, the device hosting this share/);
+  ui.hooks.setMode("send");
+  await ui.hooks.connectReceiver();
+  assert.equal(ui.document.getElementById("desktop-controls")?.hidden, true);
+  assert.equal(ui.document.getElementById("drop")?.getAttribute("aria-disabled"), "false");
+  ui.hooks.renderLinks([{ url: host.shareUrl, kind: "ipv4-private", browserReachable: true }]);
+  assert.match(ui.text("#links-hint") || "", /any browser/);
 });
 
 test("queued transfers keep the same destination and show Sent only after confirmation", async (t) => {

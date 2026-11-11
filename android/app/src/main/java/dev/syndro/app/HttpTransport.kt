@@ -74,7 +74,7 @@ private class ConnectionWire(method: String, url: String) : Wire {
         requestMethod = method
         doOutput = method != "GET" && method != "HEAD"
         connectTimeout = 8_000
-        readTimeout = 60_000
+        readTimeout = if (method == "GET" || method == "HEAD") 8_000 else 60_000
         useCaches = false
     }
     private var status = 0
@@ -141,7 +141,7 @@ private class ScopedWire(private val method: String, private val target: ParsedU
         val address = scopedAddress(target.host)
         val created = Socket()
         created.connect(java.net.InetSocketAddress(address, target.port), 8_000)
-        created.soTimeout = 60_000
+        created.soTimeout = if (method == "GET" || method == "HEAD") 8_000 else 60_000
         socket = created
         return created
     }

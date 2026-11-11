@@ -19,7 +19,7 @@ to another Syndro device after its share link has been verified.
   the mDNS TXT record; QR remains the fallback when multicast discovery is blocked
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
-- Explicit desktop modes: **Send to device** delivers to a verified receiver, while
+- Explicit **App to app** sending to a verified receiver on Windows and Android; desktop
   **Share a link** publishes on this device for someone else to download
 - Honest completion states: **Sent** appears only after the receiver confirms the exact file;
   publishing says **Shared** and never masquerades as an incoming transfer
@@ -73,20 +73,31 @@ Windows blocks inbound connections before Syndro ever sees them.
 
 ## Send versus share
 
-The desktop app deliberately keeps these as two different operations:
+The desktop app deliberately keeps these as two different operations. Android uses the same
+**App to app** pairing flow for direct sends.
 
-### Send to device
+> The clearer labels and Android receiver confirmation are currently on `main`, not in the
+> published v0.2 downloads. Those binaries still call direct sending **Send to device** (Windows)
+> or **Send files** (Android), and receiving **Start sharing**. Existing release assets are unchanged.
 
-1. Start sharing on the receiving PC or phone.
-2. Copy one of that device's full `http://…/s/ABCD2345` links.
-3. In the sending desktop app, choose **Send to device**, paste the link, and select **Connect**.
-4. Choose or drop files only after the receiver name is confirmed.
+### App to app
 
-The native Electron bridge sends chunks directly to that selected receiver. It does not upload to
-the sender's loopback server or act as a general LAN proxy. The destination is frozen while files
-are queued, and **Sent** is shown only after the receiver confirms the file ID and size. Therefore a
-file sent from the PC does not appear under that same PC's **Received** list with a redundant Save
-button.
+1. Put both devices on the same Wi-Fi or hotspot. Open Syndro on the receiving Windows PC, or tap
+   **Start receiving** on the receiving Android phone. Its **Receive on this device** panel shows
+   the QR code, grouped pairing code, and full share links.
+2. On the sending Windows PC, choose **App to app**, paste the receiver's full
+   `http://…/s/ABCD2345` link, and select **Connect**.
+3. On a sending Android phone, use **Find nearby**, choose the receiver and enter its code, or
+   **Scan QR**. Either route verifies the receiver automatically. A pasted full link uses **Connect**.
+4. Wait for **Paired with** and the receiver's name, then choose files (or drop them on Windows).
+   To send back, swap the sending/receiving roles and pair with the other device's link.
+
+This supports Windows-to-Windows, Windows-to-Android, and Android-to-Android transfers in either
+direction. Native transports send chunks directly to the selected receiver, not to the sender's
+own server or a LAN proxy. The destination stays fixed while files are queued or transferred;
+Android also locks pairing while its file picker is open. **Sent** appears only after the receiver
+confirms the file ID and size. Outgoing files do not appear in the sender's **Received** list with
+a redundant Save button.
 
 ### Share a link
 
@@ -120,11 +131,12 @@ The APK is built in CI, so no local Android toolchain is needed.
 1. Download [`Syndro-0.2.0-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-0.2.0-android-debug.apk)
    from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
-3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
-   same Wi-Fi or hotspot can reach it.
-4. To send from the phone, tap **Find nearby devices**, choose the receiver, and type its displayed
-   code. If discovery is blocked, tap **Scan QR** and point the camera at the receiver's QR code;
-   pasting a full share link (`http://…:47821/s/<code>`) still works too. Then tap **Choose files**.
+3. Tap **Start receiving** (**Start sharing** in v0.2). The phone serves the same web UI on port
+   `47821`, so any browser or native Syndro sender on the same Wi-Fi or hotspot can reach it.
+4. To send from the phone, use **App to app** (**Send files** in v0.2). Tap **Find nearby**, choose
+   the receiver, and type its displayed code, or use **Scan QR** when discovery is blocked. Pasting
+   a full share link (`http://…:47821/s/<code>`) and selecting **Connect** works too. On `main`, wait
+   for the verified receiver name before tapping **Choose files**; v0.2 sends after selecting a link.
    The phone copies each document to cache, uploads it in resumable 4 MiB chunks, and deletes the
    copy.
 
@@ -166,6 +178,10 @@ Shared/Received lists. UI regressions also cover full copyable links, grouped pa
 accessible transform-based progress, shared muted-text contrast, desktop/mobile layout, keyboard
 focus, and reduced motion. The packaged smoke test saves full-page desktop and mobile-browser
 screenshots for visual review.
+
+Android CI also runs JVM tests for app-to-app link parsing, confirmed receiver identity, own-link
+rejection, and exact completed-file confirmation before building the APK. Physical-device pairing
+and native Android rendering still need device testing.
 
 ## Roadmap
 

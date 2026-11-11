@@ -208,8 +208,10 @@ async function run(): Promise<void> {
     await waitFor(owner, `document.querySelector('#peer-name').textContent === 'Smoke desktop'`);
     assert.deepEqual(await owner.webContents.executeJavaScript(`({
       bridge: typeof window.syndro.connect, node: typeof window.require,
-      disabled: document.querySelector('#drop').getAttribute('aria-disabled')
-    })`), { bridge: "function", node: "undefined", disabled: "true" });
+      disabled: document.querySelector('#drop').getAttribute('aria-disabled'),
+      mode: document.querySelector('#mode-send').textContent,
+      receiving: document.querySelector('#pair-title').textContent
+    })`), { bridge: "function", node: "undefined", disabled: "true", mode: "App to app", receiving: "Receive on this device" });
     const renderer = app.getAppMetrics().find((metric) => metric.pid === owner?.webContents.getOSProcessId());
     assert.equal(renderer?.sandboxed, true);
     // Check the editable receiver field and Connect button before selecting a
@@ -221,7 +223,8 @@ async function run(): Promise<void> {
     await waitFor(owner, `document.querySelector('#receiver-state').textContent.includes('own link')`);
     await owner.webContents.executeJavaScript(`document.querySelector('#receiver-link').value = ${JSON.stringify(receiverUrl)};
       document.querySelector('#receiver-connect').click();`);
-    await waitFor(owner, `document.querySelector('#drop').getAttribute('aria-disabled') === 'false'`);
+    await waitFor(owner, `document.querySelector('#drop').getAttribute('aria-disabled') === 'false' &&
+      document.querySelector('#receiver-state').textContent.startsWith('Paired with Selected phone')`);
 
     // A real Chromium File becomes ArrayBuffer chunks, crosses contextBridge
     // and IPC, and is written by the selected server, not the local one.
@@ -288,6 +291,12 @@ async function run(): Promise<void> {
       .then(() => 'allowed', (error) => error.message)`);
     assert.match(wrongUrl, /only in Syndro's own window/);
     await owner.webContents.executeJavaScript(`history.replaceState({}, '', ${JSON.stringify(ownerUrl)})`);
+    await owner.webContents.executeJavaScript(`document.querySelector('#mode-send').click()`);
+    assert.deepEqual(await owner.webContents.executeJavaScript(`({
+      selected: document.querySelector('#mode-send').getAttribute('aria-pressed'),
+      pairingHidden: document.querySelector('#receiver-panel').hidden,
+      paired: document.querySelector('#receiver-state').textContent.startsWith('Paired with Selected phone')
+    })`), { selected: "true", pairingHidden: false, paired: true });
     await within(checkPresentation(owner, 2, 40), "Desktop presentation after transfers");
 
     // This window has no preload: it is genuinely browser mode, not a second
@@ -313,7 +322,7 @@ async function run(): Promise<void> {
     await within(checkPresentation(browser, 1, 44), "Mobile presentation");
     assert.deepEqual(errors, []);
     passed = true;
-    console.log("Packaged Electron smoke passed: sandbox preload, guarded IPC, real File chunks, honest lists, desktop/mobile layout, keyboard focus, and reduced motion.");
+    console.log("Packaged Electron smoke passed: app-to-app pairing, sandbox preload, guarded IPC, real File chunks, honest lists, desktop/mobile layout, keyboard focus, and reduced motion.");
   } catch (error) {
     // Report assertions now: an unavailable compositor must not conceal the
     // original failure behind the screenshot deadline or runner timeout.

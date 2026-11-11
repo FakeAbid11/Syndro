@@ -46,19 +46,21 @@
         </div>
 
         <div id="desktop-controls" hidden>
-          <div class="transfer-modes" role="group" aria-label="Transfer destination">
-            <button type="button" id="mode-send" aria-pressed="true">Send to device</button>
+          <div class="transfer-modes" role="group" aria-label="Transfer mode">
+            <button type="button" id="mode-send" aria-pressed="true">App to app</button>
             <button type="button" id="mode-share" aria-pressed="false">Share a link</button>
           </div>
           <div class="receiver" id="receiver-panel">
-            <label for="receiver-link">Receiver's share link</label>
+            <p id="receiver-help" class="hint receiver-help">Open Syndro on the receiving device. On Android, start receiving, then copy that app's link here and connect.</p>
+            <label for="receiver-link">Receiver's app link</label>
             <div class="receiver-input">
               <input id="receiver-link" type="text" inputmode="url" autocomplete="off"
-                spellcheck="false" placeholder="http://192.168.1.20:47821/s/ABCD2345" />
+                spellcheck="false" aria-describedby="receiver-help receiver-state"
+                placeholder="http://192.168.1.20:47821/s/ABCD2345" />
               <button type="button" id="receiver-connect">Connect</button>
               <button type="button" id="receiver-disconnect" hidden>Disconnect</button>
             </div>
-            <p id="receiver-state" class="hint" role="status">No receiver selected</p>
+            <p id="receiver-state" class="hint" role="status">Not paired yet</p>
           </div>
         </div>
 

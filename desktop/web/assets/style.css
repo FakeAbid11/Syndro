@@ -362,6 +362,10 @@ h3.subhead {
   color: var(--dim);
 }
 
+.receiver .receiver-help {
+  margin: 0 0 12px;
+}
+
 .receiver-input {
   display: flex;
   flex-wrap: wrap;

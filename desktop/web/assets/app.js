@@ -9,6 +9,7 @@ function api(pathname) {
 const el = {
   peer: document.getElementById("peer-name"),
   status: document.getElementById("status"),
+  pairTitle: document.getElementById("pair-title"),
   qr: document.getElementById("qr"),
   pairCode: document.getElementById("pair-code"),
   links: document.getElementById("links"),
@@ -207,7 +208,9 @@ function renderLinks(urls) {
   el.linksHint.textContent =
     usable.length === 0
       ? "No browser-reachable address. Connect to Wi-Fi, or use a router that assigns a ULA or global IPv6 address."
-      : "Open one of these in any browser on the same network. No install needed.";
+      : bridge
+        ? "Receive from another Syndro app using this QR or link. Browsers can use the same link on this Wi-Fi or hotspot."
+        : "Open one of these in any browser on the same network. No install needed.";
 }
 
 function renderFileList(list, files, download, caption = "") {
@@ -283,6 +286,7 @@ function canTransfer() {
 
 function updateControls() {
   const locked = pending > 0 || connecting;
+  el.pairTitle.textContent = bridge ? "Receive on this device" : "This share";
   el.desktopControls.hidden = !bridge;
   el.modeSend.setAttribute("aria-pressed", String(mode === "send"));
   el.modeShare.setAttribute("aria-pressed", String(mode === "share"));
@@ -296,16 +300,16 @@ function updateControls() {
   el.receiverDisconnect.hidden = receiver === null;
   el.receiverState.classList.toggle("error", !!receiverError);
   el.receiverState.textContent = connecting ? "Checking receiver…" : receiverError ||
-    (receiver ? `Connected to ${receiver.name} · ${receiver.address}` : "No receiver selected");
+    (receiver ? `Paired with ${receiver.name} · ${receiver.address}` : "Not paired yet");
 
   if (mode === "share") {
     el.transferHint.textContent = `Files stay on ${hostName}. Open this device's share link on the other device to download. Sharing is not delivery.`;
     el.dropTitle.textContent = "Drop files to share";
   } else if (bridge) {
     el.transferHint.textContent = receiver
-      ? `Files will be sent directly to ${receiver.name}. Keep the receiver's sharing service running.`
-      : "Start sharing on the other device, then paste its share link above. Connect before choosing files.";
-    el.dropTitle.textContent = receiver ? `Drop files to send to ${receiver.name}` : "Connect a receiver first";
+      ? `Files go directly to ${receiver.name}. Sent means the receiving app confirmed the file. Keep it receiving while transferring.`
+      : "App to app sends directly to another Syndro app on this network. Connect to the receiving app before choosing files.";
+    el.dropTitle.textContent = receiver ? `Drop files to send to ${receiver.name}` : "Pair with another app first";
   } else {
     el.transferHint.textContent = infoReady
       ? `Files will be sent to ${hostName}, the device hosting this share. Your own uploads are hidden from the download list.`

@@ -129,6 +129,10 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Test app-to-app pairing
+        working-directory: android
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
+
       - name: Assemble debug APK
         working-directory: android
         run: gradle assembleDebug --no-daemon --stacktrace
@@ -149,6 +153,17 @@ jobs:
           name: syndro-android-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: syndro-android-tests
+          path: |
+            android/app/build/test-results/testDebugUnitTest
+            android/app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
           retention-days: 7
 
   web:

@@ -1,6 +1,7 @@
 package dev.syndro.app
 
 import org.json.JSONObject
+import org.json.JSONException
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -8,15 +9,17 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.channels.ReadableByteChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 data class Target(val base: String, val token: String)
 
+data class AppReceiver(val target: Target, val name: String)
+
 /**
- * Accepts either a full share URL (`http://[fd00::1]:47821/s/<token>`) or a
- * bare `host:port/s/<token>`. Rejecting anything else keeps a mistyped address
- * from sending a file to an unrelated HTTP server.
+ * Accepts a full share URL, including a native scoped IPv6 fallback. Pairing
+ * must use the receiver's link, not an unrelated path, credentials, or query.
  */
 fun parseTarget(input: String): Target? {
     val text = input.trim()
@@ -31,19 +34,63 @@ fun parseTarget(input: String): Target? {
     val scheme = uri.scheme?.lowercase() ?: return null
     if (scheme != "http" && scheme != "https") return null
     val authority = uri.rawAuthority ?: return null
+    if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
+    if (uri.host.isNullOrBlank() || (uri.port != -1 && uri.port !in 1..65535)) return null
 
-    val segments = uri.path?.split('/')?.filter { it.isNotEmpty() } ?: emptyList()
-    val marker = segments.indexOf("s")
-    val rawToken = if (marker >= 0) segments.getOrNull(marker + 1) else segments.lastOrNull()
-    val token = rawToken?.let { Code.normalize(it) } ?: return null
+    val path = Regex("^/s/([^/]+)/?$").matchEntire(uri.path ?: return null) ?: return null
+    val token = Code.normalize(path.groupValues[1]) ?: return null
 
     return Target("$scheme://$authority", token)
+}
+
+internal fun receiverFromInfo(target: Target, info: JSONObject, ownServerId: String): AppReceiver {
+    if (ownServerId.isNotBlank() && info.opt("serverId") == ownServerId) {
+        throw IOException("That is this device's own link. Use the receiving app's link instead.")
+    }
+    val name = (info.opt("deviceName") as? String)?.trim().orEmpty()
+    if (name.isEmpty() || info.opt("token") != target.token || info.optJSONArray("files") == null) {
+        throw IOException("That address is not a valid Syndro receiver. Copy its current share link.")
+    }
+    return AppReceiver(target, name.take(120))
+}
+
+internal fun requireConfirmedFile(reply: JSONObject, id: String, size: Long) {
+    val file = reply.optJSONObject("file")
+    val confirmedSize = file?.opt("size") as? Number
+    if (file?.opt("id") != id || confirmedSize == null ||
+        confirmedSize.toLong() != size || confirmedSize.toDouble() != size.toDouble()
+    ) {
+        throw IOException("The receiver did not confirm the completed file.")
+    }
 }
 
 object Sender {
 
     private const val CHUNK = 4 * 1024 * 1024
     private const val MAX_ATTEMPTS = 4
+
+    suspend fun connect(input: String, ownServerId: String): AppReceiver = withContext(Dispatchers.IO) {
+        val target = parseTarget(input)
+            ?: throw IOException("Paste the receiving app's full http://…/s/CODE share link.")
+        val connection = open("GET", "${target.base}/api/info?t=${target.token}")
+        try {
+            val code = connection.responseCode()
+            if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
+                throw IOException("Pair code rejected. Copy the receiver's current link or scan its QR code.")
+            }
+            if (code !in 200..299) {
+                throw IOException("Could not pair (HTTP $code). Keep the receiving app running on this network.")
+            }
+            val info = try {
+                JSONObject(connection.readText())
+            } catch (_: JSONException) {
+                throw IOException("The receiver did not return a valid Syndro response.")
+            }
+            receiverFromInfo(target, info, ownServerId)
+        } finally {
+            connection.close()
+        }
+    }
 
     suspend fun send(
         target: Target,
@@ -88,6 +135,8 @@ object Sender {
                             connection.close()
                         }
                         break
+                    } catch (error: CancellationException) {
+                        throw error
                     } catch (error: Exception) {
                         attempt += 1
                         if (attempt >= MAX_ATTEMPTS) throw error
@@ -103,6 +152,12 @@ object Sender {
             if (code !in 200..299) {
                 throw IOException("complete failed with $code")
             }
+            val reply = try {
+                JSONObject(done.readText())
+            } catch (_: JSONException) {
+                throw IOException("The receiver did not confirm the completed file.")
+            }
+            requireConfirmedFile(reply, uploadId, total)
         } finally {
             done.close()
         }

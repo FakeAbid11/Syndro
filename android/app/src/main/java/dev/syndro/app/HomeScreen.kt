@@ -66,7 +66,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +80,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -89,6 +94,8 @@ private data class SendItem(
     val total: Long,
     val sent: Long,
     val state: String,
+    val destination: String,
+    val error: String? = null,
 )
 
 private data class Prepared(val file: File, val name: String, val mime: String)
@@ -105,6 +112,12 @@ fun HomeScreen() {
     val error by ShareState.error.collectAsState()
 
     var target by rememberSaveable { mutableStateOf("") }
+    var receiver by remember { mutableStateOf<AppReceiver?>(null) }
+    var pairingError by remember { mutableStateOf<String?>(null) }
+    var connecting by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
+    var pickerReceiver by remember { mutableStateOf<AppReceiver?>(null) }
     var scanning by remember { mutableStateOf(false) }
     var scanNote by remember { mutableStateOf<String?>(null) }
     var discovering by remember { mutableStateOf(false) }
@@ -115,6 +128,8 @@ fun HomeScreen() {
     val outbox = remember { mutableStateListOf<SendItem>() }
     val targetValid = remember(target) { parseTarget(target) != null }
     val ownServerId = remember(context) { serverId(context) }
+    val busy = connecting || choosing || sending
+    val paired = receiver
 
     DisposableEffect(discovering, context, ownServerId) {
         if (!discovering) {
@@ -149,8 +164,44 @@ fun HomeScreen() {
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
-        if (uris.isNotEmpty()) {
-            scope.launch { runSends(context, uris, target, outbox) }
+        // Freeze the receiver before opening the system picker. Never deliver
+        // a late picker result to a different app or a newly restored link.
+        val destination = pickerReceiver
+        pickerReceiver = null
+        choosing = false
+        if (uris.isNotEmpty() && destination != null) {
+            sending = true
+            scope.launch {
+                try {
+                    runSends(context, uris, destination, outbox)
+                } finally {
+                    sending = false
+                }
+            }
+        }
+    }
+
+    fun connectToApp(link: String) {
+        if (connecting || choosing || sending || receiver != null) return
+        target = link
+        receiver = null
+        pairingError = null
+        scanNote = null
+        discoveryNote = null
+        discovering = false
+        pairDevice = null
+        connecting = true
+        scope.launch {
+            try {
+                receiver = Sender.connect(link, ownServerId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                pairingError = error.message?.take(300)
+                    ?: "Could not pair. Keep the receiver running on the same Wi-Fi or hotspot."
+            } finally {
+                connecting = false
+            }
         }
     }
 
@@ -175,14 +226,14 @@ fun HomeScreen() {
         Header()
 
         Panel(
-            title = "Share this device",
+            title = "Receive on this device",
             trailing = {
                 StatusPill(running)
             },
         ) {
             if (!running) {
                 Text(
-                    "Receive files from any browser on this network. Nothing to install on the other device.",
+                    "Receive from another Syndro app or a browser on the same Wi-Fi or hotspot.",
                     style = MaterialTheme.typography.bodyMedium.copy(color = SyndroDim),
                 )
                 Spacer(Modifier.height(16.dp))
@@ -195,11 +246,16 @@ fun HomeScreen() {
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
-                    Text("Start sharing", fontWeight = FontWeight.Medium)
+                    Text("Start receiving", fontWeight = FontWeight.Medium)
                 }
             } else {
                 ShareBody(urls) { clipboard.setText(AnnotatedString(it)) }
                 Spacer(Modifier.height(12.dp))
+                Text(
+                    "On the sending app, scan this QR or find this device nearby. A browser can open the link too.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
+                )
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "Keep the notification alive while transferring. Android suspends background apps otherwise.",
                     style = MaterialTheme.typography.bodySmall.copy(color = SyndroFaint),
@@ -216,7 +272,7 @@ fun HomeScreen() {
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("Stop sharing")
+                    Text("Stop receiving")
                 }
             }
 
@@ -226,17 +282,18 @@ fun HomeScreen() {
             }
         }
 
-        Panel(title = "Send files") {
+        Panel(title = "App to app") {
             Text(
-                "Find a nearby Syndro device, or use its QR code when discovery is blocked.",
+                "Send directly to another Syndro app on this network. Start receiving in that app first, then pair below.",
                 style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = target,
-                onValueChange = { target = it; scanNote = null },
+                onValueChange = { target = it; pairingError = null; scanNote = null },
+                enabled = !busy && paired == null,
                 singleLine = true,
-                label = { Text("Receiver's share link") },
+                label = { Text("Receiver's app link") },
                 placeholder = {
                     Text("http://192.168.1.20:47821/s/…", color = SyndroFaint, fontSize = 13.sp)
                 },
@@ -255,23 +312,20 @@ fun HomeScreen() {
             )
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { picker.launch(arrayOf("*/*")) },
-                    enabled = targetValid,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SyndroAmber,
-                        contentColor = Color(0xFF1A1206),
-                        disabledContainerColor = SyndroLine,
-                        disabledContentColor = SyndroFaint,
-                    ),
+                OutlinedButton(
+                    onClick = { discovering = !discovering },
+                    enabled = !busy && paired == null,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
+                    border = BorderStroke(1.dp, SyndroLineStrong),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
-                    Text("Choose files", fontWeight = FontWeight.Medium)
+                    Text(if (discovering) "Stop scan" else "Find nearby", fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(
                     onClick = { scanning = true },
+                    enabled = !busy && paired == null,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
                     border = BorderStroke(1.dp, SyndroLineStrong),
                     shape = RoundedCornerShape(10.dp),
@@ -280,30 +334,17 @@ fun HomeScreen() {
                     Text("Scan QR", fontWeight = FontWeight.Medium)
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { discovering = !discovering },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
-                border = BorderStroke(1.dp, SyndroLineStrong),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(
-                    if (discovering) "Stop nearby scan" else "Find nearby devices",
-                    fontWeight = FontWeight.Medium,
-                )
-            }
 
-            if (discovering || nearby.isNotEmpty()) {
+            if (paired == null && (discovering || nearby.isNotEmpty())) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (nearby.isEmpty()) "Searching for _syndro._tcp.local…" else "Nearby",
+                    if (nearby.isEmpty()) "Searching for apps…" else "Nearby apps",
                     style = MaterialTheme.typography.labelMedium.copy(color = SyndroDim),
                 )
                 if (nearby.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     nearby.forEach { device ->
-                        NearbyRow(device) {
+                        NearbyRow(device, enabled = !busy) {
                             pairCode = ""
                             pairDevice = device
                         }
@@ -318,20 +359,77 @@ fun HomeScreen() {
                     style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed),
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                if (target.isEmpty()) "Waiting for a link" else if (targetValid) "Link looks valid" else "Not a Syndro link",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = if (targetValid) SyndroGreen else SyndroFaint,
-                ),
-            )
-            scanNote?.let { note ->
-                Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = {
+                    if (paired == null) {
+                        connectToApp(target)
+                    } else {
+                        receiver = null
+                        pairingError = null
+                        scanNote = null
+                    }
+                },
+                enabled = !busy && (paired != null || targetValid),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
+                border = BorderStroke(1.dp, SyndroLineStrong),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
                 Text(
-                    note,
-                    style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed),
+                    if (paired != null) "Disconnect" else if (connecting) "Checking receiver…" else "Connect",
+                    fontWeight = FontWeight.Medium,
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            val connectionError = pairingError ?: scanNote
+            Text(
+                when {
+                    connecting -> "Checking the receiving app…"
+                    connectionError != null -> connectionError
+                    paired != null -> "Paired with ${paired.name}"
+                    target.isBlank() -> "Not paired yet. Find nearby, scan QR, or paste a link."
+                    targetValid -> "Link entered. Connect to confirm the receiver."
+                    else -> "Not a full Syndro share link"
+                },
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = if (connectionError != null) SyndroRed else if (paired != null) SyndroGreen else SyndroDim,
+                ),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            paired?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it.target.base,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = Mono, color = SyndroDim),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    val destination = receiver ?: return@Button
+                    pickerReceiver = destination
+                    choosing = true
+                    picker.launch(arrayOf("*/*"))
+                },
+                enabled = paired != null && !busy,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SyndroAmber,
+                    contentColor = Color(0xFF1A1206),
+                    disabledContainerColor = SyndroLine,
+                    disabledContentColor = SyndroFaint,
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Choose files", fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (paired == null) "Pair with the receiver before choosing files."
+                else "Files go to ${paired.name}. Sent means that app confirmed the completed file.",
+                style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
+            )
 
             if (outbox.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
@@ -377,8 +475,7 @@ fun HomeScreen() {
                 scanning = false
                 val scanned = raw.trim()
                 if (parseTarget(scanned) != null) {
-                    target = scanned
-                    scanNote = null
+                    connectToApp(scanned)
                 } else {
                     scanNote = "That QR is not a Syndro share link"
                 }
@@ -432,17 +529,13 @@ fun HomeScreen() {
             },
             confirmButton = {
                 TextButton(
-                    enabled = normalized != null,
+                    enabled = normalized != null && !busy && paired == null,
                     onClick = {
                         val code = normalized ?: return@TextButton
-                        target = device.shareUrl(code)
-                        scanNote = null
-                        discoveryNote = null
-                        pairDevice = null
-                        discovering = false
+                        connectToApp(device.shareUrl(code))
                     },
                 ) {
-                    Text("Use device")
+                    Text("Connect")
                 }
             },
             dismissButton = {
@@ -598,7 +691,7 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
 }
 
 @Composable
-private fun NearbyRow(device: NearbyDevice, onClick: () -> Unit) {
+private fun NearbyRow(device: NearbyDevice, enabled: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -606,7 +699,7 @@ private fun NearbyRow(device: NearbyDevice, onClick: () -> Unit) {
             .clip(RoundedCornerShape(10.dp))
             .background(SyndroSurfaceHigh)
             .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .heightIn(min = 64.dp)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -649,13 +742,21 @@ private fun SendRow(item: SendItem) {
             .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                item.name,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "To ${item.destination} · ${formatBytes(item.total)}",
+                    style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.width(8.dp))
             Text(
                 item.state.replaceFirstChar { it.uppercaseChar() },
@@ -668,6 +769,10 @@ private fun SendRow(item: SendItem) {
                     },
                 ),
             )
+        }
+        item.error?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed))
         }
         Spacer(Modifier.height(8.dp))
         Box(
@@ -767,31 +872,38 @@ private fun Panel(
 private suspend fun runSends(
     context: Context,
     uris: List<Uri>,
-    targetText: String,
+    receiver: AppReceiver,
     outbox: SnapshotStateList<SendItem>,
 ) {
-    val target = parseTarget(targetText) ?: return
-
     for (uri in uris) {
         val prepared = withContext(Dispatchers.IO) { prepare(context, uri) }
         if (prepared == null) {
-            outbox.add(0, SendItem(System.nanoTime(), "Unreadable file", 0, 0, "failed"))
+            outbox.add(0, SendItem(
+                System.nanoTime(), "Unreadable file", 0, 0, "failed", receiver.name,
+                "Could not read the selected file.",
+            ))
             continue
         }
 
         val id = System.nanoTime()
         val total = prepared.file.length()
-        outbox.add(0, SendItem(id, prepared.name, total, 0, "sending"))
+        outbox.add(0, SendItem(id, prepared.name, total, 0, "sending", receiver.name))
 
         try {
-            Sender.send(target, prepared.file, prepared.name, prepared.mime) { sent, bytes ->
-                replace(outbox, id) { it.copy(sent = sent, total = bytes, state = "sending") }
+            Sender.send(receiver.target, prepared.file, prepared.name, prepared.mime) { sent, bytes ->
+                replace(outbox, id) {
+                    it.copy(sent = sent, total = bytes, state = if (sent >= bytes) "confirming" else "sending")
+                }
             }
             replace(outbox, id) { it.copy(sent = total, total = total, state = "sent") }
-        } catch (_: Exception) {
-            replace(outbox, id) { it.copy(state = "failed") }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            replace(outbox, id) {
+                it.copy(state = "failed", error = error.message?.take(300) ?: "The receiver did not accept this file.")
+            }
         } finally {
-            withContext(Dispatchers.IO) { prepared.file.delete() }
+            withContext(NonCancellable + Dispatchers.IO) { prepared.file.delete() }
         }
     }
 }
