@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CODE_ALPHABET, CODE_LENGTH, createCode, groupCode } from "../main/code";
+import { CODE_ALPHABET, CODE_LENGTH, createCode, groupCode, normalizeCode } from "../main/code";
 import { createShareToken } from "../main/server";
 
 const VALID = /^[A-HJ-NP-Z2-9]{8}$/;
@@ -23,4 +23,11 @@ test("share tokens are eight-character codes, not hex", () => {
 test("codes are grouped in the middle for display", () => {
   assert.equal(groupCode("ABCD2345"), "ABCD 2345");
   assert.equal(groupCode("SHORT"), "SHORT");
+});
+
+test("codes normalize grouped lowercase input without accepting ambiguous glyphs", () => {
+  assert.equal(normalizeCode("abcd 2345"), "ABCD2345");
+  assert.equal(normalizeCode("ABCD-2345"), "ABCD2345");
+  assert.equal(normalizeCode("ABCI2345"), null);
+  assert.equal(normalizeCode("ABCD1234"), null);
 });

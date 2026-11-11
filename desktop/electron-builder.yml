@@ -11,6 +11,7 @@ directories:
 # matching what the dev build reads from disk.
 files:
   - dist/**/*
+  - '!dist/test/**/*'
   - node_modules/**/*
   - package.json
 

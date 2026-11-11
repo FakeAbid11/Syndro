@@ -56,6 +56,7 @@ class ShareService : Service() {
                 assets = assets,
                 rootDir = File(filesDir, "received"),
                 onFilesChanged = { ShareState.received.value = it },
+                serverId = serverId(this),
             )
 
             try {

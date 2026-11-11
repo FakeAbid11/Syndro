@@ -19,7 +19,7 @@
     <main class="layout">
       <section class="panel" aria-labelledby="pair-title">
         <div class="panel-head">
-          <h2 id="pair-title">Pair</h2>
+          <h2 id="pair-title">This share</h2>
           <span class="status" id="status"><i class="dot"></i><span>live</span></span>
         </div>
 
@@ -45,21 +45,52 @@
           <span class="throughput" id="throughput"></span>
         </div>
 
-        <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose files to send">
+        <div id="desktop-controls" hidden>
+          <div class="transfer-modes" role="group" aria-label="Transfer destination">
+            <button type="button" id="mode-send" aria-pressed="true">Send to device</button>
+            <button type="button" id="mode-share" aria-pressed="false">Share a link</button>
+          </div>
+          <div class="receiver" id="receiver-panel">
+            <label for="receiver-link">Receiver's share link</label>
+            <div class="receiver-input">
+              <input id="receiver-link" type="text" inputmode="url" autocomplete="off"
+                spellcheck="false" placeholder="http://192.168.1.20:47821/s/ABCD2345" />
+              <button type="button" id="receiver-connect">Connect</button>
+              <button type="button" id="receiver-disconnect" hidden>Disconnect</button>
+            </div>
+            <p id="receiver-state" class="hint" role="status">No receiver selected.</p>
+          </div>
+        </div>
+
+        <p class="transfer-hint" id="transfer-hint">Files will be uploaded to the device hosting this share.</p>
+        <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose files to send"
+          aria-describedby="transfer-hint">
           <input id="file" type="file" multiple hidden />
           <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 16V4m0 0L7 9m5-5 5 5" />
             <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
           </svg>
-          <span class="drop-title">Drop files to send</span>
-          <span class="drop-sub">or tap to choose</span>
+          <span class="drop-title" id="drop-title">Drop files to send</span>
+          <span class="drop-sub" id="drop-sub">or tap to choose</span>
         </div>
 
         <h3 class="subhead">Outgoing</h3>
         <ul class="list" id="outgoing" aria-live="polite"></ul>
 
-        <h3 class="subhead">Received</h3>
+        <section id="shared-section" hidden aria-labelledby="shared-title">
+          <h3 class="subhead" id="shared-title">Shared files</h3>
+          <p class="hint">Available through this device's share link. Sharing is not delivery.</p>
+          <ul class="list" id="shared"></ul>
+        </section>
+
+        <h3 class="subhead" id="files-title">Available to download</h3>
         <ul class="list" id="received" aria-live="polite"></ul>
+
+        <section id="earlier-section" hidden aria-labelledby="earlier-title">
+          <h3 class="subhead" id="earlier-title">Earlier files</h3>
+          <p class="hint">v0.1 didn't record whether these were shared or received.</p>
+          <ul class="list" id="earlier"></ul>
+        </section>
       </section>
     </main>
 

@@ -4,10 +4,10 @@ Local-network file sharing for **Android, Linux and Windows**. No cloud, no acco
 server, no internet connection required — both devices just have to reach each other on the same
 Wi-Fi or hotspot.
 
-**Status: desktop + Android, browser mode.** A desktop app or an Android phone runs a transfer
+**Status: desktop + Android, with browser mode.** A desktop app or Android phone runs a transfer
 server and serves a small web UI. Any phone, tablet, PC or laptop on the same network can open it in
-a browser and send or receive files without installing anything. The Android app can also send
-files to another Syndro share link.
+a browser and transfer files without installing anything. Both native apps can also send directly
+to another Syndro device after its share link has been verified.
 
 ## What works today
 
@@ -19,7 +19,11 @@ files to another Syndro share link.
   the mDNS TXT record; QR remains the fallback when multicast discovery is blocked
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
-- Live transfer list, refreshed without a page reload
+- Explicit desktop modes: **Send to device** delivers to a verified receiver, while
+  **Share a link** publishes on this device for someone else to download
+- Honest completion states: **Sent** appears only after the receiver confirms the exact file;
+  publishing says **Shared** and never masquerades as an incoming transfer
+- Separate Shared, Received, and legacy-file lists, refreshed without a page reload
 - Filenames are display-only: every file is stored under a generated ID, so a malicious
   `../../etc/passwd` cannot escape the receive directory
 - Desktop shares expire after 24 hours with per-client rate limiting on bad tokens; Android shares
@@ -67,12 +71,40 @@ Then open the displayed URL from another device on the same network, or scan the
 Syndro through Windows Firewall on **private** networks when prompted — on public-profile networks
 Windows blocks inbound connections before Syndro ever sees them.
 
+## Send versus share
+
+The desktop app deliberately keeps these as two different operations:
+
+### Send to device
+
+1. Start sharing on the receiving PC or phone.
+2. Copy one of that device's full `http://…/s/ABCD2345` links.
+3. In the sending desktop app, choose **Send to device**, paste the link, and select **Connect**.
+4. Choose or drop files only after the receiver name is confirmed.
+
+The native Electron bridge sends chunks directly to that selected receiver. It does not upload to
+the sender's loopback server or act as a general LAN proxy. The destination is frozen while files
+are queued, and **Sent** is shown only after the receiver confirms the file ID and size. Therefore a
+file sent from the PC does not appear under that same PC's **Received** list with a redundant Save
+button.
+
+### Share a link
+
+Choose **Share a link** to keep a file on this device and make it available through this device's
+QR/share URL. The app labels it **Shared**, not Sent. Open the sender's share link on the other
+device, then use **Save** there. Sharing a link makes a file available; it does not itself deliver
+the file to another device.
+
+In ordinary browser mode, the device hosting the page is always the receiver. The page names that
+destination before upload and hides that browser tab's own completed uploads from its download
+list, including after a refresh.
+
 ## Windows installer
 
 CI builds a real installer, so the target machine needs neither Node nor a build toolchain.
 
-1. Open **Actions**, pick the latest green `CI` run, and download the `syndro-windows-setup`
-   artifact. Unzip it to get `Syndro-Setup-0.1.0.exe`.
+1. Download [`Syndro-Setup-0.1.1.exe`](https://github.com/FakeAbid11/Syndro/releases/download/v0.1.1/Syndro-Setup-0.1.1.exe)
+   from the [v0.1.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.1.1).
 2. Run the installer. It is a per-user install (no admin prompt) and lets you choose the folder.
 3. SmartScreen warns because the build is not code-signed yet: **More info → Run anyway**.
 
@@ -85,8 +117,8 @@ The installer adds Start Menu and desktop shortcuts and registers an uninstaller
 
 The APK is built in CI, so no local Android toolchain is needed.
 
-1. Open the **Actions** tab, pick the latest green `CI` run, and download the
-   `syndro-android-debug` artifact (it contains `app-debug.apk`).
+1. Download [`Syndro-0.1.1-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.1.1/Syndro-0.1.1-android-debug.apk)
+   from the [v0.1.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.1.1).
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
 3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
    same Wi-Fi or hotspot can reach it.
@@ -106,6 +138,16 @@ notification is the source of truth for whether the server is alive.
 The debug APK is signed with the CI debug key. Release signing, like `linkphone`, needs a keystore
 in repository secrets before an in-place update path makes sense.
 
+### Upgrading from v0.1
+
+- The Windows installer is still unsigned. Installing v0.1.1 over v0.1 preserves the app's local
+  data and stable device identity.
+- v0.1 did not record whether an existing desktop file was locally shared or received. v0.1.1
+  preserves those files without guessing and shows them under **Earlier files**.
+- The Android APK remains debug-signed. If Android reports that the package conflicts with the
+  installed app because CI signing keys differ, first use **Save**/**Share** to export any received
+  files, then uninstall v0.1 and install v0.1.1.
+
 ## Tests
 
 ```bash
@@ -115,19 +157,24 @@ npm test        # build + node --test
 
 Covered: IPv6/IPv4 classification and scoped URL formatting, share-URL ranking, mDNS advertisement
 metadata (including code non-disclosure), token gating, chunked upload, resume conflicts, `Range`
-downloads, path traversal, and link expiry.
+downloads, path traversal, link expiry, persisted file direction, self-link rejection, receiver
+confirmation, failed-connection clearing, real two-server native sends, and DOM regressions for the
+duplicate Save bug. Windows CI also launches the packaged Electron app and verifies its sandboxed
+preload, guarded IPC, Chromium `File`/`ArrayBuffer` chunks, selected-receiver delivery, and separate
+Shared/Received lists.
 
 ## Roadmap
 
-1. **Phase 4 — remaining packaging.** AppImage/deb for Linux, code signing for Windows, a release
-   keystore for Android, and tagged GitHub releases instead of workflow artifacts.
+1. **Phase 4 — remaining packaging.** AppImage/deb for Linux, code signing for Windows, and a
+   release keystore for Android.
 2. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
    transfer history, and folder sends.
 
 ## Design notes
 
-- The Electron window loads the exact same loopback URL that a browser would, so there is one UI
-  implementation, one API, and one thing to test.
+- The Electron window loads the same loopback UI that a browser would. Only that exact top-level
+  owner window receives a sandbox-compatible preload bridge; remote pages, child frames, other
+  windows, and navigated URLs cannot invoke native sending.
 - The token is the capability, and it is now a short voice-friendly code: 8 symbols from a
   32-character alphabet (40 bits), with the same lowercase/grouped input accepted on Android.
   Desktop rate-limits bad tokens per client; there is no unauthenticated endpoint that reveals

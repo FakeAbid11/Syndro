@@ -42,6 +42,7 @@ class ShareServer(
     rootDir: File,
     private val port: Int = DEFAULT_PORT,
     private val onFilesChanged: (List<StoredFile>) -> Unit = {},
+    private val serverId: String = "",
 ) {
 
     companion object {
@@ -443,6 +444,7 @@ class ShareServer(
             200,
             JSONObject()
                 .put("deviceName", deviceName)
+                .put("serverId", serverId)
                 .put("token", token)
                 .put("expiresAt", 0)
                 .put("ipv6First", true)
@@ -463,6 +465,7 @@ class ShareServer(
         .put("size", entry.size)
         .put("mime", entry.mime)
         .put("receivedAt", entry.receivedAt)
+        .put("origin", "received")
 
     /* -------------------------------------------------------------- storage */
 

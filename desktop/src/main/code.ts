@@ -17,3 +17,8 @@ export function createCode(): string {
 export function groupCode(code: string): string {
   return code.length === CODE_LENGTH ? `${code.slice(0, 4)} ${code.slice(4)}` : code;
 }
+
+export function normalizeCode(input: string): string | null {
+  const code = input.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{8}$/.test(code) ? code : null;
+}

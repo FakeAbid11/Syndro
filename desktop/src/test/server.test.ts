@@ -3,7 +3,8 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test, type TestContext } from "node:test";
-import { startServer, type RunningServer, type ServerOptions } from "../main/server";
+import { isLoopbackAddress, startServer, type RunningServer, type ServerOptions } from "../main/server";
+import { fixture, listFiles, upload } from "./helpers";
 
 const TOKEN = "ABCD2345";
 const WEB_DIR = path.join(__dirname, "..", "..", "web");
@@ -212,4 +213,29 @@ test("rejects traffic after the share link expires", async (t) => {
 
   const response = await fetch(h.url("/api/info"));
   assert.equal(response.status, 410);
+});
+
+test("publishing is not an incoming file and cannot be requested through JSON metadata", async (t) => {
+  const received: string[] = [];
+  const h = await fixture(t, { onFileReceived: (file) => { received.push(file.name); } });
+  const shared = await upload(h, "published.txt", Uint8Array.from(Buffer.from("p")), true);
+  assert.equal(shared.origin, "shared");
+  assert.deepEqual(received, []);
+  // upload() deliberately includes origin: shared in JSON; only the guarded
+  // local-purpose header is allowed to classify a file as published.
+  const incoming = await upload(h, "incoming.txt", new Uint8Array());
+  assert.equal(incoming.origin, "received");
+  assert.deepEqual(received, ["incoming.txt"]);
+  const info = (await (await fetch(h.url("/api/info"))).json()) as { serverId: string };
+  assert.equal(info.serverId, "test-desktop-id");
+  assert.equal((await listFiles(h)).length, 2);
+});
+
+test("only socket loopback addresses can request local publishing", () => {
+  assert.equal(isLoopbackAddress("127.0.0.1"), true);
+  assert.equal(isLoopbackAddress("::1"), true);
+  assert.equal(isLoopbackAddress("::ffff:127.0.0.1"), true);
+  assert.equal(isLoopbackAddress("192.168.1.10"), false);
+  assert.equal(isLoopbackAddress("fe80::1"), false);
+  assert.equal(isLoopbackAddress(undefined), false);
 });

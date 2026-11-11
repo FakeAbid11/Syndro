@@ -1,16 +1,20 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, type BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { advertise, type Discovery } from "./discovery";
+import { registerSenderBridge } from "./bridge";
 import { createShareToken, startServer, type RunningServer } from "./server";
+import { NativeSender } from "./sender";
+import { createWindow } from "./window";
 
 const PREFERRED_PORT = 47821;
 
 let mainWindow: BrowserWindow | null = null;
 let running: RunningServer | null = null;
 let discovery: Discovery | null = null;
+let unregisterBridge: (() => void) | null = null;
 
 async function installationId(): Promise<string> {
   const file = path.join(app.getPath("userData"), "device-id");
@@ -35,35 +39,6 @@ function webDirectory(): string {
   return path.join(__dirname, "..", "..", "web");
 }
 
-function createWindow(port: number, token: string): BrowserWindow {
-  const window = new BrowserWindow({
-    width: 1120,
-    height: 780,
-    minWidth: 420,
-    minHeight: 560,
-    backgroundColor: "#0b0b0c",
-    title: "Syndro",
-    autoHideMenuBar: true,
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-
-  window.once("ready-to-show", () => window.show());
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
-    return { action: "deny" };
-  });
-
-  // A loopback URL keeps the window identical to browser mode, so there is
-  // exactly one UI implementation and one API to test.
-  void window.loadURL(`http://127.0.0.1:${port}/s/${token}`);
-  return window;
-}
-
 async function main(): Promise<void> {
   await app.whenReady();
 
@@ -74,20 +49,27 @@ async function main(): Promise<void> {
   const storeDir = path.join(app.getPath("downloads"), "Syndro");
   await fsp.mkdir(storeDir, { recursive: true });
   const deviceName = process.env.SYNDRO_NAME?.trim() || os.hostname();
+  const serverId = await installationId();
 
   running = await startServer({
     token: createShareToken(),
     deviceName,
+    serverId,
     port: PREFERRED_PORT,
     storeDir,
     webDir: webDirectory(),
   });
 
   discovery = advertise({
-    id: await installationId(),
+    id: serverId,
     name: deviceName,
     port: running.port,
   });
+  unregisterBridge = registerSenderBridge(
+    new NativeSender({ port: running.port, serverId }),
+    () => mainWindow,
+    `http://127.0.0.1:${running.port}/s/${running.token}`,
+  );
 
   mainWindow = createWindow(running.port, running.token);
   mainWindow.on("closed", () => {
@@ -111,6 +93,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  unregisterBridge?.();
+  unregisterBridge = null;
   discovery?.stop();
   discovery = null;
   if (running) {

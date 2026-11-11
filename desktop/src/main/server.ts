@@ -19,6 +19,7 @@ import {
 export interface ServerOptions {
   token: string;
   deviceName: string;
+  serverId?: string;
   /** Path to the static web UI directory. */
   webDir: string;
   /** Where received files are stored. */
@@ -68,6 +69,11 @@ function secureEquals(a: string, b: string): boolean {
   const leftHash = createHash("sha256").update(left).digest();
   const rightHash = createHash("sha256").update(right).digest();
   return timingSafeEqual(leftHash, rightHash);
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  const normalized = (address ?? "").toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "::ffff:127.0.0.1";
 }
 
 async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
@@ -284,6 +290,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     if (method === "GET" && pathname === "/api/info") {
       json(res, 200, {
         deviceName: options.deviceName,
+        serverId: options.serverId,
         token: options.token,
         expiresAt,
         urls: localUrls(),
@@ -353,7 +360,12 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         return;
       }
 
-      const upload = await store.create(parsed);
+      const sharing = req.headers["x-syndro-purpose"] === "share";
+      if (sharing && !isLoopbackAddress(req.socket.remoteAddress)) {
+        json(res, 403, { error: "only this device can publish local shared files" });
+        return;
+      }
+      const upload = await store.create(parsed, sharing ? "shared" : "received");
       emit({ type: "upload-started", id: upload.id, name: upload.name, size: upload.size });
       json(res, 201, {
         id: upload.id,
@@ -414,7 +426,9 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         size: file.size,
       });
       emit({ type: "file-added", file: publicFile(file) });
-      options.onFileReceived?.({ id: file.id, name: file.name, size: file.size });
+      if (file.origin === "received") {
+        options.onFileReceived?.({ id: file.id, name: file.name, size: file.size });
+      }
       json(res, 201, { file: publicFile(file) });
       return;
     }

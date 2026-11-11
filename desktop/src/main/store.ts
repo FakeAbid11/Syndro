@@ -33,6 +33,7 @@ export interface Upload {
   received: number;
   tempPath: string;
   createdAt: number;
+  origin: "shared" | "received";
 }
 
 export interface StoredFile {
@@ -42,6 +43,8 @@ export interface StoredFile {
   mime: string;
   receivedAt: number;
   path: string;
+  /** Older sidecars did not record direction; do not guess on upgrade. */
+  origin?: "shared" | "received";
 }
 
 export interface PublicFile {
@@ -50,6 +53,7 @@ export interface PublicFile {
   size: number;
   mime: string;
   receivedAt: number;
+  origin: "shared" | "received" | "unknown";
 }
 
 /**
@@ -79,6 +83,7 @@ export function publicFile(file: StoredFile): PublicFile {
     size: file.size,
     mime: file.mime,
     receivedAt: file.receivedAt,
+    origin: file.origin === "shared" || file.origin === "received" ? file.origin : "unknown",
   };
 }
 
@@ -115,7 +120,10 @@ export class TransferStore {
     }
   }
 
-  async create(input: { name?: unknown; size?: unknown; mime?: unknown }): Promise<Upload> {
+  async create(
+    input: { name?: unknown; size?: unknown; mime?: unknown },
+    origin: "shared" | "received" = "received",
+  ): Promise<Upload> {
     const size = Number(input.size);
     if (!Number.isFinite(size) || size < 0) throw new UploadLimitError("invalid size");
     if (size > this.maxFileSize) throw new UploadLimitError("file exceeds the size limit");
@@ -132,6 +140,7 @@ export class TransferStore {
       received: 0,
       tempPath,
       createdAt: Date.now(),
+      origin,
     };
     this.uploads.set(id, upload);
     return upload;
@@ -171,6 +180,7 @@ export class TransferStore {
       mime: upload.mime,
       receivedAt: Date.now(),
       path: finalPath,
+      origin: upload.origin,
     };
     await fsp.writeFile(`${finalPath}.json`, JSON.stringify(file), "utf8");
 
