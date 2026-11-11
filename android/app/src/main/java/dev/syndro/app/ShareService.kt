@@ -20,6 +20,7 @@ class ShareService : Service() {
     }
 
     private var server: ShareServer? = null
+    private var registrar: MdnsRegistrar? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,6 +65,12 @@ class ShareService : Service() {
                 ShareState.urls.value = Addresses.localUrls(instance.boundPort, "/s/$token")
                 ShareState.received.value = instance.files()
                 ShareState.error.value = null
+                registrar = MdnsRegistrar(
+                    this,
+                    instance.boundPort,
+                    Build.MODEL?.takeIf { it.isNotBlank() } ?: "Android",
+                    serverId(this),
+                ).also { it.start() }
             } catch (error: Exception) {
                 ShareState.error.value = error.message ?: "Could not start sharing"
                 ShareState.running.value = false
@@ -78,6 +85,8 @@ class ShareService : Service() {
     }
 
     override fun onDestroy() {
+        registrar?.stop()
+        registrar = null
         server?.stop()
         server = null
         ShareState.running.value = false

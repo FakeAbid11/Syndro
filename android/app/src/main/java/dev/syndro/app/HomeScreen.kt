@@ -37,15 +37,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -102,8 +103,40 @@ fun HomeScreen() {
     var target by rememberSaveable { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
     var scanNote by remember { mutableStateOf<String?>(null) }
+    var discovering by remember { mutableStateOf(false) }
+    var discoveryNote by remember { mutableStateOf<String?>(null) }
+    var pairDevice by remember { mutableStateOf<NearbyDevice?>(null) }
+    var pairCode by rememberSaveable { mutableStateOf("") }
+    val nearby = remember { mutableStateListOf<NearbyDevice>() }
     val outbox = remember { mutableStateListOf<SendItem>() }
     val targetValid = remember(target) { parseTarget(target) != null }
+    val ownServerId = remember(context) { serverId(context) }
+
+    DisposableEffect(discovering, context, ownServerId) {
+        if (!discovering) {
+            onDispose { }
+        } else {
+            nearby.clear()
+            discoveryNote = null
+            val browser = MdnsBrowser(
+                context = context,
+                excludeServerId = ownServerId,
+                onFound = { device ->
+                    val index = nearby.indexOfFirst { it.serviceName == device.serviceName }
+                    if (index >= 0) nearby[index] = device else nearby.add(device)
+                },
+                onLost = { serviceName ->
+                    nearby.removeAll { it.serviceName == serviceName }
+                },
+                onError = { message ->
+                    discoveryNote = message
+                    discovering = false
+                },
+            )
+            browser.start()
+            onDispose { browser.stop() }
+        }
+    }
 
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -191,7 +224,7 @@ fun HomeScreen() {
 
         Panel(title = "Send files") {
             Text(
-                "Paste the address shown on the other Syndro device.",
+                "Find a nearby Syndro device, or use its QR code when discovery is blocked.",
                 style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
             )
             Spacer(Modifier.height(10.dp))
@@ -237,6 +270,46 @@ fun HomeScreen() {
                 ) {
                     Text("Scan QR", fontWeight = FontWeight.SemiBold)
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { discovering = !discovering },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (discovering) "Stop nearby scan" else "Find nearby devices",
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            if (discovering || nearby.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    if (nearby.isEmpty()) "Searching for _syndro._tcp.local…" else "NEARBY",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = Mono,
+                        letterSpacing = 1.4.sp,
+                        color = SyndroFaint,
+                    ),
+                )
+                if (nearby.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    nearby.forEach { device ->
+                        NearbyRow(device) {
+                            pairCode = ""
+                            pairDevice = device
+                        }
+                    }
+                }
+            }
+
+            discoveryNote?.let { note ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "$note. Scan the QR code instead.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed),
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -310,6 +383,68 @@ fun HomeScreen() {
             onClose = { scanning = false },
         )
     }
+
+    pairDevice?.let { device ->
+        val normalized = Code.normalize(pairCode)
+        AlertDialog(
+            onDismissRequest = { pairDevice = null },
+            title = { Text("Pair with ${device.name}") },
+            text = {
+                Column {
+                    Text(
+                        "Enter the 8-character code shown on that device. Discovery never broadcasts the code.",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = SyndroDim),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = pairCode,
+                        onValueChange = { pairCode = it.take(12) },
+                        singleLine = true,
+                        placeholder = { Text("ABCD 2345") },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            fontFamily = Mono,
+                            letterSpacing = 1.4.sp,
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SyndroAmber,
+                            unfocusedBorderColor = SyndroLine,
+                        ),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "${device.host}:${device.port}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = Mono,
+                            color = SyndroFaint,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = normalized != null,
+                    onClick = {
+                        val code = normalized ?: return@TextButton
+                        target = device.shareUrl(code)
+                        scanNote = null
+                        discoveryNote = null
+                        pairDevice = null
+                        discovering = false
+                    },
+                ) {
+                    Text("Use device")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pairDevice = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -368,7 +503,9 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
     val shareable = urls.filter { it.browserReachable }
     val qrSource = shareable.firstOrNull()?.url
     val bitmap = remember(qrSource) { qrSource?.let { Qr.bitmap(it) } }
-    val pairCode = qrSource?.substringAfterLast('/')?.takeIf { it.length == Code.LENGTH }
+    val pairCode = urls.firstOrNull()?.url
+        ?.substringAfterLast('/')
+        ?.takeIf { Code.isValid(it) }
 
     if (bitmap != null) {
         Box(
@@ -404,7 +541,7 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
 
     if (shareable.isEmpty()) {
         Text(
-            "No browser-reachable address yet. Join Wi-Fi, or use a network that hands out an IPv6 ULA or a private IPv4 address.",
+            "No browser-reachable address yet. Native Syndro clients can still discover a link-local IPv6 address; browsers need a ULA or private IPv4 address.",
             style = MaterialTheme.typography.bodySmall.copy(color = SyndroAmber),
         )
         return
@@ -453,6 +590,48 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun NearbyRow(device: NearbyDevice, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(SyndroSurfaceHigh)
+            .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                device.name,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${device.host}:${device.port}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = Mono,
+                    color = SyndroFaint,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "PAIR",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = Mono,
+                fontSize = 9.sp,
+                color = SyndroAmber,
+            ),
+        )
     }
 }
 

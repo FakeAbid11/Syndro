@@ -14,6 +14,9 @@ files to another Syndro share link.
 - QR pairing plus copyable share URLs, scoped by an 8-character code from the LinkPhone alphabet
   (`A–Z` without `I`/`O`, plus `2–9`), shown as `ABCD 2345` — the Android app both shows a QR code
   and scans one with CameraX + ZXing (no Play Services)
+- Zero-typing host discovery over `_syndro._tcp.local`: desktop and Android advertise, while
+  Android lists nearby devices and asks only for the 8-character code. The code is never put in
+  the mDNS TXT record; QR remains the fallback when multicast discovery is blocked
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
 - Live transfer list, refreshed without a page reload
@@ -37,8 +40,13 @@ Addresses are ranked by how likely a **browser** is to open them:
 
 Link-local IPv6 needs a zone ID, and the encoded form `http://[fe80::1%25WiFi]:47821/` is rejected
 by Chrome and only half-supported by Firefox. Syndro therefore never hands a link-local address to
-a browser as if it were usable; those addresses are kept for native clients that can pass a zone ID
-to the socket.
+a browser as if it were usable. Android's native sender can pass that zone to a scoped IPv6 socket,
+so `fe80::` remains a real fallback when a router isolates IPv4 clients but still forwards IPv6.
+
+mDNS is the normal no-typing route. A service advertises only its stable device ID, display name,
+protocol version, and port — never the capability code. Tap **Find nearby devices**, choose one,
+and enter the code shown on its screen. If the router blocks multicast DNS, scan the full share URL
+from its QR code instead.
 
 The server binds `::` (dual-stack) and falls back to `0.0.0.0` only if the host has no IPv6 stack.
 That fallback matters in practice: Windows Mobile Hotspot does not provide IPv6, and a machine with
@@ -82,9 +90,11 @@ The APK is built in CI, so no local Android toolchain is needed.
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
 3. Tap **Start sharing**. The phone serves the same web UI on port `47821`, so any browser on the
    same Wi-Fi or hotspot can reach it.
-4. To send from the phone, paste the other device's share link (`http://…:47821/s/<token>`) or tap
-   **Scan QR** and point the camera at the QR code on the other device, then **Choose files**. The
-   phone copies the document to cache, uploads it in resumable 4 MiB chunks, and deletes the copy.
+4. To send from the phone, tap **Find nearby devices**, choose the receiver, and type its displayed
+   code. If discovery is blocked, tap **Scan QR** and point the camera at the receiver's QR code;
+   pasting a full share link (`http://…:47821/s/<code>`) still works too. Then tap **Choose files**.
+   The phone copies each document to cache, uploads it in resumable 4 MiB chunks, and deletes the
+   copy.
 
 Received files live in the app's private storage. Use **Save** to write a copy to
 `Downloads/Syndro`, or **Share** to hand it to another app through `FileProvider`.
@@ -103,15 +113,15 @@ cd desktop
 npm test        # build + node --test
 ```
 
-Covered: IPv6/IPv4 classification and URL formatting, share-URL ranking, token gating, chunked
-upload, resume conflicts, `Range` downloads, path traversal, and link expiry.
+Covered: IPv6/IPv4 classification and scoped URL formatting, share-URL ranking, mDNS advertisement
+metadata (including code non-disclosure), token gating, chunked upload, resume conflicts, `Range`
+downloads, path traversal, and link expiry.
 
 ## Roadmap
 
-1. **Phase 3 — mDNS discovery.** `_syndro._tcp.local` plus QR fallback, so no URL has to be typed.
-2. **Phase 4 — remaining packaging.** AppImage/deb for Linux, code signing for Windows, a release
+1. **Phase 4 — remaining packaging.** AppImage/deb for Linux, code signing for Windows, a release
    keystore for Android, and tagged GitHub releases instead of workflow artifacts.
-3. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
+2. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
    transfer history, and folder sends.
 
 ## Design notes

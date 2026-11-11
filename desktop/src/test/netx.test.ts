@@ -49,7 +49,11 @@ test("formats hosts and URLs correctly for each family", () => {
   assert.equal(formatUrl("192.168.1.4", 47821), "http://192.168.1.4:47821");
   assert.equal(
     formatUrl("fe80::1", 47821, 12),
-    "http://[fe80::1]%2512:47821",
+    "http://[fe80::1%2512]:47821",
+  );
+  assert.equal(
+    formatUrl("fe80::1", 47821, "Wi-Fi"),
+    "http://[fe80::1%25Wi-Fi]:47821",
   );
 });
 

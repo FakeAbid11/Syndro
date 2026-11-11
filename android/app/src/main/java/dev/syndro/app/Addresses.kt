@@ -111,7 +111,7 @@ object Addresses {
         }
         val host = address.hostAddress?.substringBefore('%') ?: return "http://[$address]:$port"
         return if (address.isLinkLocalAddress) {
-            "http://[$host]%25${address.scopeId}:$port"
+            "http://[$host%25${address.scopeId}]:$port"
         } else {
             "http://[$host]:$port"
         }

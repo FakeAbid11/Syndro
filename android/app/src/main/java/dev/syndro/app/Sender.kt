@@ -7,7 +7,6 @@ import java.io.IOException
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.nio.channels.ReadableByteChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -68,23 +67,26 @@ object Sender {
                 while (true) {
                     try {
                         val connection = open("PUT", "${target.base}/api/uploads/$uploadId?t=${target.token}")
-                        connection.setRequestProperty("x-syndro-offset", offset.toString())
-                        connection.setFixedLengthStreamingMode(size)
-                        channel.position(offset)
-                        connection.outputStream.use { output -> copy(channel, output, size) }
+                        try {
+                            connection.setRequestProperty("x-syndro-offset", offset.toString())
+                            connection.setFixedLengthStreamingMode(size)
+                            channel.position(offset)
+                            connection.outputStream().use { output -> copy(channel, output, size) }
 
-                        val code = connection.responseCode
-                        if (code == HttpURLConnection.HTTP_CONFLICT) {
-                            val conflict = JSONObject(readText(connection))
-                            offset = conflict.optLong("expected", offset)
-                            break
+                            when (val code = connection.responseCode()) {
+                                HttpURLConnection.HTTP_CONFLICT -> {
+                                    val conflict = JSONObject(connection.readText())
+                                    offset = conflict.optLong("expected", offset)
+                                }
+                                !in 200..299 -> throw IOException("chunk rejected with $code")
+                                else -> {
+                                    offset = end
+                                    withContext(Dispatchers.Main) { onProgress(offset, total) }
+                                }
+                            }
+                        } finally {
+                            connection.close()
                         }
-                        if (code !in 200..299) {
-                            throw IOException("chunk rejected with $code")
-                        }
-
-                        offset = end
-                        withContext(Dispatchers.Main) { onProgress(offset, total) }
                         break
                     } catch (error: Exception) {
                         attempt += 1
@@ -96,48 +98,41 @@ object Sender {
         }
 
         val done = open("POST", "${target.base}/api/uploads/$uploadId/complete?t=${target.token}")
-        val code = done.responseCode
-        if (code !in 200..299) {
-            throw IOException("complete failed with $code")
+        try {
+            val code = done.responseCode()
+            if (code !in 200..299) {
+                throw IOException("complete failed with $code")
+            }
+        } finally {
+            done.close()
         }
         withContext(Dispatchers.Main) { onProgress(total, total) }
     }
 
     private fun createUpload(target: Target, name: String, size: Long, mime: String): JSONObject {
         val connection = open("POST", "${target.base}/api/uploads?t=${target.token}")
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        val body = JSONObject()
-            .put("name", name)
-            .put("size", size)
-            .put("mime", mime)
-            .toString()
-        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        try {
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            val body = JSONObject()
+                .put("name", name)
+                .put("size", size)
+                .put("mime", mime)
+                .toString()
+                .toByteArray(Charsets.UTF_8)
+            connection.setFixedLengthStreamingMode(body.size)
+            connection.outputStream().use { it.write(body) }
 
-        val code = connection.responseCode
-        if (code !in 200..299) {
-            throw IOException("could not create upload: $code")
+            val code = connection.responseCode()
+            if (code !in 200..299) {
+                throw IOException("could not create upload: $code")
+            }
+            return JSONObject(connection.readText())
+        } finally {
+            connection.close()
         }
-        return JSONObject(readText(connection))
     }
 
-    private fun open(method: String, url: String): HttpURLConnection {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = method
-        connection.doOutput = true
-        connection.connectTimeout = 8_000
-        connection.readTimeout = 60_000
-        connection.useCaches = false
-        return connection
-    }
-
-    private fun readText(connection: HttpURLConnection): String {
-        val stream = if (connection.responseCode in 200..299) {
-            connection.inputStream
-        } else {
-            connection.errorStream
-        }
-        return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-    }
+    private fun open(method: String, url: String): Wire = WireFactory.open(method, url)
 
     private fun copy(source: ReadableByteChannel, output: OutputStream, length: Int) {
         val buffer = java.nio.ByteBuffer.allocate(64 * 1024)

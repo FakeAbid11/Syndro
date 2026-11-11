@@ -99,12 +99,13 @@ export function formatUrl(
   port: number,
   zone?: string | number | null,
 ): string {
-  const host = formatHost(address);
   if (zone !== undefined && zone !== null && zone !== "" && address.includes(":")) {
+    // The zone belongs *inside* the brackets: [fe80::1%25wlan0]. Percent-
+    // encoding the `%` is what browsers and native HTTP clients expect.
     const encoded = encodeURIComponent(String(zone));
-    return `http://${host}%25${encoded}:${port}`;
+    return `http://[${address}%25${encoded}]:${port}`;
   }
-  return `http://${host}:${port}`;
+  return `http://${formatHost(address)}:${port}`;
 }
 
 export function listLocalAddresses(
