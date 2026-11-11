@@ -166,7 +166,17 @@ async function run(): Promise<void> {
     console.log("Packaged Electron smoke passed: sandbox preload, guarded IPC, real File chunks, selected-receiver delivery, and honest file lists.");
   } finally {
     if (owner && !owner.isDestroyed()) {
-      await fsp.writeFile(screenshot, (await owner.webContents.capturePage()).toPNG()).catch(() => undefined);
+      try {
+        // Hidden windows can keep an old compositor frame even though DOM
+        // assertions see current state. Paint the final lists before capturing
+        // the artifact so it is useful when a CI failure needs visual review.
+        owner.showInactive();
+        await owner.webContents.executeJavaScript(`new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+        await fsp.writeFile(screenshot, (await owner.webContents.capturePage()).toPNG());
+      } catch {
+        // A renderer crash is already reported above; never mask it here.
+      }
     }
     unregister?.();
     for (const window of windows) if (!window.isDestroyed()) window.destroy();
