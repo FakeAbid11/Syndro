@@ -1,0 +1,40 @@
+appId: dev.syndro.app
+productName: Syndro
+copyright: Syndro contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the compiled entry points and production dependencies go in the app.
+# The web UI lives outside the asar so `process.resourcesPath/web` keeps
+# matching what the dev build reads from disk.
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - package.json
+
+extraResources:
+  - from: web
+    to: web
+
+asar: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Syndro-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Syndro
+  uninstallDisplayName: Syndro
+  deleteAppDataOnUninstall: false

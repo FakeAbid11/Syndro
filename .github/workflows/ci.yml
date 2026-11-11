@@ -57,6 +57,49 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  windows-installer:
+    name: Windows installer
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # electron-builder downloads the Electron zip and the NSIS toolchain on
+      # first use; caching them keeps repeat installer builds to about a minute.
+      - name: Cache Electron and NSIS
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('desktop/package-lock.json') }}
+
+      - name: Build NSIS installer
+        run: npm run dist:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: syndro-windows-setup
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+          if-no-files-found: error
+          retention-days: 7
+
   android:
     name: Android APK
     runs-on: ubuntu-latest

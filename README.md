@@ -58,6 +58,20 @@ Then open the displayed URL from another device on the same network, or scan the
 Syndro through Windows Firewall on **private** networks when prompted — on public-profile networks
 Windows blocks inbound connections before Syndro ever sees them.
 
+## Windows installer
+
+CI builds a real installer, so the target machine needs neither Node nor a build toolchain.
+
+1. Open **Actions**, pick the latest green `CI` run, and download the `syndro-windows-setup`
+   artifact. Unzip it to get `Syndro-Setup-0.1.0.exe`.
+2. Run the installer. It is a per-user install (no admin prompt) and lets you choose the folder.
+3. SmartScreen warns because the build is not code-signed yet: **More info → Run anyway**.
+
+The installer adds Start Menu and desktop shortcuts and registers an uninstaller under
+**Apps & features**. Electron and the web UI are bundled; received files still go to
+`Downloads/Syndro`. Rebuilding the installer locally is just `npm run dist:win` in `desktop/`
+(first run downloads Electron and NSIS, so it needs network and a Windows host).
+
 ## Android app
 
 The APK is built in CI, so no local Android toolchain is needed.
@@ -94,8 +108,8 @@ upload, resume conflicts, `Range` downloads, path traversal, and link expiry.
 ## Roadmap
 
 1. **Phase 3 — mDNS discovery.** `_syndro._tcp.local` plus QR fallback, so no URL has to be typed.
-2. **Phase 4 — packaging.** NSIS installer for Windows, AppImage/deb for Linux, signed APK, and
-   release artifacts from CI.
+2. **Phase 4 — remaining packaging.** AppImage/deb for Linux, code signing for Windows, a release
+   keystore for Android, and tagged GitHub releases instead of workflow artifacts.
 3. **Phase 5 — hardening.** Optional per-session PIN, encrypted transport between native clients,
    transfer history, and folder sends.
 
