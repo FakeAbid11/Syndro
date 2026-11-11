@@ -131,7 +131,7 @@ function rememberUpload(id) {
 
 async function copyText(text, button) {
   const restore = () => {
-    button.textContent = "copy";
+    button.textContent = "Copy";
     button.classList.remove("done");
   };
 
@@ -151,10 +151,10 @@ async function copyText(text, button) {
       document.execCommand("copy");
       helper.remove();
     }
-    button.textContent = "copied";
+    button.textContent = "Copied";
     button.classList.add("done");
   } catch {
-    button.textContent = "failed";
+    button.textContent = "Failed";
   }
   setTimeout(restore, 1400);
 }
@@ -164,15 +164,15 @@ async function copyText(text, button) {
 function kindLabel(kind) {
   switch (kind) {
     case "ipv6-ula":
-      return "ula";
+      return "ULA";
     case "ipv6-global":
-      return "ipv6";
+      return "IPv6";
     case "ipv4-private":
-      return "ipv4";
+      return "IPv4";
     case "ipv4-public":
-      return "ipv4";
+      return "IPv4";
     default:
-      return "link";
+      return "Link";
   }
 }
 
@@ -186,6 +186,7 @@ function renderLinks(urls) {
 
     const code = document.createElement("code");
     code.textContent = entry.url;
+    code.title = entry.url;
 
     const tag = document.createElement("span");
     tag.className = "tag";
@@ -194,7 +195,8 @@ function renderLinks(urls) {
     const button = document.createElement("button");
     button.className = "copy";
     button.type = "button";
-    button.textContent = "copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", `Copy ${kindLabel(entry.kind)} share link`);
     button.addEventListener("click", () => copyText(entry.url, button));
 
     row.append(code, tag, button);
@@ -243,6 +245,7 @@ function renderFileList(list, files, download, caption = "") {
       link.href = api(`/api/files/${encodeURIComponent(file.id)}`);
       link.download = file.name;
       link.textContent = "Save";
+      link.setAttribute("aria-label", `Save ${file.name}`);
       main.appendChild(link);
     } else {
       const state = document.createElement("span");
@@ -268,7 +271,7 @@ function renderFiles() {
   const earlier = availableFiles.filter((file) => file.origin !== "shared" && file.origin !== "received");
   renderFileList(el.shared, shared, false);
   renderFileList(el.received, received, true);
-  renderFileList(el.earlier, earlier, true, "Direction wasn't recorded in v0.1.");
+  renderFileList(el.earlier, earlier, true, "Direction wasn't recorded in v0.1");
   el.sharedSection.hidden = mode !== "share" && shared.length === 0;
   el.earlierSection.hidden = earlier.length === 0;
 }
@@ -293,7 +296,7 @@ function updateControls() {
   el.receiverDisconnect.hidden = receiver === null;
   el.receiverState.classList.toggle("error", !!receiverError);
   el.receiverState.textContent = connecting ? "Checking receiver…" : receiverError ||
-    (receiver ? `Connected to ${receiver.name} · ${receiver.address}` : "No receiver selected.");
+    (receiver ? `Connected to ${receiver.name} · ${receiver.address}` : "No receiver selected");
 
   if (mode === "share") {
     el.transferHint.textContent = `Files stay on ${hostName}. Open this device's share link on the other device to download. Sharing is not delivery.`;
@@ -314,7 +317,7 @@ function updateControls() {
   el.drop.setAttribute("aria-label", mode === "share" ? "Choose files to share locally" : "Choose files to send");
   el.drop.tabIndex = ready ? 0 : -1;
   el.file.disabled = !ready;
-  el.dropSub.textContent = ready ? "or tap to choose" : "No files will be sent until connected";
+  el.dropSub.textContent = ready ? "or choose files" : "No files will be sent until connected";
 }
 
 function setMode(next) {
@@ -387,6 +390,11 @@ function createOutgoingRow(file, destination) {
 
   const bar = document.createElement("div");
   bar.className = "bar";
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-label", `Transfer progress for ${file.name}`);
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
+  bar.setAttribute("aria-valuenow", "0");
   const fill = document.createElement("i");
   bar.appendChild(fill);
   const error = document.createElement("p");
@@ -400,8 +408,11 @@ function createOutgoingRow(file, destination) {
 }
 
 function setProgress(row, fraction, label) {
-  const pct = Math.max(0, Math.min(1, fraction)) * 100;
-  row.fill.style.width = `${pct.toFixed(1)}%`;
+  const progress = Math.max(0, Math.min(1, fraction));
+  const pct = progress * 100;
+  row.fill.style.transform = `scaleX(${progress.toFixed(4)})`;
+  row.bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+  row.bar.setAttribute("aria-valuetext", `${label || row.state.textContent} · ${Math.round(pct)}%`);
   if (label) {
     row.state.className = "row-state";
     row.state.textContent = label;
@@ -519,6 +530,7 @@ async function sendFile(file, destination, row) {
     console.error("transfer failed", error);
     row.state.className = "row-state failed";
     row.state.textContent = "Failed";
+    row.bar.setAttribute("aria-valuetext", "Failed");
     row.fill.style.background = "var(--bad)";
     row.error.textContent = errorMessage(error);
     row.error.hidden = false;
@@ -586,17 +598,17 @@ async function refreshInfo() {
 
 function setOnline(online) {
   el.status.classList.toggle("offline", !online);
-  el.status.lastElementChild.textContent = online ? "live" : "offline";
+  el.status.lastElementChild.textContent = online ? "Live" : "Offline";
 }
 
 function tickExpiry() {
   if (!expiresAt) {
-    el.expiry.textContent = "while sharing";
+    el.expiry.textContent = "While sharing";
     return;
   }
   const remaining = expiresAt - Date.now();
   if (remaining <= 0) {
-    el.expiry.textContent = "expired";
+    el.expiry.textContent = "Expired";
     return;
   }
   const totalMinutes = Math.floor(remaining / 60000);

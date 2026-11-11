@@ -93,12 +93,12 @@ jobs:
       - name: Test the packaged Electron bridge
         run: npm run test:electron
 
-      - name: Upload smoke-test screenshot
+      - name: Upload smoke-test screenshots
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: syndro-electron-smoke
-          path: desktop/release/electron-smoke.png
+          path: desktop/release/electron-smoke*.png
           if-no-files-found: ignore
           retention-days: 7
 

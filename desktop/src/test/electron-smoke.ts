@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
@@ -38,6 +38,112 @@ async function files(server: RunningServer): Promise<PublicFile[]> {
   return ((await response.json()) as { files: PublicFile[] }).files;
 }
 
+interface Presentation {
+  columns: number;
+  overflow: boolean;
+  labels: Array<{ text: string; size: number; tracking: string; transform: string }>;
+  controls: Array<{ text: string; height: number; width: number }>;
+}
+
+async function checkPresentation(window: BrowserWindow, columns: number, minimum: number): Promise<void> {
+  const presentation = await window.webContents.executeJavaScript(`(() => {
+    const visible = (selector) => [...document.querySelectorAll(selector)]
+      .filter((element) => element.getClientRects().length > 0);
+    return {
+      columns: getComputedStyle(document.querySelector('.layout')).gridTemplateColumns.split(' ').length,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      labels: visible('h2, h3, .copy, .download, .tag, .row-state, .row-size, .row-destination, .hint, .drop-sub')
+        .map((element) => {
+          const style = getComputedStyle(element);
+          return { text: element.textContent, size: parseFloat(style.fontSize),
+            tracking: style.letterSpacing, transform: style.textTransform };
+        }),
+      controls: visible('.copy, .download, .transfer-modes button, .receiver button, .receiver input')
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { text: element.getAttribute('aria-label') || element.textContent || element.id,
+            height: rect.height, width: rect.width };
+        }),
+    };
+  })()`) as Presentation;
+  assert.equal(presentation.columns, columns);
+  assert.equal(presentation.overflow, false, "The UI must not scroll horizontally.");
+  assert.ok(presentation.labels.length > 0 && presentation.controls.length > 0);
+  for (const label of presentation.labels) {
+    assert.ok(label.size >= 12, `Unreadable label: ${label.text}`);
+    assert.ok(label.tracking === "normal" || parseFloat(label.tracking) === 0, `Tracked label: ${label.text}`);
+    assert.notEqual(label.transform, "uppercase", `Uppercase treatment: ${label.text}`);
+  }
+  for (const control of presentation.controls) {
+    assert.ok(control.height >= minimum && control.width >= minimum, `Small target: ${control.text}`);
+  }
+
+  // Use real keyboard input so :focus-visible is exercised, not just :focus.
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+  const focus = await window.webContents.executeJavaScript(`(() => {
+    const elements = [...document.querySelectorAll('.copy, .download, .transfer-modes button, .receiver button, .receiver input, #drop')]
+      .filter((element) => element.getClientRects().length > 0 && !element.disabled && element.tabIndex >= 0);
+    return elements.map((element) => {
+      element.focus({ preventScroll: true });
+      const style = getComputedStyle(element);
+      const result = { text: element.getAttribute('aria-label') || element.textContent,
+        visible: element.matches(':focus-visible'), width: parseFloat(style.outlineWidth), style: style.outlineStyle };
+      element.blur();
+      return result;
+    });
+  })()`) as Array<{ text: string; visible: boolean; width: number; style: string }>;
+  assert.ok(focus.length > 0);
+  for (const control of focus) {
+    assert.ok(control.visible && control.width >= 2 && control.style === "solid", `Missing keyboard ring: ${control.text}`);
+  }
+
+  const debuggerClient = window.webContents.debugger;
+  const attached = debuggerClient.isAttached();
+  if (!attached) debuggerClient.attach("1.3");
+  try {
+    await debuggerClient.sendCommand("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+    });
+    const durations = await window.webContents.executeJavaScript(`
+      [...document.querySelectorAll('.drop, .copy, .download, .bar > i')]
+        .map((element) => getComputedStyle(element).transitionDuration)`) as string[];
+    assert.ok(durations.every((duration) => duration.split(",").every((part) => parseFloat(part) === 0)),
+      "Reduced motion must disable every feedback transition.");
+  } finally {
+    await debuggerClient.sendCommand("Emulation.setEmulatedMedia", { features: [] });
+    if (!attached) debuggerClient.detach();
+  }
+}
+
+async function captureFullPage(window: BrowserWindow, file: string): Promise<void> {
+  window.showInactive();
+  await window.webContents.executeJavaScript(`new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  const debuggerClient = window.webContents.debugger;
+  const attached = debuggerClient.isAttached();
+  if (!attached) debuggerClient.attach("1.3");
+  try {
+    // Capture the full actual page, not an old hidden compositor frame or a
+    // crop that conceals the Received list below the runner's small display.
+    const metrics = await debuggerClient.sendCommand("Page.getLayoutMetrics") as {
+      cssContentSize: { width: number; height: number };
+    };
+    const image = await debuggerClient.sendCommand("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width: Math.ceil(metrics.cssContentSize.width),
+        height: Math.ceil(metrics.cssContentSize.height), scale: 1 },
+    }) as { data: string };
+    await fsp.writeFile(file, Buffer.from(image.data, "base64"));
+  } finally {
+    if (!attached) debuggerClient.detach();
+  }
+}
+
 async function run(): Promise<void> {
   const [, , archive, webDir, root, screenshot] = process.argv;
   assert.ok(archive && webDir && root && screenshot, "Smoke-test paths must be provided by the runner.");
@@ -56,6 +162,8 @@ async function run(): Promise<void> {
   const windows: BrowserWindow[] = [];
   const errors: string[] = [];
   let owner: BrowserWindow | null = null;
+  let browser: BrowserWindow | null = null;
+  let passed = false;
   let unregister: (() => void) | undefined;
   const observe = (window: BrowserWindow) => {
     windows.push(window);
@@ -89,6 +197,9 @@ async function run(): Promise<void> {
     })`), { bridge: "function", node: "undefined", disabled: "true" });
     const renderer = app.getAppMetrics().find((metric) => metric.pid === owner?.webContents.getOSProcessId());
     assert.equal(renderer?.sandboxed, true);
+    // Check the editable receiver field and Connect button before selecting a
+    // receiver; the final Share-mode check covers the drop area and Save links.
+    await checkPresentation(owner, 2, 40);
 
     await owner.webContents.executeJavaScript(`document.querySelector('#receiver-link').value = ${JSON.stringify(ownerUrl)};
       document.querySelector('#receiver-connect').click();`);
@@ -162,25 +273,48 @@ async function run(): Promise<void> {
       .then(() => 'allowed', (error) => error.message)`);
     assert.match(wrongUrl, /only in Syndro's own window/);
     await owner.webContents.executeJavaScript(`history.replaceState({}, '', ${JSON.stringify(ownerUrl)})`);
+    await checkPresentation(owner, 2, 40);
+
+    // This window has no preload: it is genuinely browser mode, not a second
+    // desktop window whose sender bridge merely rejects IPC calls.
+    browser = new BrowserWindow({ width: 430, height: 760, show: false,
+      backgroundColor: "#0b0b0c",
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    observe(browser);
+    browser.webContents.debugger.attach("1.3");
+    await browser.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
+      width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+    });
+    await browser.webContents.loadURL(ownerUrl);
+    await waitFor(browser, `document.querySelector('#peer-name').textContent === 'Smoke desktop' &&
+      document.querySelectorAll('#received .download').length === 2`);
+    assert.deepEqual(await browser.webContents.executeJavaScript(`({
+      bridge: typeof window.syndro, controlsHidden: document.querySelector('#desktop-controls').hidden,
+      title: document.querySelector('#files-title').textContent, code: document.querySelector('#pair-code').textContent
+    })`), { bridge: "undefined", controlsHidden: true, title: "Available to download", code: "ABCD 2345" });
+    await checkPresentation(browser, 1, 44);
     assert.deepEqual(errors, []);
-    console.log("Packaged Electron smoke passed: sandbox preload, guarded IPC, real File chunks, selected-receiver delivery, and honest file lists.");
+    passed = true;
+    console.log("Packaged Electron smoke passed: sandbox preload, guarded IPC, real File chunks, honest lists, desktop/mobile layout, keyboard focus, and reduced motion.");
   } finally {
-    if (owner && !owner.isDestroyed()) {
-      try {
-        // Hidden windows can keep an old compositor frame even though DOM
-        // assertions see current state. Paint the final lists before capturing
-        // the artifact so it is useful when a CI failure needs visual review.
-        owner.showInactive();
-        await owner.webContents.executeJavaScript(`new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-        await fsp.writeFile(screenshot, (await owner.webContents.capturePage()).toPNG());
-      } catch {
-        // A renderer crash is already reported above; never mask it here.
+    let captureError: unknown;
+    for (const [window, file] of [[owner, screenshot],
+      [browser, path.join(path.dirname(screenshot), "electron-smoke-mobile.png")]] as const) {
+      if (window && !window.isDestroyed()) {
+        try {
+          await captureFullPage(window, file);
+        } catch (error) {
+          captureError ??= error;
+          console.error("UI capture failed", error);
+        }
       }
     }
     unregister?.();
     for (const window of windows) if (!window.isDestroyed()) window.destroy();
     for (const server of servers) await server.close();
+    // Preserve an original test failure, but never silently skip screenshots
+    // when the checks passed: CI must provide the images for visual review.
+    if (passed && captureError) throw captureError;
   }
 }
 

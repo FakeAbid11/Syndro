@@ -13,6 +13,15 @@ interface Hooks {
   connectReceiver: () => Promise<void>;
   disconnectReceiver: () => Promise<void>;
   setMode: (mode: string) => void;
+  renderLinks: (urls: Array<{ url: string; kind: string; browserReachable: boolean }>) => void;
+  createOutgoingRow: (file: { name: string; size: number }, destination: { kind: string; name: string }) => ProgressRow;
+  setProgress: (row: ProgressRow, fraction: number, label: string) => void;
+}
+
+interface ProgressRow {
+  state: HTMLSpanElement;
+  fill: HTMLElement;
+  bar: HTMLDivElement;
 }
 
 function nativeBridge(sender: NativeSender): DesktopBridge {
@@ -67,7 +76,10 @@ async function uiFixture(
   // Expected error paths should be asserted through the visible UI, not dumped
   // into the test runner. Actual Electron console errors fail the smoke test.
   dom.window.console.error = () => undefined;
-  dom.window.eval(`${script}\nwindow.__syndroTest = { enqueue, refreshInfo, connectReceiver, disconnectReceiver, setMode };`);
+  dom.window.eval(`${script}\nwindow.__syndroTest = {
+    enqueue, refreshInfo, connectReceiver, disconnectReceiver, setMode,
+    renderLinks, createOutgoingRow, setProgress,
+  };`);
   const hooks = (dom.window as unknown as { __syndroTest: Hooks }).__syndroTest;
   await hooks.refreshInfo();
   const document = dom.window.document;
@@ -198,6 +210,7 @@ test("received and legacy files are separate from files this desktop shared", as
   assert.equal(ui.text("#files-title"), "Received");
   assert.equal(ui.text("#received .row-name"), "incoming.txt");
   assert.equal(ui.rows("#received .download").length, 1);
+  assert.equal(ui.document.querySelector("#received .download")?.getAttribute("aria-label"), "Save incoming.txt");
   assert.equal(ui.text("#shared .row-name"), "published.txt");
   assert.equal(ui.rows("#shared .download").length, 0);
   assert.equal(ui.text("#earlier .row-name"), "old.txt");
@@ -261,4 +274,85 @@ test("unconfirmed delivery is Failed, not Sent, with a visible explanation", asy
   assert.deepEqual(await listFiles(host), []);
   await ui.hooks.disconnectReceiver();
   assert.equal(ui.document.getElementById("drop")?.getAttribute("aria-disabled"), "true");
+});
+
+test("pairing keeps grouped codes, full copyable URLs, and browser-only addresses", async (t) => {
+  const host = await fixture(t);
+  const ui = await uiFixture(t, host);
+  const ipv6 = "http://[fd12:3456::20]:47821/s/ABCD2345";
+  const ipv4 = "http://192.168.1.20:47821/s/ABCD2345";
+  ui.hooks.renderLinks([
+    { url: ipv6, kind: "ipv6-ula", browserReachable: true },
+    { url: ipv4, kind: "ipv4-private", browserReachable: true },
+    { url: "http://[fe80::20%25WiFi]:47821/s/ABCD2345", kind: "ipv6-link-local", browserReachable: false },
+  ]);
+  assert.equal(ui.text("#pair-code"), "ABCD 2345");
+  assert.deepEqual(ui.rows(".link-row code").map((code) => code.textContent), [ipv6, ipv4]);
+  assert.deepEqual(ui.rows(".link-row .tag").map((tag) => tag.textContent), ["ULA", "IPv4"]);
+  const button = ui.document.querySelector<HTMLButtonElement>(".copy");
+  assert.ok(button);
+  assert.equal(button.getAttribute("aria-label"), "Copy ULA share link");
+  assert.equal(ui.document.querySelector(".link-row code")?.getAttribute("title"), ipv6);
+
+  // LAN HTTP uses the fallback clipboard path. CSS truncation must never
+  // shorten the capability URL that the user actually copies.
+  let copied = "";
+  Object.defineProperty(ui.document, "execCommand", { value: (command: string) => {
+    assert.equal(command, "copy");
+    copied = ui.document.querySelector<HTMLTextAreaElement>("textarea")?.value || "";
+    return true;
+  } });
+  button.click();
+  assert.equal(copied, ipv6);
+  assert.equal(button.textContent, "Copied");
+});
+
+test("progress is accessible and transform-based without implying confirmed delivery", async (t) => {
+  const host = await fixture(t);
+  const ui = await uiFixture(t, host);
+  const row = ui.hooks.createOutgoingRow({ name: "weekend-photos.zip", size: 42 },
+    { kind: "browser", name: "Family laptop" });
+  assert.equal(row.bar.getAttribute("role"), "progressbar");
+  assert.equal(row.bar.getAttribute("aria-label"), "Transfer progress for weekend-photos.zip");
+  assert.equal(row.bar.getAttribute("aria-valuemin"), "0");
+  assert.equal(row.bar.getAttribute("aria-valuemax"), "100");
+  assert.equal(row.bar.getAttribute("aria-valuenow"), "0");
+  for (const [fraction, transform, value] of [
+    [-1, "scaleX(0.0000)", "0"],
+    [0.375, "scaleX(0.3750)", "38"],
+    [2, "scaleX(1.0000)", "100"],
+  ] as const) {
+    ui.hooks.setProgress(row, fraction, "Confirming");
+    assert.equal(row.fill.style.transform, transform);
+    assert.equal(row.fill.style.width, "");
+    assert.equal(row.bar.getAttribute("aria-valuenow"), value);
+    assert.equal(row.bar.getAttribute("aria-valuetext"), `Confirming · ${value}%`);
+    assert.equal(row.state.textContent, "Confirming");
+  }
+});
+
+test("shared muted-text tokens meet normal-text contrast on every app surface", async () => {
+  const [css, theme] = await Promise.all([
+    fsp.readFile(path.join(WEB_DIR, "assets", "style.css"), "utf8"),
+    fsp.readFile(path.join(WEB_DIR, "..", "..", "android", "app", "src", "main", "java",
+      "dev", "syndro", "app", "Theme.kt"), "utf8"),
+  ]);
+  function color(name: string): string {
+    const match = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
+    assert.ok(match, `Missing ${name} token`);
+    return match[1];
+  }
+  function luminance(hex: string): number {
+    const [red, green, blue] = [1, 3, 5].map((at) => {
+      const channel = parseInt(hex.slice(at, at + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+  }
+  const faint = color("faint");
+  assert.equal(theme.match(/val SyndroFaint = Color\(0xFF([A-F0-9]{6})\)/)?.[1].toLowerCase(), faint.slice(1));
+  for (const name of ["bg", "surface", "surface-2"]) {
+    const contrast = (luminance(faint) + 0.05) / (luminance(color(name)) + 0.05);
+    assert.ok(contrast >= 4.5, `${name}: muted text only reaches ${contrast.toFixed(2)}:1`);
+  }
 });

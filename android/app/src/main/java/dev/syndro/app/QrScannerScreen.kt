@@ -89,7 +89,7 @@ fun QrScannerScreen(onResult: (String) -> Unit, onClose: () -> Unit) {
         ActivityResultContracts.RequestPermission(),
     ) { ok ->
         granted = ok
-        if (!ok) error = "Camera permission is required to scan a QR code."
+        if (!ok) error = "Camera permission is required to scan a QR code"
     }
 
     LaunchedEffect(Unit) {
@@ -200,7 +200,7 @@ fun QrScannerScreen(onResult: (String) -> Unit, onClose: () -> Unit) {
                         .align(Alignment.TopCenter)
                         .padding(top = 40.dp, start = 24.dp, end = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         "Scan the other device",

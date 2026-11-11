@@ -161,7 +161,10 @@ downloads, path traversal, link expiry, persisted file direction, self-link reje
 confirmation, failed-connection clearing, real two-server native sends, and DOM regressions for the
 duplicate Save bug. Windows CI also launches the packaged Electron app and verifies its sandboxed
 preload, guarded IPC, Chromium `File`/`ArrayBuffer` chunks, selected-receiver delivery, and separate
-Shared/Received lists.
+Shared/Received lists. UI regressions also cover full copyable links, grouped pairing codes,
+accessible transform-based progress, shared muted-text contrast, desktop/mobile layout, keyboard
+focus, and reduced motion. The packaged smoke test saves full-page desktop and mobile-browser
+screenshots for visual review.
 
 ## Roadmap
 
@@ -172,6 +175,10 @@ Shared/Received lists.
 
 ## Design notes
 
+- The interface keeps graphite surfaces, restrained amber, and system fonts across web and Android.
+  Pairing codes stay grouped as `ABCD 2345`; file direction and confirmed completion remain explicit.
+- UI polish follows **unslop**, created by [Damir Sokolovsky (@heydamir)](https://x.com/heydamir),
+  licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - The Electron window loads the same loopback UI that a browser would. Only that exact top-level
   owner window receives a sandbox-compatible preload bridge; remote pages, child frames, other
   windows, and navigated URLs cannot invoke native sending.

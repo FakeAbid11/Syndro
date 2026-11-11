@@ -27,11 +27,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -63,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -165,8 +169,8 @@ fun HomeScreen() {
             .fillMaxSize()
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Header()
 
@@ -181,17 +185,17 @@ fun HomeScreen() {
                     "Receive files from any browser on this network. Nothing to install on the other device.",
                     style = MaterialTheme.typography.bodyMedium.copy(color = SyndroDim),
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = { startSharing() },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SyndroAmber,
-                        contentColor = Color(0xFF1A1206),
+                        containerColor = SyndroText,
+                        contentColor = SyndroBackground,
                     ),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
-                    Text("Start sharing", fontWeight = FontWeight.SemiBold)
+                    Text("Start sharing", fontWeight = FontWeight.Medium)
                 }
             } else {
                 ShareBody(urls) { clipboard.setText(AnnotatedString(it)) }
@@ -200,24 +204,24 @@ fun HomeScreen() {
                     "Keep the notification alive while transferring. Android suspends background apps otherwise.",
                     style = MaterialTheme.typography.bodySmall.copy(color = SyndroFaint),
                 )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Stop sharing",
-                    style = MaterialTheme.typography.labelLarge.copy(color = SyndroAmber),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable {
-                            context.startService(
-                                Intent(context, ShareService::class.java)
-                                    .setAction(ShareService.ACTION_STOP),
-                            )
-                        }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = {
+                        context.startService(
+                            Intent(context, ShareService::class.java)
+                                .setAction(ShareService.ACTION_STOP),
+                        )
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = SyndroDim),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Stop sharing")
+                }
             }
 
             error?.let {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed))
             }
         }
@@ -227,11 +231,12 @@ fun HomeScreen() {
                 "Find a nearby Syndro device, or use its QR code when discovery is blocked.",
                 style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim),
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = target,
                 onValueChange = { target = it; scanNote = null },
                 singleLine = true,
+                label = { Text("Receiver's share link") },
                 placeholder = {
                     Text("http://192.168.1.20:47821/s/…", color = SyndroFaint, fontSize = 13.sp)
                 },
@@ -248,7 +253,7 @@ fun HomeScreen() {
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { picker.launch(arrayOf("*/*")) },
@@ -260,38 +265,40 @@ fun HomeScreen() {
                         disabledContentColor = SyndroFaint,
                     ),
                     shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
-                    Text("Choose files", fontWeight = FontWeight.SemiBold)
+                    Text("Choose files", fontWeight = FontWeight.Medium)
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(
                     onClick = { scanning = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
+                    border = BorderStroke(1.dp, SyndroLineStrong),
                     shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
-                    Text("Scan QR", fontWeight = FontWeight.SemiBold)
+                    Text("Scan QR", fontWeight = FontWeight.Medium)
                 }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { discovering = !discovering },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = SyndroText),
+                border = BorderStroke(1.dp, SyndroLineStrong),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
                 Text(
                     if (discovering) "Stop nearby scan" else "Find nearby devices",
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
             }
 
             if (discovering || nearby.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (nearby.isEmpty()) "Searching for _syndro._tcp.local…" else "NEARBY",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = Mono,
-                        letterSpacing = 1.4.sp,
-                        color = SyndroFaint,
-                    ),
+                    if (nearby.isEmpty()) "Searching for _syndro._tcp.local…" else "Nearby",
+                    style = MaterialTheme.typography.labelMedium.copy(color = SyndroDim),
                 )
                 if (nearby.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
@@ -305,7 +312,7 @@ fun HomeScreen() {
             }
 
             discoveryNote?.let { note ->
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "$note. Scan the QR code instead.",
                     style = MaterialTheme.typography.bodySmall.copy(color = SyndroRed),
@@ -327,14 +334,10 @@ fun HomeScreen() {
             }
 
             if (outbox.isNotEmpty()) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
-                    "OUTGOING",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = Mono,
-                        letterSpacing = 1.4.sp,
-                        color = SyndroFaint,
-                    ),
+                    "Outgoing",
+                    style = MaterialTheme.typography.labelMedium.copy(color = SyndroDim),
                 )
                 Spacer(Modifier.height(8.dp))
                 outbox.forEach { item -> SendRow(item) }
@@ -344,7 +347,7 @@ fun HomeScreen() {
         Panel(title = "Received") {
             if (received.isEmpty()) {
                 Text(
-                    "Nothing yet.",
+                    "Nothing yet",
                     style = MaterialTheme.typography.bodySmall.copy(color = SyndroFaint),
                 )
             } else {
@@ -365,7 +368,7 @@ fun HomeScreen() {
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
     }
 
     if (scanning) {
@@ -377,7 +380,7 @@ fun HomeScreen() {
                     target = scanned
                     scanNote = null
                 } else {
-                    scanNote = "That QR is not a Syndro share link."
+                    scanNote = "That QR is not a Syndro share link"
                 }
             },
             onClose = { scanning = false },
@@ -388,6 +391,7 @@ fun HomeScreen() {
         val normalized = Code.normalize(pairCode)
         AlertDialog(
             onDismissRequest = { pairDevice = null },
+            containerColor = SyndroSurface,
             title = { Text("Pair with ${device.name}") },
             text = {
                 Column {
@@ -400,10 +404,13 @@ fun HomeScreen() {
                         value = pairCode,
                         onValueChange = { pairCode = it.take(12) },
                         singleLine = true,
+                        label = { Text("Pair code") },
                         placeholder = { Text("ABCD 2345") },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             fontFamily = Mono,
-                            letterSpacing = 1.4.sp,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.sp,
                         ),
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -439,7 +446,10 @@ fun HomeScreen() {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pairDevice = null }) {
+                TextButton(
+                    onClick = { pairDevice = null },
+                    colors = ButtonDefaults.textButtonColors(contentColor = SyndroDim),
+                ) {
                     Text("Cancel")
                 }
             },
@@ -455,25 +465,24 @@ private fun Header() {
     ) {
         Box(
             modifier = Modifier
-                .size(14.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .size(16.dp)
+                .clip(RoundedCornerShape(4.dp))
                 .background(SyndroAmber),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
-            "SYNDRO",
+            "Syndro",
             style = MaterialTheme.typography.titleSmall.copy(
-                fontFamily = Mono,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 4.sp,
+                fontSize = 18.sp,
             ),
         )
-        Spacer(Modifier.weight(1f))
         Text(
             Build.MODEL ?: "Android",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = Mono, color = SyndroDim),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f).padding(start = 16.dp),
         )
     }
 }
@@ -483,13 +492,13 @@ private fun StatusPill(running: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(6.dp)
+                .size(8.dp)
                 .clip(CircleShape)
                 .background(if (running) SyndroGreen else SyndroFaint),
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
-            if (running) "live" else "off",
+            if (running) "Live" else "Off",
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = Mono,
                 color = if (running) SyndroGreen else SyndroFaint,
@@ -511,7 +520,7 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 14.dp),
+                .padding(bottom = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -525,18 +534,20 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
     }
 
     if (pairCode != null) {
-        Text(
-            "PAIR CODE  ${Code.group(pairCode)}",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = Mono,
-                letterSpacing = 1.6.sp,
-                color = SyndroDim,
-            ),
-            textAlign = TextAlign.Center,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 14.dp),
-        )
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Pair code", style = MaterialTheme.typography.bodySmall.copy(color = SyndroDim))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                Code.group(pairCode),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = Mono),
+            )
+        }
     }
 
     if (shareable.isEmpty()) {
@@ -555,12 +566,12 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(SyndroSurfaceHigh)
                 .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
-                .padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 entry.url,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = Mono, fontSize = 11.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = Mono),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -569,26 +580,19 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
                 tag(entry.kind),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = Mono,
-                    fontSize = 9.sp,
                     color = SyndroFaint,
                 ),
-                modifier = Modifier
-                    .padding(horizontal = 6.dp)
-                    .border(1.dp, SyndroLineStrong, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(min = 40.dp),
             )
-            Text(
-                "COPY",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = Mono,
-                    fontSize = 9.sp,
-                    color = SyndroDim,
-                ),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onCopy(entry.url) }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            TextButton(
+                onClick = { onCopy(entry.url) },
+                colors = ButtonDefaults.textButtonColors(contentColor = SyndroDim),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text("Copy", style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 }
@@ -602,8 +606,9 @@ private fun NearbyRow(device: NearbyDevice, onClick: () -> Unit) {
             .clip(RoundedCornerShape(10.dp))
             .background(SyndroSurfaceHigh)
             .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 64.dp)
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -625,12 +630,8 @@ private fun NearbyRow(device: NearbyDevice, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            "PAIR",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = Mono,
-                fontSize = 9.sp,
-                color = SyndroAmber,
-            ),
+            "Pair",
+            style = MaterialTheme.typography.labelMedium.copy(color = SyndroDim),
         )
     }
 }
@@ -645,7 +646,7 @@ private fun SendRow(item: SendItem) {
             .clip(RoundedCornerShape(10.dp))
             .background(SyndroSurfaceHigh)
             .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
-            .padding(10.dp),
+            .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -657,10 +658,9 @@ private fun SendRow(item: SendItem) {
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                item.state.uppercase(),
+                item.state.replaceFirstChar { it.uppercaseChar() },
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = Mono,
-                    fontSize = 9.sp,
                     color = when (item.state) {
                         "sent" -> SyndroGreen
                         "failed" -> SyndroRed
@@ -673,14 +673,15 @@ private fun SendRow(item: SendItem) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(3.dp)
+                .height(4.dp)
+                .progressSemantics(fraction)
                 .clip(RoundedCornerShape(2.dp))
                 .background(SyndroLine),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(fraction)
-                    .height(3.dp)
+                    .height(4.dp)
                     .background(if (item.state == "failed") SyndroRed else SyndroAmber),
             )
         }
@@ -696,7 +697,7 @@ private fun ReceivedRow(file: StoredFile, onSave: () -> Unit, onShare: () -> Uni
             .clip(RoundedCornerShape(10.dp))
             .background(SyndroSurfaceHigh)
             .border(1.dp, SyndroLine, RoundedCornerShape(10.dp))
-            .padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -710,35 +711,26 @@ private fun ReceivedRow(file: StoredFile, onSave: () -> Unit, onShare: () -> Uni
                 formatBytes(file.size),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = Mono,
-                    fontSize = 10.sp,
                     color = SyndroDim,
                 ),
             )
         }
-        Text(
-            "SAVE",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = Mono,
-                fontSize = 9.sp,
-                color = SyndroAmber,
-            ),
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { onSave() }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
-        Text(
-            "SHARE",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = Mono,
-                fontSize = 9.sp,
-                color = SyndroDim,
-            ),
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { onShare() }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
+        TextButton(
+            onClick = onSave,
+            colors = ButtonDefaults.textButtonColors(contentColor = SyndroText),
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+            Text("Save", style = MaterialTheme.typography.labelMedium)
+        }
+        TextButton(
+            onClick = onShare,
+            colors = ButtonDefaults.textButtonColors(contentColor = SyndroDim),
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+            Text("Share", style = MaterialTheme.typography.labelMedium)
+        }
     }
 }
 
@@ -760,13 +752,8 @@ private fun Panel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    title.uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = Mono,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 2.sp,
-                        color = SyndroDim,
-                    ),
+                    title,
+                    style = MaterialTheme.typography.titleSmall.copy(color = SyndroText),
                     modifier = Modifier.weight(1f),
                 )
                 trailing?.invoke()
@@ -877,9 +864,9 @@ private fun saveToDownloads(context: Context, stored: StoredFile): Boolean {
 
 private fun tag(kind: String): String = when (kind) {
     "ipv6-ula" -> "ULA"
-    "ipv6-global" -> "IPV6"
-    "ipv4-private", "ipv4-public" -> "IPV4"
-    else -> "LINK"
+    "ipv6-global" -> "IPv6"
+    "ipv4-private", "ipv4-public" -> "IPv4"
+    else -> "Link"
 }
 
 private fun formatBytes(bytes: Long): String {
