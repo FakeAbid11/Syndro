@@ -35,8 +35,8 @@ fun parseTarget(input: String): Target? {
 
     val segments = uri.path?.split('/')?.filter { it.isNotEmpty() } ?: emptyList()
     val marker = segments.indexOf("s")
-    val token = if (marker >= 0) segments.getOrNull(marker + 1) else segments.lastOrNull()
-    if (token == null || !token.matches(Regex("^[a-f0-9]{24}$"))) return null
+    val rawToken = if (marker >= 0) segments.getOrNull(marker + 1) else segments.lastOrNull()
+    val token = rawToken?.let { Code.normalize(it) } ?: return null
 
     return Target("$scheme://$authority", token)
 }

@@ -10,6 +10,7 @@ const el = {
   peer: document.getElementById("peer-name"),
   status: document.getElementById("status"),
   qr: document.getElementById("qr"),
+  pairCode: document.getElementById("pair-code"),
   links: document.getElementById("links"),
   linksHint: document.getElementById("links-hint"),
   expiry: document.getElementById("expiry"),
@@ -41,6 +42,10 @@ function formatBytes(bytes) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function groupCode(code) {
+  return code && code.length === 8 ? `${code.slice(0, 4)} ${code.slice(4)}` : code || "—";
 }
 
 async function fetchJson(url, init) {
@@ -300,6 +305,7 @@ async function refreshInfo() {
   try {
     const info = await fetchJson(api("/api/info"));
     el.peer.textContent = info.deviceName;
+    el.pairCode.textContent = groupCode(info.token || token);
     expiresAt = Number(info.expiresAt) || 0;
     el.qr.src = api("/api/qr.svg");
     renderLinks(Array.isArray(info.urls) ? info.urls : []);

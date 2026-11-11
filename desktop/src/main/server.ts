@@ -1,10 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { toString as qrToSvg } from "qrcode";
+import { createCode } from "./code";
 import { preferredUrls, pickShareUrl } from "./netx";
 import {
   StoreNotFoundError,
@@ -511,5 +512,5 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
 }
 
 export function createShareToken(): string {
-  return randomBytes(12).toString("hex");
+  return createCode();
 }

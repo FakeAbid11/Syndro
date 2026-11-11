@@ -175,6 +175,20 @@ h3.subhead {
   image-rendering: pixelated;
 }
 
+.pair-code {
+  margin: -6px 0 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.pair-code strong {
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+
 .links {
   display: flex;
   flex-direction: column;

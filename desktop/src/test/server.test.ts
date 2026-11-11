@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { test, type TestContext } from "node:test";
 import { startServer, type RunningServer, type ServerOptions } from "../main/server";
 
-const TOKEN = "0123456789abcdef01234567";
+const TOKEN = "ABCD2345";
 const WEB_DIR = path.join(__dirname, "..", "..", "web");
 
 interface Harness {

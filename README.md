@@ -11,8 +11,9 @@ files to another Syndro share link.
 
 ## What works today
 
-- QR pairing plus copyable share URLs, scoped by a random 24-character capability token — the
-  Android app both shows a QR code and scans one with CameraX + ZXing (no Play Services)
+- QR pairing plus copyable share URLs, scoped by an 8-character code from the LinkPhone alphabet
+  (`A–Z` without `I`/`O`, plus `2–9`), shown as `ABCD 2345` — the Android app both shows a QR code
+  and scans one with CameraX + ZXing (no Play Services)
 - Chunked, resumable uploads (4 MiB chunks, automatic retry, server-reported resume offset)
 - Downloads with HTTP `Range`, so a dropped transfer resumes instead of restarting
 - Live transfer list, refreshed without a page reload
@@ -117,8 +118,10 @@ upload, resume conflicts, `Range` downloads, path traversal, and link expiry.
 
 - The Electron window loads the exact same loopback URL that a browser would, so there is one UI
   implementation, one API, and one thing to test.
-- The token is the capability. There is no unauthenticated endpoint that reveals device names,
-  file names, or file contents.
+- The token is the capability, and it is now a short voice-friendly code: 8 symbols from a
+  32-character alphabet (40 bits), with the same lowercase/grouped input accepted on Android.
+  Desktop rate-limits bad tokens per client; there is no unauthenticated endpoint that reveals
+  device names, file names, or file contents.
 - `http://` is deliberate for browser mode: a self-signed certificate produces a full-page browser
   warning that ordinary users should not be trained to click through. Transport encryption belongs
   between native Syndro clients in phase 5.

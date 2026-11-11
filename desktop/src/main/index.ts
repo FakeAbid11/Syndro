@@ -1,9 +1,8 @@
 import { app, BrowserWindow, shell } from "electron";
-import { randomBytes } from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { startServer, type RunningServer } from "./server";
+import { createShareToken, startServer, type RunningServer } from "./server";
 
 const PREFERRED_PORT = 47821;
 
@@ -58,7 +57,7 @@ async function main(): Promise<void> {
   await fsp.mkdir(storeDir, { recursive: true });
 
   running = await startServer({
-    token: randomBytes(12).toString("hex"),
+    token: createShareToken(),
     deviceName: process.env.SYNDRO_NAME?.trim() || os.hostname(),
     port: PREFERRED_PORT,
     storeDir,

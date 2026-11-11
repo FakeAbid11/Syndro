@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -367,6 +368,7 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
     val shareable = urls.filter { it.browserReachable }
     val qrSource = shareable.firstOrNull()?.url
     val bitmap = remember(qrSource) { qrSource?.let { Qr.bitmap(it) } }
+    val pairCode = qrSource?.substringAfterLast('/')?.takeIf { it.length == Code.LENGTH }
 
     if (bitmap != null) {
         Box(
@@ -383,6 +385,21 @@ private fun ShareBody(urls: List<ShareUrl>, onCopy: (String) -> Unit) {
                     .clip(RoundedCornerShape(8.dp)),
             )
         }
+    }
+
+    if (pairCode != null) {
+        Text(
+            "PAIR CODE  ${Code.group(pairCode)}",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = Mono,
+                letterSpacing = 1.6.sp,
+                color = SyndroDim,
+            ),
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+        )
     }
 
     if (shareable.isEmpty()) {

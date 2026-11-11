@@ -10,7 +10,6 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
 import java.io.File
-import java.security.SecureRandom
 
 class ShareService : Service() {
 
@@ -46,8 +45,9 @@ class ShareService : Service() {
 
         if (server == null) {
             val prefs = getSharedPreferences("syndro", MODE_PRIVATE)
-            val token = prefs.getString("token", null)
-                ?: newToken().also { prefs.edit().putString("token", it).apply() }
+            val stored = prefs.getString("token", null)?.takeIf { Code.isValid(it) }
+            val token = stored
+                ?: Code.generate().also { prefs.edit().putString("token", it).apply() }
 
             val instance = ShareServer(
                 token = token,
@@ -117,11 +117,5 @@ class ShareService : Service() {
                 ).build(),
             )
             .build()
-    }
-
-    private fun newToken(): String {
-        val bytes = ByteArray(12)
-        SecureRandom().nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
     }
 }
