@@ -76,10 +76,6 @@ Windows blocks inbound connections before Syndro ever sees them.
 The desktop app deliberately keeps these as two different operations. The current Android screen
 starts with a plain **Receive** or **Send** choice, then reveals only the next pairing action.
 
-> The clearer labels and Android receiver confirmation are currently on `main`, not in the
-> published v0.2 downloads. Those binaries still call direct sending **Send to device** (Windows)
-> or **Send files** (Android), and receiving **Start sharing**. Existing release assets are unchanged.
-
 ### App to app
 
 1. Put both devices on the same Wi-Fi or hotspot. Open Syndro on the receiving Windows PC. On a
@@ -115,8 +111,8 @@ list, including after a refresh.
 
 CI builds a real installer, so the target machine needs neither Node nor a build toolchain.
 
-1. Download [`Syndro-Setup-0.2.0.exe`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-Setup-0.2.0.exe)
-   from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
+1. Download [`Syndro-Setup-0.2.1.exe`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2.1/Syndro-Setup-0.2.1.exe)
+   from the [v0.2.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2.1).
 2. Run the installer. It is a per-user install (no admin prompt) and lets you choose the folder.
 3. SmartScreen warns because the build is not code-signed yet: **More info → Run anyway**.
 
@@ -129,16 +125,14 @@ The installer adds Start Menu and desktop shortcuts and registers an uninstaller
 
 The APK is built in CI, so no local Android toolchain is needed.
 
-1. Download [`Syndro-0.2.0-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-0.2.0-android-debug.apk)
-   from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
+1. Download [`Syndro-0.2.1-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2.1/Syndro-0.2.1-android-debug.apk)
+   from the [v0.2.1 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2.1).
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
-3. On `main`, choose **Receive**, then **Start receiving** (**Start sharing** in v0.2). The phone
-   serves the same web UI on port `47821`, so any browser or native Syndro sender on the same Wi-Fi
-   or hotspot can reach it.
-4. To send from the phone on `main`, choose **Send**. Tap **Find nearby devices**, choose the receiver,
-   and type its displayed code, or use **Scan receiver QR code** when discovery is blocked. Manual
-   link entry remains available as a fallback. Wait for the verified receiver card before tapping
-   **Choose files**; v0.2 calls this section **Send files** and sends after selecting a valid link.
+3. Choose **Receive**, then **Start receiving**. The phone serves the same web UI on port `47821`,
+   so any browser or native Syndro sender on the same Wi-Fi or hotspot can reach it.
+4. To send from the phone, choose **Send**. Tap **Find nearby devices**, choose the receiver, and type
+   its displayed code, or use **Scan receiver QR code** when discovery is blocked. Manual link entry
+   remains available as a fallback. Wait for the verified receiver card before tapping **Choose files**.
    The phone copies each document to cache, uploads it in resumable 4 MiB chunks, and deletes the
    copy.
 
@@ -154,13 +148,13 @@ in repository secrets before an in-place update path makes sense.
 
 ### Upgrading from earlier versions
 
-- The Windows installer is still unsigned. Installing v0.2 over v0.1 or v0.1.1 preserves the app's
-  local data and stable device identity.
-- v0.1 did not record whether an existing desktop file was locally shared or received. v0.2
+- The Windows installer is still unsigned. Installing v0.2.1 over an earlier release preserves the
+  app's local data and stable device identity.
+- v0.1 did not record whether an existing desktop file was locally shared or received. v0.2.1
   preserves those files without guessing and shows them under **Earlier files**.
 - The Android APK remains debug-signed. If Android reports that the package conflicts with the
   installed app because CI signing keys differ, first use **Save**/**Share** to export any received
-  files, then uninstall the older version and install v0.2. Uninstalling without exporting deletes
+  files, then uninstall the older version and install v0.2.1. Uninstalling without exporting deletes
   files in the app's private storage.
 
 ## Tests

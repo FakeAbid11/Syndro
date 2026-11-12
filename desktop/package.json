@@ -1,7 +1,7 @@
 {
   "name": "syndro-desktop",
   "productName": "Syndro",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Local-network file sharing for Android, Linux and Windows. No cloud, no account, no relay.",
   "author": "Syndro contributors",
