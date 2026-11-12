@@ -73,8 +73,8 @@ Windows blocks inbound connections before Syndro ever sees them.
 
 ## Send versus share
 
-The desktop app deliberately keeps these as two different operations. Android uses the same
-**App to app** pairing flow for direct sends.
+The desktop app deliberately keeps these as two different operations. The current Android screen
+starts with a plain **Receive** or **Send** choice, then reveals only the next pairing action.
 
 > The clearer labels and Android receiver confirmation are currently on `main`, not in the
 > published v0.2 downloads. Those binaries still call direct sending **Send to device** (Windows)
@@ -82,13 +82,14 @@ The desktop app deliberately keeps these as two different operations. Android us
 
 ### App to app
 
-1. Put both devices on the same Wi-Fi or hotspot. Open Syndro on the receiving Windows PC, or tap
-   **Start receiving** on the receiving Android phone. Its **Receive on this device** panel shows
-   the QR code, grouped pairing code, and full share links.
+1. Put both devices on the same Wi-Fi or hotspot. Open Syndro on the receiving Windows PC. On a
+   receiving Android phone, choose **Receive**, then **Start receiving**. Its receiving panel shows
+   the QR code, grouped pairing code, and a copyable receiver link.
 2. On the sending Windows PC, choose **App to app**, paste the receiver's full
    `http://…/s/ABCD2345` link, and select **Connect**.
-3. On a sending Android phone, use **Find nearby**, choose the receiver and enter its code, or
-   **Scan QR**. Either route verifies the receiver automatically. A pasted full link uses **Connect**.
+3. On a sending Android phone, choose **Send**, then use **Find nearby devices**, choose the receiver
+   and enter its code, or **Scan receiver QR code**. Either route verifies the receiver automatically.
+   **Enter a receiver link instead** reveals manual link entry only when it is needed.
 4. Wait for **Paired with** and the receiver's name, then choose files (or drop them on Windows).
    To send back, swap the sending/receiving roles and pair with the other device's link.
 
@@ -131,12 +132,13 @@ The APK is built in CI, so no local Android toolchain is needed.
 1. Download [`Syndro-0.2.0-android-debug.apk`](https://github.com/FakeAbid11/Syndro/releases/download/v0.2/Syndro-0.2.0-android-debug.apk)
    from the [v0.2 release](https://github.com/FakeAbid11/Syndro/releases/tag/v0.2).
 2. Sideload it. Android will ask you to allow installs from your browser or file manager.
-3. Tap **Start receiving** (**Start sharing** in v0.2). The phone serves the same web UI on port
-   `47821`, so any browser or native Syndro sender on the same Wi-Fi or hotspot can reach it.
-4. To send from the phone, use **App to app** (**Send files** in v0.2). Tap **Find nearby**, choose
-   the receiver, and type its displayed code, or use **Scan QR** when discovery is blocked. Pasting
-   a full share link (`http://…:47821/s/<code>`) and selecting **Connect** works too. On `main`, wait
-   for the verified receiver name before tapping **Choose files**; v0.2 sends after selecting a link.
+3. On `main`, choose **Receive**, then **Start receiving** (**Start sharing** in v0.2). The phone
+   serves the same web UI on port `47821`, so any browser or native Syndro sender on the same Wi-Fi
+   or hotspot can reach it.
+4. To send from the phone on `main`, choose **Send**. Tap **Find nearby devices**, choose the receiver,
+   and type its displayed code, or use **Scan receiver QR code** when discovery is blocked. Manual
+   link entry remains available as a fallback. Wait for the verified receiver card before tapping
+   **Choose files**; v0.2 calls this section **Send files** and sends after selecting a valid link.
    The phone copies each document to cache, uploads it in resumable 4 MiB chunks, and deletes the
    copy.
 

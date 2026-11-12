@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Syndro</string>
-    <string name="notification_channel">File sharing</string>
-    <string name="notification_title">Syndro is sharing</string>
-    <string name="notification_stop">Stop</string>
+    <string name="notification_channel">Local file transfers</string>
+    <string name="notification_title">Ready to receive files</string>
+    <string name="notification_stop">Stop receiving</string>
 </resources>
